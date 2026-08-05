@@ -60,38 +60,96 @@ body {
   cursor: pointer;
 }
 
-.rb-account-form {
+/* Tabs, two fields, a checkbox and links don't fit a header row on a phone, so
+   the open form stacks into a small panel under it instead. */
+.rb-auth {
   display: flex;
-  flex-wrap: wrap;
-  justify-content: flex-end;
-  gap: 6px;
+  flex-direction: column;
+  gap: 8px;
+  width: 100%;
+  max-width: 320px;
+  margin-left: auto;
+  padding: 12px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  background: #fff;
+  text-align: left;
 }
 
-/* Email, password and the button don't fit one phone-width line, so they wrap
-   rather than squeezing the fields below a usable size. */
-.rb-account-form input {
-  min-height: 40px;
-  width: 170px;
-  max-width: 100%;
+.rb-auth input[type='email'],
+.rb-auth input[type='password'] {
+  min-height: 44px;
+  width: 100%;
   padding: 0 10px;
   border: 1px solid #ccc;
   border-radius: 8px;
-  font-size: 0.9rem;
+  /* 16px keeps iOS from zooming the page when the field takes focus. */
+  font-size: 16px;
 }
 
-.rb-account-form button {
-  min-height: 40px;
+.rb-auth button[type='submit'] {
+  min-height: 44px;
   padding: 0 12px;
   border: none;
   border-radius: 8px;
   background: #1c7c54;
   color: #fff;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.rb-auth button[type='submit']:disabled {
+  opacity: 0.6;
+}
+
+.rb-auth-tabs {
+  display: flex;
+  gap: 4px;
+}
+
+.rb-auth-tab {
+  flex: 1;
+  min-height: 40px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #f6f6f6;
+  color: #555;
   font-size: 0.9rem;
   cursor: pointer;
 }
 
-.rb-account-form button:disabled {
-  opacity: 0.6;
+.rb-auth-tab-active {
+  border-color: #1c7c54;
+  background: #eef8f1;
+  color: #1c7c54;
+  font-weight: 600;
+}
+
+.rb-auth-title {
+  margin: 0;
+  font-size: 0.95rem;
+  font-weight: 600;
+}
+
+.rb-auth-remember {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 0.9rem;
+  color: #555;
+  cursor: pointer;
+}
+
+.rb-auth-remember input {
+  width: 20px;
+  height: 20px;
+}
+
+.rb-auth-links {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #666;
 }
 
 .rb-account-status {
