@@ -107,21 +107,26 @@ export default function App() {
   // capture path that actually works there. Safari gates readText() behind a
   // native Paste confirmation and rejects if it isn't tapped, so the fallback
   // focuses the field — iOS then offers Paste right above the keyboard.
-  async function pasteLink() {
-    try {
-      const text = await navigator.clipboard.readText()
-      const match = text.match(/https?:\/\/\S+/)
-      if (!match) {
-        setError('No link on the clipboard. Copy the post link first.')
-        return
-      }
-      setImportUrl(match[0])
-      setError('')
-      setShareNotice(false)
-    } catch {
-      inputRef.current?.focus()
-      setError('Tap Paste above the keyboard, or press and hold the box and choose Paste.')
-    }
+  function pasteLink() {
+    // Focus synchronously inside the tap. After an await the gesture window has
+    // closed and iOS refuses to open the keyboard, taking its Paste bar with it.
+    inputRef.current?.focus()
+    navigator.clipboard
+      .readText()
+      .then((text) => {
+        const match = text.match(/https?:\/\/\S+/)
+        if (!match) {
+          setError('No link on the clipboard. Copy the post link first.')
+          return
+        }
+        setImportUrl(match[0])
+        setError('')
+        setShareNotice(false)
+        inputRef.current?.blur()
+      })
+      .catch(() => {
+        setError('Tap Paste above the keyboard, or press and hold the box and choose Paste.')
+      })
   }
 
   async function handleImport(e) {
