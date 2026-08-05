@@ -1,34 +1,53 @@
 // Account control. Renders nothing when Supabase isn't configured — the app
 // then runs local-only.
 //
-// Sign-in offers a 6-digit code alongside the magic link. The link alone can't
-// sign you into the installed home-screen app: iOS opens links from Mail in
-// Safari, so the tokens land in Safari's storage and the app never sees them.
-// A code is typed into whichever surface you're already standing in, which is
-// the only way to hold a session in both.
+// Password is the primary sign-in because it is the only one that reaches the
+// installed home-screen app. iOS opens links from Mail in Safari, so a magic
+// link always signs in Safari, and the installed app keeps separate storage and
+// never sees those tokens. A 6-digit code would solve it too, but the emailed
+// body can't carry one without custom SMTP on the Supabase project.
+//
+// The link is kept as a way in for an account that has no password set yet.
 
 import { useState } from 'react'
 import { supabase, supabaseEnabled } from '../lib/supabase.js'
 
+const MIN_PASSWORD = 8
+
 export default function Account({ session }) {
-  const [open, setOpen] = useState(false)
+  const [mode, setMode] = useState('closed') // closed | password | link | setpw
   const [email, setEmail] = useState('')
-  const [code, setCode] = useState('')
-  const [sent, setSent] = useState(false)
+  const [password, setPassword] = useState('')
   const [busy, setBusy] = useState(false)
   const [status, setStatus] = useState('')
 
   if (!supabaseEnabled) return null
 
-  function reset() {
-    setOpen(false)
-    setSent(false)
-    setEmail('')
-    setCode('')
+  function reset(next = 'closed') {
+    setMode(next)
+    setPassword('')
     setStatus('')
   }
 
-  async function sendCode(e) {
+  async function signIn(e) {
+    e.preventDefault()
+    const addr = email.trim()
+    if (!addr || !password || busy) return
+    setBusy(true)
+    setStatus('')
+    try {
+      const { error } = await supabase.auth.signInWithPassword({ email: addr, password })
+      if (error) throw error
+      reset()
+      setEmail('')
+    } catch {
+      setStatus('That email and password did not match. Use the link below if you have not set a password yet.')
+    } finally {
+      setBusy(false)
+    }
+  }
+
+  async function sendLink(e) {
     e.preventDefault()
     const addr = email.trim()
     if (!addr || busy) return
@@ -40,32 +59,27 @@ export default function Account({ session }) {
         options: { emailRedirectTo: `${window.location.origin}/?auth_callback=1` },
       })
       if (error) throw error
-      // The address is kept, not cleared — verifyOtp needs it to match the code.
-      setSent(true)
-      setStatus('Check your email. Enter the 6-digit code, or tap the link if you are in Safari.')
+      setStatus('Check your email. The link opens in Safari, so set a password there to sign in here too.')
     } catch (err) {
-      setStatus(`Sign-in failed: ${err.message}`)
+      setStatus(`Could not send the link: ${err.message}`)
     } finally {
       setBusy(false)
     }
   }
 
-  async function verifyCode(e) {
+  async function savePassword(e) {
     e.preventDefault()
-    const token = code.replace(/\D/g, '')
-    if (token.length !== 6 || busy) return
+    if (password.length < MIN_PASSWORD || busy) return
     setBusy(true)
     setStatus('')
     try {
-      const { error } = await supabase.auth.verifyOtp({
-        email: email.trim(),
-        token,
-        type: 'email',
-      })
+      const { error } = await supabase.auth.updateUser({ password })
       if (error) throw error
-      reset()
-    } catch {
-      setStatus('That code did not work. Check it, or send a new one.')
+      setPassword('')
+      setMode('closed')
+      setStatus('Password saved. Use it to sign in on your other devices.')
+    } catch (err) {
+      setStatus(`Could not save the password: ${err.message}`)
     } finally {
       setBusy(false)
     }
@@ -75,11 +89,43 @@ export default function Account({ session }) {
     return (
       <div className="rb-account">
         <div className="rb-account-row">
-          <span className="rb-account-email">{session.user.email}</span>
-          <button className="rb-account-btn" onClick={() => supabase.auth.signOut()}>
-            Sign out
-          </button>
+          {mode === 'setpw' ? (
+            <form className="rb-account-form" onSubmit={savePassword}>
+              {/* Hidden username so iOS Keychain files the password under the
+                  right account instead of prompting to overwrite another one. */}
+              <input type="email" autoComplete="username" value={session.user.email} readOnly hidden />
+              <input
+                type="password"
+                autoComplete="new-password"
+                placeholder={`New password (${MIN_PASSWORD}+ characters)`}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                autoFocus
+              />
+              <button type="submit" disabled={busy || password.length < MIN_PASSWORD}>
+                {busy ? 'Saving…' : 'Save'}
+              </button>
+            </form>
+          ) : (
+            <>
+              <span className="rb-account-email">{session.user.email}</span>
+              <button className="rb-account-btn" onClick={() => reset('setpw')}>
+                Set password
+              </button>
+              <button className="rb-account-btn" onClick={() => supabase.auth.signOut()}>
+                Sign out
+              </button>
+            </>
+          )}
         </div>
+        {status && <p className="rb-account-status">{status}</p>}
+        {mode === 'setpw' && (
+          <p className="rb-account-status">
+            <button className="rb-account-link" onClick={() => reset()}>
+              Cancel
+            </button>
+          </p>
+        )}
       </div>
     )
   }
@@ -87,50 +133,63 @@ export default function Account({ session }) {
   return (
     <div className="rb-account">
       <div className="rb-account-row">
-        {!open && (
-          <button className="rb-account-btn" onClick={() => setOpen(true)}>
+        {mode === 'closed' && (
+          <button className="rb-account-btn" onClick={() => setMode('password')}>
             Sign in
           </button>
         )}
-        {open && !sent && (
-          <form className="rb-account-form" onSubmit={sendCode}>
+        {mode === 'password' && (
+          <form className="rb-account-form" onSubmit={signIn}>
             <input
               type="email"
               inputMode="email"
-              autoComplete="email"
+              autoComplete="username"
               placeholder="you@email.com"
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               autoFocus
             />
-            <button type="submit" disabled={busy}>
-              {busy ? 'Sending…' : 'Send code'}
+            <input
+              type="password"
+              autoComplete="current-password"
+              placeholder="Password"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+            <button type="submit" disabled={busy || !email.trim() || !password}>
+              {busy ? 'Signing in…' : 'Sign in'}
             </button>
           </form>
         )}
-        {open && sent && (
-          <form className="rb-account-form" onSubmit={verifyCode}>
+        {mode === 'link' && (
+          <form className="rb-account-form" onSubmit={sendLink}>
             <input
-              type="text"
-              inputMode="numeric"
-              autoComplete="one-time-code"
-              maxLength={6}
-              placeholder="6-digit code"
-              value={code}
-              onChange={(e) => setCode(e.target.value)}
+              type="email"
+              inputMode="email"
+              autoComplete="username"
+              placeholder="you@email.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               autoFocus
             />
-            <button type="submit" disabled={busy || code.replace(/\D/g, '').length !== 6}>
-              {busy ? 'Checking…' : 'Sign in'}
+            <button type="submit" disabled={busy || !email.trim()}>
+              {busy ? 'Sending…' : 'Send link'}
             </button>
           </form>
         )}
       </div>
       {status && <p className="rb-account-status">{status}</p>}
-      {open && (
+      {mode !== 'closed' && (
         <p className="rb-account-status">
-          <button className="rb-account-link" onClick={reset}>
-            {sent ? 'Use a different email' : 'Cancel'}
+          <button
+            className="rb-account-link"
+            onClick={() => reset(mode === 'password' ? 'link' : 'password')}
+          >
+            {mode === 'password' ? 'Email me a sign-in link instead' : 'Use a password instead'}
+          </button>
+          {' · '}
+          <button className="rb-account-link" onClick={() => reset()}>
+            Cancel
           </button>
         </p>
       )}

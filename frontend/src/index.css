@@ -62,12 +62,17 @@ body {
 
 .rb-account-form {
   display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
   gap: 6px;
 }
 
+/* Email, password and the button don't fit one phone-width line, so they wrap
+   rather than squeezing the fields below a usable size. */
 .rb-account-form input {
   min-height: 40px;
   width: 170px;
+  max-width: 100%;
   padding: 0 10px;
   border: 1px solid #ccc;
   border-radius: 8px;
