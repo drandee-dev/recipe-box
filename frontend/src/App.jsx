@@ -8,6 +8,7 @@ import { addDays, startOfWeek, toISODate } from './lib/dates.js'
 import { setBusy } from './lib/pwa.js'
 import Account from './components/Account.jsx'
 import Planner from './components/Planner.jsx'
+import RecipeList from './components/RecipeList.jsx'
 import ShoppingList from './components/ShoppingList.jsx'
 
 // PWA share target (Android) and the iOS Shortcuts workaround both land here:
@@ -52,6 +53,11 @@ export default function App() {
   const inputRef = useRef(null)
   const [error, setError] = useState('')
   const [openId, setOpenId] = useState(null)
+  // Search and filters are view state only — never persisted. A saved filter
+  // that outlives the session is a recipe list that looks empty for no reason.
+  const [query, setQuery] = useState('')
+  const [activeTags, setActiveTags] = useState([])
+  const [favoritesOnly, setFavoritesOnly] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [pull, setPull] = useState(0)
   // Mirrors of state the native touch listeners read: they bind once, so they
@@ -388,6 +394,40 @@ export default function App() {
     }
   }
 
+  // Favoriting and tagging are the same write: the whole recipe back through
+  // store.save, which upserts by id on both backends. Optimistic, because a star
+  // that waits on a round trip feels broken; rolled back to the exact previous
+  // recipe if the write fails.
+  async function updateRecipe(recipe, patch) {
+    const next = { ...recipe, ...patch }
+    setRecipes((prev) => prev.map((r) => (r.id === recipe.id ? next : r)))
+    try {
+      const saved = await store.save(next)
+      setRecipes((prev) => prev.map((r) => (r.id === recipe.id ? saved : r)))
+    } catch (err) {
+      setRecipes((prev) => prev.map((r) => (r.id === recipe.id ? recipe : r)))
+      setError(err.message)
+    }
+  }
+
+  function handleToggleFavorite(recipe) {
+    return updateRecipe(recipe, { favorite: !recipe.favorite })
+  }
+
+  function handleSetTags(recipe, tags) {
+    return updateRecipe(recipe, { tags })
+  }
+
+  function handleToggleTag(tag) {
+    setActiveTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
+  }
+
+  function clearFilters() {
+    setQuery('')
+    setActiveTags([])
+    setFavoritesOnly(false)
+  }
+
   async function handleDelete(id) {
     try {
       await store.remove(id)
@@ -627,70 +667,22 @@ export default function App() {
           )}
           {error && <p className="rb-error">{error}</p>}
 
-          {recipes.length === 0 && !importing && !loading && (
-            <p className="rb-empty">
-              No recipes yet. Paste a recipe link above, or copy a post link in Instagram or
-              TikTok and tap Paste copied link.
-            </p>
-          )}
-
-          <ul className="recipes-list">
-            {recipes.map((r) => (
-              <li key={r.id} className="recipes-card">
-                <button className="recipes-card-head" onClick={() => setOpenId(openId === r.id ? null : r.id)}>
-                  {r.image_url && <img src={r.image_url} alt="" loading="lazy" />}
-                  <div>
-                    <h2>{r.title}</h2>
-                    <p className="recipes-meta">
-                      {r.ingredients.length > 0
-                        ? `${r.ingredients.length} ingredients`
-                        : 'Saved link'}
-                      {r.total_min ? ` · ${r.total_min} min` : ''}
-                      {r.source_url ? ` · ${new URL(r.source_url).hostname.replace('www.', '')}` : ''}
-                    </p>
-                  </div>
-                </button>
-                {openId === r.id && (
-                  <div className="recipes-detail">
-                    {r.ingredients.length === 0 && r.instructions.length === 0 ? (
-                      <>
-                        {r.description && <p className="recipes-caption">{r.description}</p>}
-                        <p className="recipes-meta">
-                          No recipe was readable from this post. Open the source and paste the
-                          text into Paste recipe text to fill it in.
-                        </p>
-                      </>
-                    ) : (
-                      <>
-                        <h3>Ingredients</h3>
-                        <ul>
-                          {r.ingredients.map((ing, i) => (
-                            <li key={i}>{ing.raw}</li>
-                          ))}
-                        </ul>
-                        <h3>Steps</h3>
-                        <ol>
-                          {r.instructions.map((step, i) => (
-                            <li key={i}>{step}</li>
-                          ))}
-                        </ol>
-                      </>
-                    )}
-                    <div className="recipes-actions">
-                      {r.source_url && (
-                        <a href={r.source_url} target="_blank" rel="noreferrer">
-                          View source
-                        </a>
-                      )}
-                      <button className="rb-danger" onClick={() => handleDelete(r.id)}>
-                        Delete
-                      </button>
-                    </div>
-                  </div>
-                )}
-              </li>
-            ))}
-          </ul>
+          <RecipeList
+            recipes={recipes}
+            loading={loading || importing}
+            query={query}
+            onQueryChange={setQuery}
+            activeTags={activeTags}
+            onToggleTag={handleToggleTag}
+            favoritesOnly={favoritesOnly}
+            onToggleFavoritesOnly={() => setFavoritesOnly((v) => !v)}
+            onClearFilters={clearFilters}
+            openId={openId}
+            onOpen={setOpenId}
+            onDelete={handleDelete}
+            onToggleFavorite={handleToggleFavorite}
+            onSetTags={handleSetTags}
+          />
         </main>
       )}
 

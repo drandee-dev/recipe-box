@@ -446,6 +446,185 @@ body {
   min-height: 44px;
 }
 
+/* --- Search, filters, tags ---------------------------------------------- */
+
+.recipes-filters {
+  margin-top: 16px;
+}
+
+.recipes-search input {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid #ddd;
+  border-radius: 10px;
+  /* 1rem, not smaller: iOS zooms the whole page when a focused input's text is
+     under 16px, and the zoom doesn't come back on blur. */
+  font-size: 1rem;
+  background: #fff;
+}
+
+.recipes-search input:focus-visible {
+  outline: 2px solid #1c7c54;
+  outline-offset: 1px;
+}
+
+.recipes-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-top: 10px;
+}
+
+.recipes-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  /* Chips are a dense row, so they sit below the 44px target used elsewhere.
+     The generous horizontal padding keeps each one comfortably tappable. */
+  min-height: 34px;
+  padding: 0 11px;
+  border: 1px solid #ddd;
+  border-radius: 999px;
+  background: #fff;
+  color: #333;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.recipes-chip-on {
+  background: #1c7c54;
+  border-color: #1c7c54;
+  color: #fff;
+}
+
+.recipes-chip-count {
+  font-size: 0.75rem;
+  color: #888;
+}
+
+.recipes-chip-on .recipes-chip-count {
+  color: #cfe6da;
+}
+
+.recipes-chip-more {
+  color: #1c7c54;
+}
+
+.recipes-count {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin: 10px 0 0;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.recipes-clear {
+  border: none;
+  background: none;
+  padding: 0;
+  color: #1c7c54;
+  font-size: 0.85rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+/* The open-detail button and the favorite star are siblings so neither nests
+   inside the other's hit area. */
+.recipes-card-row {
+  display: flex;
+  align-items: flex-start;
+}
+
+.recipes-card-row .recipes-card-head {
+  flex: 1;
+  /* Without this a long title stretches the row instead of wrapping. */
+  min-width: 0;
+}
+
+.recipes-fav {
+  flex-shrink: 0;
+  min-width: 44px;
+  min-height: 44px;
+  margin: 8px 8px 0 0;
+  border: none;
+  border-radius: 8px;
+  background: none;
+  color: #bbb;
+  font-size: 1.25rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.recipes-fav-on {
+  color: #e0a300;
+}
+
+.recipes-card-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  margin: 6px 0 0;
+}
+
+.recipes-tag {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 2px 8px;
+  border-radius: 999px;
+  background: #eef3f0;
+  color: #2c5c47;
+  font-size: 0.75rem;
+}
+
+.recipes-tag-edit {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 6px;
+}
+
+.recipes-tag-remove {
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid #d7e3dc;
+  font-size: 0.8rem;
+  cursor: pointer;
+}
+
+.recipes-tag-add {
+  display: flex;
+  gap: 6px;
+}
+
+.recipes-tag-add input {
+  width: 130px;
+  min-height: 34px;
+  padding: 0 10px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.recipes-tag-add button {
+  min-height: 34px;
+  padding: 0 12px;
+  border: 1px solid #1c7c54;
+  border-radius: 8px;
+  background: #fff;
+  color: #1c7c54;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.recipes-tag-add button:disabled {
+  border-color: #ddd;
+  color: #aaa;
+  cursor: default;
+}
+
 /* --- Planner ------------------------------------------------------------ */
 
 .planner-weeknav {

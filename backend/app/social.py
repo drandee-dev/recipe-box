@@ -15,6 +15,7 @@ from urllib.parse import quote, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
+from .ai import normalize_tags
 from .extract import TIMEOUT, UA, ExtractError, _assert_public_host, fetch_html
 
 log = logging.getLogger("recipe.social")
@@ -139,7 +140,7 @@ def to_recipe(structured: dict, url: str, source_type: str, post: dict) -> dict:
         "cook_min": structured.get("cook_min"),
         "total_min": structured.get("total_min"),
         "servings": structured.get("servings"),
-        "tags": [t for t in structured.get("tags", []) if isinstance(t, str)][:8],
+        "tags": normalize_tags(structured.get("tags")),
         "favorite": False,
     }
 

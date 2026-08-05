@@ -44,7 +44,53 @@ has_recipe to false and leave the other fields empty.
 
 For each ingredient, keep the original line verbatim in `raw`. Fill `item`, `qty`,
 and `unit` only when they are unambiguous; use null otherwise. Times are whole
-minutes. Tags are lowercase single words describing cuisine, meal, or diet."""
+minutes.
+
+Tags come from a fixed list, enforced by the schema. Pick at most five, and only
+ones the recipe clearly is — a tag you are unsure about makes the list worse than
+leaving it off. Prefer the ones someone would filter by later: the meal, the main
+protein, the cuisine, and any diet the recipe genuinely satisfies."""
+
+# A closed vocabulary, because the tag list is a filter UI: forty one-off tags
+# invented per recipe would be a worse list than a dozen that repeat. Mirrored in
+# frontend/src/lib/tags.js — keep the two in step. The frontend also allows
+# free-text tags typed by hand; this constraint is only on what the AI may add.
+ALLOWED_TAGS = (
+    # meal
+    "breakfast", "lunch", "dinner", "snack", "dessert", "side",
+    # kind of dish
+    "soup", "salad", "pasta", "pizza", "sandwich", "bread", "drink", "sauce",
+    # main protein
+    "chicken", "beef", "pork", "seafood", "eggs", "tofu", "beans",
+    # cuisine
+    "italian", "mexican", "asian", "indian", "mediterranean", "american",
+    # diet
+    "vegetarian", "vegan", "gluten-free", "dairy-free", "low-carb",
+    # how it's made
+    "quick", "one-pot", "slow-cooker", "air-fryer", "grilled", "baked",
+    "no-cook", "meal-prep",
+)
+
+MAX_TAGS = 5
+
+
+def normalize_tags(tags) -> list:
+    """Drop anything outside the vocabulary, lowercase, dedupe, cap the count.
+
+    The schema already constrains this, so in practice nothing is dropped. It
+    stays because the tag list is what the filter chips are built from: one
+    hallucinated tag would be a permanent chip on a recipe nobody chose it for.
+    """
+    if not isinstance(tags, list):
+        return []
+    seen = []
+    for tag in tags:
+        if not isinstance(tag, str):
+            continue
+        slug = tag.strip().lower()
+        if slug in ALLOWED_TAGS and slug not in seen:
+            seen.append(slug)
+    return seen[:MAX_TAGS]
 
 INGREDIENT_SCHEMA = {
     "type": "object",
@@ -72,7 +118,10 @@ RECIPE_SCHEMA = {
         "cook_min": _NULLABLE_INT,
         "total_min": _NULLABLE_INT,
         "servings": {"anyOf": [{"type": "string"}, {"type": "null"}]},
-        "tags": {"type": "array", "items": {"type": "string"}},
+        # `enum` is part of the structured-outputs schema subset, so the model
+        # cannot return a tag outside the vocabulary. Note this is a constraint
+        # on values, not the unsupported kind (`minItems`, `maxLength`, …).
+        "tags": {"type": "array", "items": {"type": "string", "enum": list(ALLOWED_TAGS)}},
     },
     "required": [
         "has_recipe",
@@ -150,6 +199,9 @@ def structure_recipe(text: str, *, context: str = "") -> dict:
 
     text_block = next((b.text for b in response.content if b.type == "text"), "")
     try:
-        return json.loads(text_block)
+        recipe = json.loads(text_block)
     except json.JSONDecodeError as exc:
         raise AIError("AI returned unreadable output") from exc
+
+    recipe["tags"] = normalize_tags(recipe.get("tags"))
+    return recipe
