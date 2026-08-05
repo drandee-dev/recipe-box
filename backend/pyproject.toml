@@ -1,0 +1,15 @@
+[project]
+name = "recipe-box-backend"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "fastapi>=0.115",
+    "httpx>=0.27",
+    "beautifulsoup4>=4.12",
+    "anthropic>=0.52",
+    "pyjwt>=2.8",
+    "supabase>=2.9",
+]
+
+[tool.ruff]
+line-length = 100

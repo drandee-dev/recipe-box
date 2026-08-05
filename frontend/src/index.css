@@ -1,0 +1,237 @@
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: #1a1a1a;
+  background: #fafaf7;
+}
+
+.rb-app {
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 16px;
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.rb-header h1 {
+  font-size: 1.5rem;
+  margin: 8px 0 12px;
+}
+
+.rb-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.rb-account {
+  display: flex;
+  flex-direction: column;
+  align-items: flex-end;
+  gap: 4px;
+}
+
+.rb-account-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.rb-account-email {
+  font-size: 0.85rem;
+  color: #666;
+  max-width: 40vw;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.rb-account-btn {
+  min-height: 40px;
+  padding: 0 12px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.rb-account-form {
+  display: flex;
+  gap: 6px;
+}
+
+.rb-account-form input {
+  min-height: 40px;
+  width: 170px;
+  padding: 0 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 0.9rem;
+}
+
+.rb-account-form button {
+  min-height: 40px;
+  padding: 0 12px;
+  border: none;
+  border-radius: 8px;
+  background: #1c7c54;
+  color: #fff;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.rb-account-form button:disabled {
+  opacity: 0.6;
+}
+
+.rb-account-status {
+  margin: 0;
+  font-size: 0.8rem;
+  color: #666;
+  text-align: right;
+}
+
+.rb-tabs {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 16px;
+}
+
+.rb-tab {
+  flex: 1;
+  min-height: 44px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.rb-tab-active {
+  background: #1c7c54;
+  border-color: #1c7c54;
+  color: #fff;
+}
+
+.rb-import {
+  display: flex;
+  gap: 8px;
+}
+
+.rb-import input {
+  flex: 1;
+  min-height: 44px;
+  padding: 0 12px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font-size: 1rem;
+}
+
+.rb-import button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 8px;
+  background: #1c7c54;
+  color: #fff;
+  font-size: 1rem;
+  cursor: pointer;
+}
+
+.rb-import button:disabled {
+  opacity: 0.6;
+}
+
+.rb-error {
+  color: #b3261e;
+  margin: 12px 0 0;
+}
+
+.rb-empty {
+  color: #666;
+  text-align: center;
+  margin-top: 48px;
+}
+
+.recipes-list {
+  list-style: none;
+  padding: 0;
+  margin: 16px 0 0;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.recipes-card {
+  background: #fff;
+  border: 1px solid #e5e5e0;
+  border-radius: 12px;
+  overflow: hidden;
+}
+
+.recipes-card-head {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+  width: 100%;
+  padding: 12px;
+  border: none;
+  background: none;
+  text-align: left;
+  cursor: pointer;
+}
+
+.recipes-card-head img {
+  width: 64px;
+  height: 64px;
+  object-fit: cover;
+  border-radius: 8px;
+  flex-shrink: 0;
+}
+
+.recipes-card-head h2 {
+  font-size: 1.05rem;
+  margin: 0 0 4px;
+}
+
+.recipes-meta {
+  margin: 0;
+  font-size: 0.85rem;
+  color: #666;
+}
+
+.recipes-detail {
+  padding: 0 16px 16px;
+  border-top: 1px solid #eee;
+}
+
+.recipes-detail h3 {
+  font-size: 0.95rem;
+  margin: 16px 0 8px;
+}
+
+.recipes-detail li {
+  margin-bottom: 6px;
+  line-height: 1.45;
+}
+
+.recipes-actions {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  margin-top: 16px;
+}
+
+.rb-danger {
+  border: none;
+  background: none;
+  color: #b3261e;
+  font-size: 0.9rem;
+  cursor: pointer;
+  min-height: 44px;
+}
