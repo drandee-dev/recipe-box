@@ -140,7 +140,7 @@ export default function RecipeList({
                     <h2>{r.title}</h2>
                     <p className="recipes-meta">
                       {r.ingredients.length > 0
-                        ? `${r.ingredients.length} ingredients`
+                        ? `${r.ingredients.length} ingredient${r.ingredients.length === 1 ? '' : 's'}`
                         : 'Saved link'}
                       {r.total_min ? ` · ${r.total_min} min` : ''}
                       {r.source_url
