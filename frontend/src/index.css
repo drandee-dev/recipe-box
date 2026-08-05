@@ -226,6 +226,24 @@ body {
   font-size: 0.9rem;
 }
 
+.rb-saved {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  margin: 12px 0 0;
+  padding: 10px 12px;
+  border: 1px solid #b7ddc6;
+  border-radius: 8px;
+  background: #eef8f1;
+  color: #1c7c54;
+  font-size: 0.9rem;
+}
+
+.rb-saved .rb-notice-close {
+  color: #1c7c54;
+}
+
 .rb-notice-close {
   flex-shrink: 0;
   min-height: 44px;

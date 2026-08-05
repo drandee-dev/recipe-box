@@ -29,6 +29,11 @@ export default function App() {
     const share = readShare()
     return share.arrived && !share.url
   })
+  // Captured at mount, before the effect below strips the params off the URL.
+  const [shareLink] = useState(() => readShare().url)
+  const [fromShare] = useState(() => readShare().arrived)
+  const autoImported = useRef(false)
+  const [savedTitle, setSavedTitle] = useState('')
   const [importing, setImporting] = useState(false)
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
@@ -131,12 +136,11 @@ export default function App() {
       })
   }
 
-  async function handleImport(e) {
-    e.preventDefault()
-    const url = importUrl.trim()
+  async function importFromUrl(url) {
     if (!url || importing) return
     setImporting(true)
     setError('')
+    setSavedTitle('')
     try {
       const recipe = await extractRecipe(url)
       const saved = await store.save({
@@ -147,12 +151,30 @@ export default function App() {
       setRecipes((prev) => [saved, ...prev])
       setImportUrl('')
       setOpenId(saved.id)
+      setSavedTitle(saved.title)
     } catch (err) {
       setError(err.message)
     } finally {
       setImporting(false)
     }
   }
+
+  function handleImport(e) {
+    e.preventDefault()
+    importFromUrl(importUrl.trim())
+  }
+
+  // A share opens this tab for one job, so run the import without waiting for a
+  // tap. Held until the recipe load finishes: that load calls setRecipes with
+  // the stored list, which would drop anything saved ahead of it. The ref keeps
+  // it to one run even though the effect re-fires as auth settles.
+  useEffect(() => {
+    if (!shareLink || autoImported.current) return
+    if (!authReady || loading) return
+    autoImported.current = true
+    importFromUrl(shareLink)
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [shareLink, authReady, loading])
 
   async function handlePasteText(e) {
     e.preventDefault()
@@ -259,6 +281,21 @@ export default function App() {
             <button type="button" className="rb-paste" onClick={() => setPasteOpen(true)}>
               Paste recipe text
             </button>
+          )}
+          {fromShare && importing && (
+            <p className="rb-notice">Saving the shared link…</p>
+          )}
+          {savedTitle && (
+            <p className="rb-saved">
+              <span>
+                Saved “{savedTitle}”.
+                {fromShare && ' You can close this tab.'}
+                {supabaseEnabled && !userId && ' Sign in to sync it to your other devices.'}
+              </span>
+              <button className="rb-notice-close" onClick={() => setSavedTitle('')}>
+                Dismiss
+              </button>
+            </p>
           )}
           {shareNotice && (
             <p className="rb-notice">
