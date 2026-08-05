@@ -3,10 +3,12 @@ import { extractRecipe, structureText } from './lib/api.js'
 import { supabase, supabaseEnabled } from './lib/supabase.js'
 import { makeStore, migrateLocalRecipes } from './lib/store.js'
 import { makePlanStore, migrateLocalPlan } from './lib/plan.js'
+import { makeShoppingStore, migrateLocalShopping } from './lib/shopping.js'
 import { addDays, startOfWeek, toISODate } from './lib/dates.js'
 import { setBusy } from './lib/pwa.js'
 import Account from './components/Account.jsx'
 import Planner from './components/Planner.jsx'
+import ShoppingList from './components/ShoppingList.jsx'
 
 // PWA share target (Android) and the iOS Shortcuts workaround both land here:
 // the post arrives as ?url=, or buried in ?text=/?title= prose.
@@ -101,9 +103,12 @@ export default function App() {
   const userId = session?.user?.id || null
   const store = useMemo(() => makeStore(userId), [userId])
   const planStore = useMemo(() => makePlanStore(userId), [userId])
+  const shoppingStore = useMemo(() => makeShoppingStore(userId), [userId])
 
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [plan, setPlan] = useState([])
+  // Checks and hand-added items. The list itself is derived from the plan.
+  const [overlay, setOverlay] = useState([])
 
   // Load recipes once auth settles. On sign-in, local captures upload first —
   // one-time, since the local key is cleared after a successful upload.
@@ -140,14 +145,25 @@ export default function App() {
     return planStore.listWeek(from, to)
   }, [planStore, weekStart])
 
+  const loadOverlay = useCallback(
+    async () => shoppingStore.listWeek(toISODate(weekStart)),
+    [shoppingStore, weekStart],
+  )
+
   useEffect(() => {
     if (!authReady) return
     let cancelled = false
     ;(async () => {
       try {
-        if (userId) await migrateLocalPlan(userId)
-        const rows = await loadPlan()
-        if (!cancelled) setPlan(rows)
+        if (userId) {
+          await migrateLocalPlan(userId)
+          await migrateLocalShopping(userId)
+        }
+        const [planRows, overlayRows] = await Promise.all([loadPlan(), loadOverlay()])
+        if (!cancelled) {
+          setPlan(planRows)
+          setOverlay(overlayRows)
+        }
       } catch (err) {
         if (!cancelled) setError(err.message)
       }
@@ -155,7 +171,7 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [authReady, userId, loadPlan])
+  }, [authReady, userId, loadPlan, loadOverlay])
 
   // Re-read the store without the auth/migrate work the mount effect does.
   // An installed PWA is resumed, not reloaded, so without this it shows the
@@ -171,9 +187,14 @@ export default function App() {
       // Both, in parallel: the plan goes stale on resume for exactly the same
       // reason the recipe list does, and a plan row is meaningless without the
       // recipe it points at.
-      const [list, rows] = await Promise.all([store.list(), loadPlan()])
+      const [list, rows, overlayRows] = await Promise.all([
+        store.list(),
+        loadPlan(),
+        loadOverlay(),
+      ])
       setRecipes(list)
       setPlan(rows)
+      setOverlay(overlayRows)
       setError('')
     } catch (err) {
       setError(err.message)
@@ -181,7 +202,7 @@ export default function App() {
       refreshingRef.current = false
       setRefreshing(false)
     }
-  }, [store, loadPlan])
+  }, [store, loadPlan, loadOverlay])
 
   // Kept in a ref so the gesture and foreground listeners can bind once with
   // stable deps and still call the current closure.
@@ -407,6 +428,81 @@ export default function App() {
     }
   }
 
+  // Ticking a derived line writes a check row the first time and updates it
+  // afterwards. There is no unique constraint to upsert against, and adding one
+  // for a partial index is more trouble through PostgREST than just looking.
+  async function handleToggleDerived(key, checked) {
+    const existing = overlay.find((row) => row.kind === 'check' && row.name === key)
+    const before = overlay
+    if (existing) {
+      setOverlay((prev) => prev.map((r) => (r.id === existing.id ? { ...r, checked } : r)))
+      try {
+        await shoppingStore.update(existing.id, { checked })
+      } catch (err) {
+        setOverlay(before)
+        setError(err.message)
+      }
+      return
+    }
+    const row = {
+      id: crypto.randomUUID(),
+      week_start: toISODate(weekStart),
+      name: key,
+      kind: 'check',
+      checked,
+      created_at: new Date().toISOString(),
+    }
+    setOverlay((prev) => [...prev, row])
+    try {
+      const saved = await shoppingStore.add(row)
+      setOverlay((prev) => prev.map((r) => (r.id === row.id ? saved : r)))
+    } catch (err) {
+      setOverlay(before)
+      setError(err.message)
+    }
+  }
+
+  async function handleToggleManual(id, checked) {
+    const before = overlay
+    setOverlay((prev) => prev.map((r) => (r.id === id ? { ...r, checked } : r)))
+    try {
+      await shoppingStore.update(id, { checked })
+    } catch (err) {
+      setOverlay(before)
+      setError(err.message)
+    }
+  }
+
+  async function handleAddManual(name) {
+    const row = {
+      id: crypto.randomUUID(),
+      week_start: toISODate(weekStart),
+      name,
+      kind: 'manual',
+      checked: false,
+      created_at: new Date().toISOString(),
+    }
+    setOverlay((prev) => [...prev, row])
+    try {
+      const saved = await shoppingStore.add(row)
+      setOverlay((prev) => prev.map((r) => (r.id === row.id ? saved : r)))
+    } catch (err) {
+      setOverlay((prev) => prev.filter((r) => r.id !== row.id))
+      setError(err.message)
+    }
+  }
+
+  async function handleRemoveManual(id) {
+    const before = overlay
+    setOverlay((prev) => prev.filter((r) => r.id !== id))
+    try {
+      await shoppingStore.remove(id)
+    } catch (err) {
+      setOverlay(before)
+      setError(err.message)
+    }
+  }
+
   async function handleUnassign(id) {
     const removed = plan.find((e) => e.id === id)
     setPlan((prev) => prev.filter((e) => e.id !== id))
@@ -615,10 +711,18 @@ export default function App() {
 
       {tab === 'shopping' && (
         <main className="rb-main">
-          <p className="rb-empty">
-            The shopping list is next. It will roll up the ingredients from
-            whatever you have planned for the week.
-          </p>
+          <ShoppingList
+            weekStart={weekStart}
+            plan={plan}
+            recipes={recipes}
+            overlay={overlay}
+            onWeekChange={changeWeek}
+            onToggleDerived={handleToggleDerived}
+            onToggleManual={handleToggleManual}
+            onAddManual={handleAddManual}
+            onRemoveManual={handleRemoveManual}
+          />
+          {error && <p className="rb-error">{error}</p>}
         </main>
       )}
     </div>

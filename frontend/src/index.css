@@ -690,6 +690,110 @@ body {
   flex-shrink: 0;
 }
 
+/* --- Shopping list ------------------------------------------------------ */
+
+.shopping-progress {
+  font-size: 0.8rem;
+  color: #777;
+}
+
+.shopping-add {
+  display: flex;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.shopping-add input {
+  flex: 1;
+  min-height: 44px;
+  padding: 0 10px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  /* 16px keeps iOS from zooming the page when the field takes focus. */
+  font-size: 16px;
+}
+
+.shopping-add button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: none;
+  border-radius: 8px;
+  background: #1c7c54;
+  color: #fff;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.shopping-add button:disabled {
+  opacity: 0.5;
+}
+
+.shopping-aisle {
+  margin-bottom: 16px;
+}
+
+.shopping-aisle h3 {
+  margin: 0 0 4px;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: #1c7c54;
+  border-bottom: 1px solid #e3ede7;
+  padding-bottom: 4px;
+}
+
+.shopping-aisle ul {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.shopping-item {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  border-bottom: 1px solid #f2f2f2;
+}
+
+.shopping-item label {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  flex: 1;
+  min-height: 44px;
+  padding: 8px 0;
+  cursor: pointer;
+}
+
+.shopping-item input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  flex-shrink: 0;
+  accent-color: #1c7c54;
+}
+
+.shopping-item-text {
+  font-size: 0.95rem;
+  line-height: 1.35;
+}
+
+/* Which recipes wanted this, so a merged line stays traceable. */
+.shopping-item-from {
+  display: block;
+  font-size: 0.75rem;
+  color: #999;
+}
+
+.shopping-item-done .shopping-item-text {
+  color: #aaa;
+  text-decoration: line-through;
+}
+
+.shopping-item-done .shopping-item-from {
+  text-decoration: none;
+}
+
 /* Pull-to-refresh indicator. Parked above the viewport and pushed down by an
    inline transform tracking the finger, so it costs no layout while idle. */
 .rb-pull {

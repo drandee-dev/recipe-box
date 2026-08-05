@@ -1,0 +1,155 @@
+// Shopping list for the planned week. Derived lines come from the plan and are
+// merged and grouped by aisle; manual items sit in their own section at the end
+// since they have no ingredient text to categorise from.
+//
+// Presentational, like Planner: App owns the rows and the store calls.
+
+import { useMemo, useState } from 'react'
+import { buildShoppingList, formatQuantity, groupByAisle } from '../lib/ingredients.js'
+import { weekRangeLabel } from '../lib/dates.js'
+
+export default function ShoppingList({
+  weekStart,
+  plan,
+  recipes,
+  overlay,
+  onWeekChange,
+  onToggleDerived,
+  onToggleManual,
+  onAddManual,
+  onRemoveManual,
+}) {
+  const [draft, setDraft] = useState('')
+
+  const derived = useMemo(() => buildShoppingList(plan, recipes), [plan, recipes])
+  const groups = useMemo(() => groupByAisle(derived), [derived])
+
+  const checkedKeys = useMemo(() => {
+    const set = new Set()
+    for (const row of overlay) if (row.kind === 'check' && row.checked) set.add(row.name)
+    return set
+  }, [overlay])
+
+  const manual = overlay.filter((row) => row.kind === 'manual')
+
+  const totalCount = derived.length + manual.length
+  const doneCount =
+    derived.filter((item) => checkedKeys.has(item.key)).length +
+    manual.filter((row) => row.checked).length
+
+  function submitManual(e) {
+    e.preventDefault()
+    const text = draft.trim()
+    if (!text) return
+    onAddManual(text)
+    setDraft('')
+  }
+
+  return (
+    <div className="shopping">
+      <div className="planner-weeknav">
+        <button className="planner-nav" onClick={() => onWeekChange(-1)} aria-label="Previous week">
+          ‹
+        </button>
+        <div className="planner-weeklabel">
+          <strong>{weekRangeLabel(weekStart)}</strong>
+          {totalCount > 0 && (
+            <span className="shopping-progress">
+              {doneCount} of {totalCount} picked up
+            </span>
+          )}
+        </div>
+        <button className="planner-nav" onClick={() => onWeekChange(1)} aria-label="Next week">
+          ›
+        </button>
+      </div>
+
+      <form className="shopping-add" onSubmit={submitManual}>
+        <input
+          type="text"
+          placeholder="Add an item (milk, coffee…)"
+          value={draft}
+          onChange={(e) => setDraft(e.target.value)}
+          enterKeyHint="done"
+        />
+        <button type="submit" disabled={!draft.trim()}>
+          Add
+        </button>
+      </form>
+
+      {totalCount === 0 && (
+        <p className="rb-empty">
+          Nothing planned for this week yet. Add meals on the Planner tab and their
+          ingredients show up here.
+        </p>
+      )}
+
+      {groups.map(({ aisle, items }) => (
+        <section key={aisle} className="shopping-aisle">
+          <h3>{aisle}</h3>
+          <ul>
+            {items.map((item) => {
+              const checked = checkedKeys.has(item.key)
+              return (
+                <li key={item.key} className={checked ? 'shopping-item shopping-item-done' : 'shopping-item'}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={checked}
+                      onChange={() => onToggleDerived(item.key, !checked)}
+                    />
+                    <span className="shopping-item-text">
+                      {/* An unparsed line keeps its original wording, since
+                          guessing at a tidier name would be inventing detail. */}
+                      {item.parsed ? (
+                        <>
+                          {formatQuantity(item.qty, item.unit) && (
+                            <strong>{formatQuantity(item.qty, item.unit)} </strong>
+                          )}
+                          {item.name}
+                        </>
+                      ) : (
+                        item.raw
+                      )}
+                      <span className="shopping-item-from">{item.recipes.join(', ')}</span>
+                    </span>
+                  </label>
+                </li>
+              )
+            })}
+          </ul>
+        </section>
+      ))}
+
+      {manual.length > 0 && (
+        <section className="shopping-aisle">
+          <h3>Added by you</h3>
+          <ul>
+            {manual.map((row) => (
+              <li
+                key={row.id}
+                className={row.checked ? 'shopping-item shopping-item-done' : 'shopping-item'}
+              >
+                <label>
+                  <input
+                    type="checkbox"
+                    checked={row.checked}
+                    onChange={() => onToggleManual(row.id, !row.checked)}
+                  />
+                  <span className="shopping-item-text">{row.name}</span>
+                </label>
+                <button
+                  className="planner-remove"
+                  onClick={() => onRemoveManual(row.id)}
+                  aria-label={`Remove ${row.name}`}
+                >
+                  ×
+                </button>
+              </li>
+            ))}
+          </ul>
+        </section>
+      )}
+    </div>
+  )
+}

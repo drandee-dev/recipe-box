@@ -44,6 +44,21 @@ create table if not exists shopping_items (
   created_at timestamptz not null default now()
 );
 
+-- Phase 4b. The shopping list is derived from the plan rather than stored, so a
+-- row here is one of two things: an item you added by hand, or a checkmark
+-- against a derived line. Without this flag the two are indistinguishable as
+-- soon as a plan change removes the line a check belonged to, and the orphaned
+-- check reappears as a phantom manual item.
+alter table shopping_items add column if not exists kind text not null default 'manual';
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'shopping_items_kind_check') then
+    alter table shopping_items
+      add constraint shopping_items_kind_check check (kind in ('manual', 'check'));
+  end if;
+end $$;
+
 -- Phase 3: AI spend log. Written by the backend with the service role key, so
 -- RLS stays on with no policy — clients get nothing.
 create table if not exists ai_usage_events (
