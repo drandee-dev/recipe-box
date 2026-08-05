@@ -34,7 +34,8 @@ Ingredients keep the `raw` string always; parsed qty/unit/item are best-effort (
 
 ## Capture UX (the whole point)
 
-- **PWA share target** — installed app appears in the OS share sheet; sharing from the TikTok/IG app lands directly in the import flow. This is the feature that kills capture friction. Manifest `share_target` is already configured (GET params: `url`, `text`, `title`). **Android only** — iOS has no Web Share Target support; on iPhone the equivalent is a Shortcuts-app shortcut ("Save to Recipe Box", set up 2026-08-04) that share-sheets the post into `/?text=<encoded input>`, which the same query-param handler picks up.
+- **PWA share target** — installed app appears in the OS share sheet; sharing from the TikTok/IG app lands directly in the import flow. Manifest `share_target` is configured (GET params: `url`, `text`, `title`). **Android only.**
+- **iOS capture (tested 2026-08-04):** iOS has no Web Share Target support, and the Shortcuts workaround also fails: the shortcut builds a correct `/?text=<link>` URL, but when the app is installed to the home screen iOS launches it at `start_url` and discards the query string. Both halves were verified correct in isolation, so this is an iOS routing behavior with no client-side fix. The working path on iPhone is **Copy link in the IG/TikTok share sheet, then "Paste copied link"** in the app (`navigator.clipboard.readText`). Shares that arrive with no link now show a visible notice instead of failing silently.
 - Paste a URL on the Recipes tab → import.
 - Everything imports as editable — extraction is a head start, not gospel.
 

@@ -29,4 +29,5 @@ CORS defaults to `localhost:5173`/`4173`; set `RECIPE_CORS_ORIGINS` (comma-separ
 - Every server-side URL fetch goes through the SSRF guard in `extract.py` — never `httpx.get` a user URL directly.
 - Pydantic `BaseModel` + `Field` constraints on all POST bodies; log tracebacks server-side, return opaque errors.
 - CSS classes prefixed by component scope (`rb-`, `recipes-`, `planner-`); base styles before `@media` in the cascade.
-- PWA share target params (`url`, `text`, `title`) are read in `App.jsx` on load — don't break that query-string handling.
+- PWA share target params (`url`, `text`, `title`) are read by `readShare()` in `App.jsx` on load, then stripped from the URL with `replaceState` — that strip must never touch Supabase's auth-callback params. Don't break the query-string handling.
+- iOS drops those params entirely when launching an installed home-screen app (verified 2026-08-04), so the clipboard `Paste copied link` button is the real iPhone capture path — keep it working.
