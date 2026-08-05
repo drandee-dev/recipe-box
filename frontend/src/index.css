@@ -160,6 +160,53 @@ body {
   cursor: pointer;
 }
 
+.rb-paste-text {
+  margin-top: 8px;
+}
+
+.rb-paste-text textarea {
+  width: 100%;
+  padding: 10px 12px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  font: inherit;
+  font-size: 1rem;
+  resize: vertical;
+}
+
+.rb-paste-text-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 8px;
+}
+
+.rb-paste-text-actions button {
+  min-height: 44px;
+  padding: 0 16px;
+  border: 1px solid #cfd8d2;
+  border-radius: 8px;
+  background: #fff;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
+.rb-paste-text-actions button[type='submit'] {
+  border-color: #1c7c54;
+  background: #1c7c54;
+  color: #fff;
+}
+
+.rb-paste-text-actions button:disabled {
+  opacity: 0.6;
+}
+
+.recipes-caption {
+  margin: 16px 0 8px;
+  white-space: pre-wrap;
+  line-height: 1.45;
+}
+
 .rb-error {
   color: #b3261e;
   margin: 12px 0 0;

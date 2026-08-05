@@ -47,7 +47,7 @@ Saving/importing recipes, weekly meal planner, shopping list, search/tags/collec
 
 - **Phase 1 — Capture core (scaffolded):** FastAPI extract endpoint (JSON-LD), React shell with import bar + recipe list/detail, localStorage persistence, PWA manifest + share target wiring.
 - **Phase 2 — Supabase (code done 2026-08-04):** schema from `supabase/schema.sql`, magic-link auth (mtg-web pattern, `components/Account.jsx`), one-time localStorage → cloud upload on sign-in (`lib/store.js`). Dedicated Supabase project, separate from mtg-web. App runs local-only until the env vars are set.
-- **Phase 3 — Social import:** caption fetch (oEmbed/yt-dlp) + Haiku structuring endpoint; link-card fallback. Budget-capped like mtg-web's `_ai_call()`.
+- **Phase 3 — Social import (built 2026-08-05):** caption fetch + Haiku structuring (`app/ai.py`, `app/social.py`), link-card fallback, paste-anything box (`POST /api/recipes/structure`), and an AI fallback for web pages with no JSON-LD. Model `claude-haiku-4-5` ($1/$5 per Mtok) with **structured outputs** — the response is schema-constrained, so there is no fence-stripping or best-effort JSON parsing. Monthly budget cap in `app/usage.py` (Supabase `ai_usage_events`, fails open when unconfigured). **yt-dlp fallback skipped:** TikTok oEmbed plus og: tags cover the caption, and yt-dlp is heavy on serverless while facing the same datacenter-IP blocks. Revisit only if captions stop arriving.
 - **Phase 4 — Planner + shopping list:** week view, assign recipes to day/slot, aggregate ingredients across the planned week into a checklist (merge by item+unit where parseable, raw lines otherwise).
 - **Phase 5 — Organization + polish:** search, tags, collections/favorites, offline caching of saved recipes, icon set, install prompt.
 

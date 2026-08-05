@@ -151,10 +151,57 @@ def parse_jsonld_recipe(html: str, source_url: str) -> dict | None:
     return None
 
 
+def readable_text(html: str, limit: int = 12000) -> str:
+    """Page text with the furniture stripped, for the AI fallback."""
+    soup = BeautifulSoup(html, "html.parser")
+    for tag in soup(["script", "style", "nav", "header", "footer", "form", "noscript"]):
+        tag.decompose()
+    lines = (line.strip() for line in soup.get_text("\n").splitlines())
+    return "\n".join(line for line in lines if line)[:limit]
+
+
+def _extract_social(url: str, source_type: str) -> dict:
+    """Caption + Haiku. Falls back to a link card rather than failing."""
+    from . import ai, social
+
+    post = social.fetch_post(url, source_type)
+    caption = social.strip_urls(post.get("caption") or "")
+
+    if caption and ai.ai_available():
+        try:
+            structured = ai.structure_recipe(
+                caption, context=f"This is the caption of a {source_type} post."
+            )
+            if structured.get("has_recipe") and structured.get("ingredients"):
+                return social.to_recipe(structured, url, source_type, post)
+        except ai.AIError as exc:
+            log.info("caption structuring failed for %s: %s", url, exc)
+
+    return social.link_card(url, source_type, post)
+
+
 def extract_recipe(url: str) -> dict:
+    from . import ai, social
+
+    source_type = social.detect_source(url)
+    if source_type != "web":
+        return _extract_social(url, source_type)
+
     html = fetch_html(url)
     recipe = parse_jsonld_recipe(html, url)
-    if recipe is None:
-        # Phase 3 adds microdata + AI-structuring fallbacks here
-        raise ExtractError("no schema.org recipe found on that page")
-    return recipe
+    if recipe is not None:
+        return recipe
+
+    # No schema.org markup: hand the readable text to Haiku.
+    if ai.ai_available():
+        try:
+            structured = ai.structure_recipe(
+                readable_text(html), context="This is the text of a web page."
+            )
+            if structured.get("has_recipe") and structured.get("ingredients"):
+                page = social.fetch_post(url, "web")
+                return social.to_recipe(structured, url, "web", page)
+        except ai.AIError as exc:
+            log.info("page structuring failed for %s: %s", url, exc)
+
+    raise ExtractError("no recipe found on that page")

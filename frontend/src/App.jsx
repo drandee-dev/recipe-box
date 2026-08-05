@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from 'react'
-import { extractRecipe } from './lib/api.js'
+import { extractRecipe, structureText } from './lib/api.js'
 import { supabase, supabaseEnabled } from './lib/supabase.js'
 import { makeStore, migrateLocalRecipes } from './lib/store.js'
 import Account from './components/Account.jsx'
@@ -30,6 +30,8 @@ export default function App() {
     return share.arrived && !share.url
   })
   const [importing, setImporting] = useState(false)
+  const [pasteOpen, setPasteOpen] = useState(false)
+  const [pasteText, setPasteText] = useState('')
   const inputRef = useRef(null)
   const [error, setError] = useState('')
   const [openId, setOpenId] = useState(null)
@@ -152,6 +154,30 @@ export default function App() {
     }
   }
 
+  async function handlePasteText(e) {
+    e.preventDefault()
+    const text = pasteText.trim()
+    if (text.length < 20 || importing) return
+    setImporting(true)
+    setError('')
+    try {
+      const recipe = await structureText(text)
+      const saved = await store.save({
+        ...recipe,
+        id: crypto.randomUUID(),
+        created_at: new Date().toISOString(),
+      })
+      setRecipes((prev) => [saved, ...prev])
+      setPasteText('')
+      setPasteOpen(false)
+      setOpenId(saved.id)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setImporting(false)
+    }
+  }
+
   async function handleDelete(id) {
     try {
       await store.remove(id)
@@ -211,6 +237,29 @@ export default function App() {
               Paste copied link
             </button>
           )}
+          {pasteOpen ? (
+            <form className="rb-paste-text" onSubmit={handlePasteText}>
+              <textarea
+                rows={6}
+                placeholder="Paste a recipe here — ingredients, steps, a caption, anything."
+                value={pasteText}
+                onChange={(e) => setPasteText(e.target.value)}
+                autoFocus
+              />
+              <div className="rb-paste-text-actions">
+                <button type="button" onClick={() => setPasteOpen(false)}>
+                  Cancel
+                </button>
+                <button type="submit" disabled={importing || pasteText.trim().length < 20}>
+                  {importing ? 'Reading…' : 'Save recipe'}
+                </button>
+              </div>
+            </form>
+          ) : (
+            <button type="button" className="rb-paste" onClick={() => setPasteOpen(true)}>
+              Paste recipe text
+            </button>
+          )}
           {shareNotice && (
             <p className="rb-notice">
               A share arrived without a link in it. Copy the post link and paste it above.
@@ -236,7 +285,9 @@ export default function App() {
                   <div>
                     <h2>{r.title}</h2>
                     <p className="recipes-meta">
-                      {r.ingredients.length} ingredients
+                      {r.ingredients.length > 0
+                        ? `${r.ingredients.length} ingredients`
+                        : 'Saved link'}
                       {r.total_min ? ` · ${r.total_min} min` : ''}
                       {r.source_url ? ` · ${new URL(r.source_url).hostname.replace('www.', '')}` : ''}
                     </p>
@@ -244,18 +295,30 @@ export default function App() {
                 </button>
                 {openId === r.id && (
                   <div className="recipes-detail">
-                    <h3>Ingredients</h3>
-                    <ul>
-                      {r.ingredients.map((ing, i) => (
-                        <li key={i}>{ing.raw}</li>
-                      ))}
-                    </ul>
-                    <h3>Steps</h3>
-                    <ol>
-                      {r.instructions.map((step, i) => (
-                        <li key={i}>{step}</li>
-                      ))}
-                    </ol>
+                    {r.ingredients.length === 0 && r.instructions.length === 0 ? (
+                      <>
+                        {r.description && <p className="recipes-caption">{r.description}</p>}
+                        <p className="recipes-meta">
+                          No recipe was readable from this post. Open the source and paste the
+                          text into Paste recipe text to fill it in.
+                        </p>
+                      </>
+                    ) : (
+                      <>
+                        <h3>Ingredients</h3>
+                        <ul>
+                          {r.ingredients.map((ing, i) => (
+                            <li key={i}>{ing.raw}</li>
+                          ))}
+                        </ul>
+                        <h3>Steps</h3>
+                        <ol>
+                          {r.instructions.map((step, i) => (
+                            <li key={i}>{step}</li>
+                          ))}
+                        </ol>
+                      </>
+                    )}
                     <div className="recipes-actions">
                       {r.source_url && (
                         <a href={r.source_url} target="_blank" rel="noreferrer">

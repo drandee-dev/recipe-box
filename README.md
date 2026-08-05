@@ -29,4 +29,6 @@ npm run dev   # http://localhost:5173
 
 Phase 1 (URL import via schema.org JSON-LD + local recipe list) scaffolded. Phase 2 (Supabase auth + cloud sync) built 2026-08-04 — recipes route through `frontend/src/lib/store.js`, local captures upload once on sign-in. See `docs/SPEC.md` for the full plan and phase breakdown.
 
+Phase 3 (social import) built 2026-08-05: TikTok/Instagram caption fetching, Claude Haiku structuring with schema-constrained output, link-card fallback, and a paste-anything box. Needs `ANTHROPIC_API_KEY` on the backend; without it the app still imports recipe websites and saves social posts as link cards.
+
 Deployed 2026-08-04: frontend at [recipe-box-coral.vercel.app](https://recipe-box-coral.vercel.app), backend at recipe-box-api-sage.vercel.app. Both redeploy on every push to `main`.

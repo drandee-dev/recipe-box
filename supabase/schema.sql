@@ -42,6 +42,19 @@ create table if not exists shopping_items (
   created_at timestamptz not null default now()
 );
 
+-- Phase 3: AI spend log. Written by the backend with the service role key, so
+-- RLS stays on with no policy — clients get nothing.
+create table if not exists ai_usage_events (
+  id uuid primary key default gen_random_uuid(),
+  cents numeric not null default 0,
+  model text not null,
+  created_at timestamptz not null default now()
+);
+
+alter table ai_usage_events enable row level security;
+
+create index if not exists ai_usage_created_idx on ai_usage_events (created_at desc);
+
 alter table recipes enable row level security;
 alter table meal_plan enable row level security;
 alter table shopping_items enable row level security;
