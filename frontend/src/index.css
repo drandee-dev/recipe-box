@@ -96,6 +96,17 @@ body {
   text-align: right;
 }
 
+.rb-account-link {
+  min-height: 44px;
+  padding: 0;
+  border: none;
+  background: none;
+  color: #666;
+  font-size: 0.8rem;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
 .rb-tabs {
   display: flex;
   gap: 8px;

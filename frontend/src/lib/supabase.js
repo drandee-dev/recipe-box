@@ -8,4 +8,17 @@ const anon = import.meta.env.VITE_SUPABASE_ANON_KEY
 
 export const supabaseEnabled = Boolean(url && anon)
 
-export const supabase = supabaseEnabled ? createClient(url, anon) : null
+// These are the client defaults, pinned explicitly because staying signed in is
+// a feature here, not an accident: the session sits in localStorage and the
+// access token refreshes itself, so a sign-in survives quitting and rebooting.
+// storageKey is deliberately left alone — changing it orphans existing sessions
+// and signs everyone out once.
+export const supabase = supabaseEnabled
+  ? createClient(url, anon, {
+      auth: {
+        persistSession: true,
+        autoRefreshToken: true,
+        detectSessionInUrl: true,
+      },
+    })
+  : null
