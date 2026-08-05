@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import { extractRecipe } from './lib/api.js'
 import { supabase, supabaseEnabled } from './lib/supabase.js'
 import { makeStore, migrateLocalRecipes } from './lib/store.js'
@@ -30,6 +30,7 @@ export default function App() {
     return share.arrived && !share.url
   })
   const [importing, setImporting] = useState(false)
+  const inputRef = useRef(null)
   const [error, setError] = useState('')
   const [openId, setOpenId] = useState(null)
 
@@ -103,7 +104,9 @@ export default function App() {
 
   // iOS drops share-target params when it launches the installed home-screen
   // app, so "Copy link" in the IG/TikTok share sheet plus this button is the
-  // capture path that actually works there.
+  // capture path that actually works there. Safari gates readText() behind a
+  // native Paste confirmation and rejects if it isn't tapped, so the fallback
+  // focuses the field — iOS then offers Paste right above the keyboard.
   async function pasteLink() {
     try {
       const text = await navigator.clipboard.readText()
@@ -116,7 +119,8 @@ export default function App() {
       setError('')
       setShareNotice(false)
     } catch {
-      setError('Could not read the clipboard. Paste into the box instead.')
+      inputRef.current?.focus()
+      setError('Tap Paste above the keyboard, or press and hold the box and choose Paste.')
     }
   }
 
@@ -177,10 +181,21 @@ export default function App() {
         <main className="rb-main">
           <form className="rb-import" onSubmit={handleImport}>
             <input
+              ref={inputRef}
               type="url"
               placeholder="Paste a recipe URL (website, TikTok, Instagram)"
               value={importUrl}
               onChange={(e) => setImportUrl(e.target.value)}
+              onPaste={(e) => {
+                // Share sheets copy the link with prose around it, which a
+                // type="url" field would reject on submit.
+                const text = e.clipboardData?.getData('text') || ''
+                const match = text.match(/https?:\/\/\S+/)
+                if (match && match[0] !== text.trim()) {
+                  e.preventDefault()
+                  setImportUrl(match[0])
+                }
+              }}
             />
             <button type="submit" disabled={importing}>
               {importing ? 'Importing…' : 'Import'}
