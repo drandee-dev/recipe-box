@@ -180,6 +180,18 @@ body {
   text-align: right;
 }
 
+/* Statuses are short one-liners, so they sit right-aligned with the rest of
+   the header. The rate-limit explanation is a paragraph, and right-aligned
+   ragged-left body text in a 320px column is hard to read. */
+.rb-account-status-help {
+  text-align: left;
+  line-height: 1.45;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: #fdf6e3;
+  color: #5c4813;
+}
+
 .rb-account-link {
   min-height: 44px;
   padding: 0;

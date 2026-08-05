@@ -26,6 +26,29 @@ const REMEMBER_EMAIL_KEY = 'recipebox:rememberedEmail'
 const REMEMBER_ME_KEY = 'recipebox:rememberMe'
 const MIN_PASSWORD = 8
 
+// Supabase's built-in sender allows only a couple of messages an hour and
+// counts every kind against the same allowance, so a few sign-in links can
+// lock out a password reset. Raw, that surfaces as "email rate limit
+// exceeded", which reads like a broken account and hides the one move that
+// still works: updateUser from a session that is already signed in sends no
+// email, so another signed-in device can change the password immediately.
+const RATE_LIMIT_HELP =
+  'Too many emails have gone out from this project in the last hour, and every ' +
+  'kind of message shares the same small allowance. There is nothing wrong with ' +
+  'your account. If you are still signed in on another device, use Set password ' +
+  'there and it changes without sending anything. Otherwise the limit clears on ' +
+  'its own within the hour.'
+
+// 429 is what the older client surfaces; newer ones carry the code. The
+// message test catches both when a version reports neither.
+function isEmailRateLimit(err) {
+  return (
+    err?.status === 429 ||
+    err?.code === 'over_email_send_rate_limit' ||
+    /rate limit/i.test(err?.message || '')
+  )
+}
+
 // Shared across every address field so the keyboard, autofill and casing behave.
 const EMAIL_FIELD = {
   type: 'email',
@@ -97,7 +120,10 @@ export default function Account({ session }) {
         close()
       }
     } catch (err) {
-      setStatus(`${mode === 'signup' ? 'Sign-up' : 'Sign-in'} failed: ${err.message}`)
+      // Only sign-up sends mail here. A 429 on signInWithPassword means too
+      // many attempts, which is a different problem with different advice.
+      if (mode === 'signup' && isEmailRateLimit(err)) setStatus(RATE_LIMIT_HELP)
+      else setStatus(`${mode === 'signup' ? 'Sign-up' : 'Sign-in'} failed: ${err.message}`)
     } finally {
       setBusy(false)
     }
@@ -118,7 +144,7 @@ export default function Account({ session }) {
       saveRememberMe(addr)
       setStatus('Check your email. The link opens in Safari, so set a password there to sign in here too.')
     } catch (err) {
-      setStatus(`Sign-in failed: ${err.message}`)
+      setStatus(isEmailRateLimit(err) ? RATE_LIMIT_HELP : `Sign-in failed: ${err.message}`)
     } finally {
       setBusy(false)
     }
@@ -137,7 +163,7 @@ export default function Account({ session }) {
       if (error) throw error
       setStatus('Password reset link sent — check your email.')
     } catch (err) {
-      setStatus(`Reset failed: ${err.message}`)
+      setStatus(isEmailRateLimit(err) ? RATE_LIMIT_HELP : `Reset failed: ${err.message}`)
     } finally {
       setBusy(false)
     }
@@ -210,7 +236,17 @@ export default function Account({ session }) {
             </button>
           </form>
         )}
-        {status && <p className="rb-account-status">{status}</p>}
+        {status && (
+          <p
+            className={
+              status === RATE_LIMIT_HELP
+                ? 'rb-account-status rb-account-status-help'
+                : 'rb-account-status'
+            }
+          >
+            {status}
+          </p>
+        )}
       </div>
     )
   }
@@ -310,7 +346,17 @@ export default function Account({ session }) {
                   : 'Sign in'}
         </button>
 
-        {status && <p className="rb-account-status">{status}</p>}
+        {status && (
+          <p
+            className={
+              status === RATE_LIMIT_HELP
+                ? 'rb-account-status rb-account-status-help'
+                : 'rb-account-status'
+            }
+          >
+            {status}
+          </p>
+        )}
 
         <p className="rb-auth-links">
           {mode === 'signin' && (
