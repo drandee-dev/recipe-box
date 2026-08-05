@@ -147,6 +147,19 @@ body {
   opacity: 0.6;
 }
 
+.rb-paste {
+  display: block;
+  width: 100%;
+  min-height: 44px;
+  margin-top: 8px;
+  border: 1px solid #cfd8d2;
+  border-radius: 8px;
+  background: #fff;
+  color: #1c7c54;
+  font-size: 0.95rem;
+  cursor: pointer;
+}
+
 .rb-error {
   color: #b3261e;
   margin: 12px 0 0;

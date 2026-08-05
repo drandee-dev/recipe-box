@@ -8,6 +8,8 @@ import Account from './components/Account.jsx'
 // the post arrives as ?url=, or buried in ?text=/?title= prose.
 const SHARE_PARAMS = ['url', 'text', 'title']
 
+const canPaste = Boolean(navigator.clipboard?.readText)
+
 function readShare() {
   const params = new URLSearchParams(window.location.search)
   const arrived = SHARE_PARAMS.some((p) => params.has(p))
@@ -99,6 +101,25 @@ export default function App() {
     }
   }, [authReady, userId, store])
 
+  // iOS drops share-target params when it launches the installed home-screen
+  // app, so "Copy link" in the IG/TikTok share sheet plus this button is the
+  // capture path that actually works there.
+  async function pasteLink() {
+    try {
+      const text = await navigator.clipboard.readText()
+      const match = text.match(/https?:\/\/\S+/)
+      if (!match) {
+        setError('No link on the clipboard. Copy the post link first.')
+        return
+      }
+      setImportUrl(match[0])
+      setError('')
+      setShareNotice(false)
+    } catch {
+      setError('Could not read the clipboard. Paste into the box instead.')
+    }
+  }
+
   async function handleImport(e) {
     e.preventDefault()
     const url = importUrl.trim()
@@ -165,6 +186,11 @@ export default function App() {
               {importing ? 'Importing…' : 'Import'}
             </button>
           </form>
+          {canPaste && (
+            <button type="button" className="rb-paste" onClick={pasteLink}>
+              Paste copied link
+            </button>
+          )}
           {shareNotice && (
             <p className="rb-notice">
               A share arrived without a link in it. Copy the post link and paste it above.
@@ -177,7 +203,8 @@ export default function App() {
 
           {recipes.length === 0 && !importing && !loading && (
             <p className="rb-empty">
-              No recipes yet. Paste a link above — most recipe sites import automatically.
+              No recipes yet. Paste a recipe link above, or copy a post link in Instagram or
+              TikTok and tap Paste copied link.
             </p>
           )}
 
