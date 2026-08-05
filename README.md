@@ -29,4 +29,4 @@ npm run dev   # http://localhost:5173
 
 Phase 1 (URL import via schema.org JSON-LD + local recipe list) scaffolded. Phase 2 (Supabase auth + cloud sync) built 2026-08-04 — recipes route through `frontend/src/lib/store.js`, local captures upload once on sign-in. See `docs/SPEC.md` for the full plan and phase breakdown.
 
-PWA icons (`frontend/public/pwa-192.png`, `pwa-512.png`) still need generating before install prompts work.
+Deployed 2026-08-04: frontend at [recipe-box-coral.vercel.app](https://recipe-box-coral.vercel.app), backend at recipe-box-api-sage.vercel.app. Both redeploy on every push to `main`.
