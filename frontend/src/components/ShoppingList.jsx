@@ -5,8 +5,35 @@
 // Presentational, like Planner: App owns the rows and the store calls.
 
 import { useMemo, useState } from 'react'
-import { buildShoppingList, formatQuantity, groupByAisle } from '../lib/ingredients.js'
+import { buildShoppingList, formatQuantity, formatSource, groupByAisle } from '../lib/ingredients.js'
 import { weekRangeLabel } from '../lib/dates.js'
+
+function DerivedItem({ item, checked, onToggle }) {
+  return (
+    <li className={checked ? 'shopping-item shopping-item-done' : 'shopping-item'}>
+      <label>
+        <input type="checkbox" checked={checked} onChange={() => onToggle(item.key, !checked)} />
+        <span className="shopping-item-text">
+          {/* An unparsed line keeps its original wording, since guessing at a
+              tidier name would be inventing detail. */}
+          {item.parsed ? (
+            <>
+              {formatQuantity(item.qty, item.unit) && (
+                <strong>{formatQuantity(item.qty, item.unit)} </strong>
+              )}
+              {item.name}
+            </>
+          ) : (
+            item.raw
+          )}
+          <span className="shopping-item-from">
+            {item.sources.map(formatSource).join(' · ')}
+          </span>
+        </span>
+      </label>
+    </li>
+  )
+}
 
 export default function ShoppingList({
   weekStart,
@@ -84,39 +111,36 @@ export default function ShoppingList({
         </p>
       )}
 
-      {groups.map(({ aisle, items }) => (
+      {groups.map(({ aisle, entries }) => (
         <section key={aisle} className="shopping-aisle">
           <h3>{aisle}</h3>
           <ul>
-            {items.map((item) => {
-              const checked = checkedKeys.has(item.key)
-              return (
-                <li key={item.key} className={checked ? 'shopping-item shopping-item-done' : 'shopping-item'}>
-                  <label>
-                    <input
-                      type="checkbox"
-                      checked={checked}
-                      onChange={() => onToggleDerived(item.key, !checked)}
-                    />
-                    <span className="shopping-item-text">
-                      {/* An unparsed line keeps its original wording, since
-                          guessing at a tidier name would be inventing detail. */}
-                      {item.parsed ? (
-                        <>
-                          {formatQuantity(item.qty, item.unit) && (
-                            <strong>{formatQuantity(item.qty, item.unit)} </strong>
-                          )}
-                          {item.name}
-                        </>
-                      ) : (
-                        item.raw
-                      )}
-                      <span className="shopping-item-from">{item.recipes.join(', ')}</span>
-                    </span>
-                  </label>
+            {entries.map((entry) =>
+              entry.type === 'group' ? (
+                // Variants stay separately checkable: they are separate things
+                // to pick up, and no total is shown across them.
+                <li key={entry.key} className="shopping-group">
+                  <span className="shopping-group-head">{entry.base}</span>
+                  <ul>
+                    {entry.items.map((item) => (
+                      <DerivedItem
+                        key={item.key}
+                        item={item}
+                        checked={checkedKeys.has(item.key)}
+                        onToggle={onToggleDerived}
+                      />
+                    ))}
+                  </ul>
                 </li>
-              )
-            })}
+              ) : (
+                <DerivedItem
+                  key={entry.key}
+                  item={entry.item}
+                  checked={checkedKeys.has(entry.item.key)}
+                  onToggle={onToggleDerived}
+                />
+              ),
+            )}
           </ul>
         </section>
       ))}

@@ -748,11 +748,38 @@ body {
   padding: 0;
 }
 
+/* Variant group: chicken breast and chicken thigh under one "chicken" head.
+   The rule down the left ties the variants together without making the group
+   look like a second aisle. */
+.shopping-group {
+  list-style: none;
+  margin: 6px 0;
+}
+
+.shopping-group-head {
+  display: block;
+  font-size: 0.85rem;
+  font-weight: 600;
+  text-transform: capitalize;
+  color: #3c4a42;
+}
+
+.shopping-group > ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 0 0 10px;
+  border-left: 2px solid #e3ede7;
+}
+
 .shopping-item {
   display: flex;
   align-items: center;
   gap: 4px;
   border-bottom: 1px solid #f2f2f2;
+}
+
+.shopping-group .shopping-item:last-child {
+  border-bottom: none;
 }
 
 .shopping-item label {

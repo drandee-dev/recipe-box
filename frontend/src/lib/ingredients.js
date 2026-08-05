@@ -118,6 +118,30 @@ const AISLE_INDEX = Object.entries(AISLE_KEYWORDS)
   .flatMap(([aisle, words]) => words.map((word) => ({ aisle, word })))
   .sort((a, b) => b.word.length - a.word.length)
 
+// Ingredients whose variants are the same shopping decision, so chicken breast
+// and chicken thigh sit together instead of drifting apart alphabetically.
+// Curated rather than derived: taking the head noun would file olive oil and
+// sesame oil under one heading as "oil", which is a different purchase.
+//
+// Grouping only ever happens inside one aisle, which is what stops bell pepper
+// (Produce) and black pepper (Pantry) from meeting. It also never sums across
+// variants — 2 breasts plus 4 thighs is not 6 of anything.
+const BASE_INGREDIENTS = [
+  'chicken', 'beef', 'pork', 'lamb', 'turkey', 'duck', 'bacon', 'sausage',
+  'salmon', 'tuna', 'cod', 'shrimp', 'fish',
+  'egg', 'milk', 'cream', 'butter', 'cheese', 'yogurt',
+  'flour', 'sugar', 'rice', 'pasta', 'noodle', 'bean', 'lentil', 'oat',
+  'oil', 'vinegar', 'stock', 'broth', 'chocolate', 'sauce',
+  'onion', 'potato', 'tomato', 'mushroom', 'pepper', 'lettuce', 'apple', 'berry',
+].sort((a, b) => b.length - a.length)
+
+// Names are normalized first so plurals collapse: "chicken breasts" -> base
+// "chicken", "eggs" -> base "egg".
+export function baseFor(name) {
+  const hay = ` ${normalizeName(name)} `
+  return BASE_INGREDIENTS.find((base) => hay.includes(` ${base} `)) || null
+}
+
 export function aisleFor(name) {
   const hay = ` ${name.toLowerCase()} `
   const hit = AISLE_INDEX.find(({ word }) => hay.includes(` ${word} `) || hay.includes(`${word} `) || hay.includes(` ${word}`))
@@ -294,7 +318,21 @@ export function buildShoppingList(plan, recipes) {
       const existing = merged.get(key)
       if (existing) {
         if (parsed.qty !== null) existing.qty = (existing.qty ?? 0) + parsed.qty
-        if (!existing.recipes.includes(recipe.title)) existing.recipes.push(recipe.title)
+        // Per-recipe contributions, so a merged total stays traceable to what
+        // asked for it. A recipe planned twice in the week contributes twice,
+        // which is correct but looks wrong without the count, hence `times`.
+        const source = existing.sources.find((s) => s.title === recipe.title)
+        if (source) {
+          source.times += 1
+          if (parsed.qty !== null) source.qty = (source.qty ?? 0) + parsed.qty
+        } else {
+          existing.sources.push({
+            title: recipe.title,
+            qty: parsed.qty,
+            unit: parsed.unit,
+            times: 1,
+          })
+        }
       } else {
         merged.set(key, {
           key,
@@ -304,7 +342,8 @@ export function buildShoppingList(plan, recipes) {
           raw: parsed.raw,
           parsed: parsed.parsed,
           aisle: aisleFor(parsed.name),
-          recipes: [recipe.title],
+          base: baseFor(parsed.name),
+          sources: [{ title: recipe.title, qty: parsed.qty, unit: parsed.unit, times: 1 }],
         })
       }
     }
@@ -317,14 +356,54 @@ export function buildShoppingList(plan, recipes) {
   )
 }
 
+// A source line: "Pasta 2 cups", or "Pasta ×2 4 cups" when the recipe is
+// planned twice that week, or just "Pasta" when nothing parsed.
+export function formatSource(source) {
+  const times = source.times > 1 ? ` ×${source.times}` : ''
+  const amount = source.qty !== null ? ` ${formatQuantity(source.qty, source.unit)}` : ''
+  return `${source.title}${times}${amount}`
+}
+
+// Aisle sections, each holding a mix of standalone items and variant groups.
+// A base only earns a heading when two or more variants of it are present;
+// a lone "2 chicken breasts" reads better as an ordinary line.
 export function groupByAisle(items) {
-  const groups = new Map()
+  const byAisle = new Map()
   for (const item of items) {
-    if (!groups.has(item.aisle)) groups.set(item.aisle, [])
-    groups.get(item.aisle).push(item)
+    if (!byAisle.has(item.aisle)) byAisle.set(item.aisle, [])
+    byAisle.get(item.aisle).push(item)
   }
-  return AISLE_ORDER.filter((aisle) => groups.has(aisle)).map((aisle) => ({
-    aisle,
-    items: groups.get(aisle),
-  }))
+
+  return AISLE_ORDER.filter((aisle) => byAisle.has(aisle)).map((aisle) => {
+    const aisleItems = byAisle.get(aisle)
+
+    const counts = new Map()
+    for (const item of aisleItems) {
+      if (item.base) counts.set(item.base, (counts.get(item.base) || 0) + 1)
+    }
+
+    const entries = []
+    const emitted = new Set()
+    for (const item of aisleItems) {
+      const grouped = item.base && counts.get(item.base) > 1
+      if (!grouped) {
+        entries.push({ type: 'item', key: item.key, item, sortName: item.name })
+        continue
+      }
+      if (emitted.has(item.base)) continue
+      emitted.add(item.base)
+      entries.push({
+        type: 'group',
+        key: `base:${item.base}`,
+        base: item.base,
+        items: aisleItems.filter((i) => i.base === item.base),
+        sortName: item.base,
+      })
+    }
+
+    return {
+      aisle,
+      entries: entries.sort((a, b) => a.sortName.localeCompare(b.sortName)),
+    }
+  })
 }
