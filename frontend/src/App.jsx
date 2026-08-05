@@ -4,24 +4,42 @@ import { supabase, supabaseEnabled } from './lib/supabase.js'
 import { makeStore, migrateLocalRecipes } from './lib/store.js'
 import Account from './components/Account.jsx'
 
-// PWA share target: shared TikTok/IG posts arrive as ?url= or buried in ?text=
-function sharedUrl() {
+// PWA share target (Android) and the iOS Shortcuts workaround both land here:
+// the post arrives as ?url=, or buried in ?text=/?title= prose.
+const SHARE_PARAMS = ['url', 'text', 'title']
+
+function readShare() {
   const params = new URLSearchParams(window.location.search)
-  const direct = params.get('url')
-  if (direct) return direct
-  const text = params.get('text') || ''
-  const match = text.match(/https?:\/\/\S+/)
-  return match ? match[0] : ''
+  const arrived = SHARE_PARAMS.some((p) => params.has(p))
+  const direct = (params.get('url') || '').trim()
+  if (direct) return { url: direct, arrived }
+  const prose = `${params.get('text') || ''} ${params.get('title') || ''}`
+  const match = prose.match(/https?:\/\/\S+/)
+  return { url: match ? match[0] : '', arrived }
 }
 
 export default function App() {
   const [tab, setTab] = useState('recipes')
   const [recipes, setRecipes] = useState([])
   const [loading, setLoading] = useState(true)
-  const [importUrl, setImportUrl] = useState(sharedUrl)
+  const [importUrl, setImportUrl] = useState(() => readShare().url)
+  const [shareNotice, setShareNotice] = useState(() => {
+    const share = readShare()
+    return share.arrived && !share.url
+  })
   const [importing, setImporting] = useState(false)
   const [error, setError] = useState('')
   const [openId, setOpenId] = useState(null)
+
+  // Consume the share params so a refresh doesn't re-fill the bar. Only the
+  // share keys are removed; Supabase's auth callback params must survive.
+  useEffect(() => {
+    const params = new URLSearchParams(window.location.search)
+    if (!SHARE_PARAMS.some((p) => params.has(p))) return
+    SHARE_PARAMS.forEach((p) => params.delete(p))
+    const qs = params.toString()
+    window.history.replaceState({}, '', qs ? `?${qs}` : window.location.pathname)
+  }, [])
 
   // Auth session. authReady gates the recipe load so a restoring cloud session
   // isn't raced by a local-storage read (mtg-web pattern).
@@ -147,6 +165,14 @@ export default function App() {
               {importing ? 'Importing…' : 'Import'}
             </button>
           </form>
+          {shareNotice && (
+            <p className="rb-notice">
+              A share arrived without a link in it. Copy the post link and paste it above.
+              <button className="rb-notice-close" onClick={() => setShareNotice(false)}>
+                Dismiss
+              </button>
+            </p>
+          )}
           {error && <p className="rb-error">{error}</p>}
 
           {recipes.length === 0 && !importing && !loading && (
