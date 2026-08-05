@@ -446,6 +446,250 @@ body {
   min-height: 44px;
 }
 
+/* --- Planner ------------------------------------------------------------ */
+
+.planner-weeknav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 12px;
+}
+
+.planner-nav {
+  min-width: 44px;
+  min-height: 44px;
+  border: 1px solid #ddd;
+  border-radius: 8px;
+  background: #fff;
+  color: #1c7c54;
+  font-size: 1.3rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.planner-weeklabel {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  text-align: center;
+}
+
+.planner-thisweek {
+  border: none;
+  background: none;
+  color: #1c7c54;
+  font-size: 0.8rem;
+  cursor: pointer;
+  padding: 0;
+}
+
+.planner-day {
+  border: 1px solid #e6e6e6;
+  border-radius: 10px;
+  background: #fff;
+  padding: 10px 12px;
+  margin-bottom: 8px;
+}
+
+.planner-day-today {
+  border-color: #1c7c54;
+  background: #f4fbf7;
+}
+
+.planner-day-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.planner-day-head h3 {
+  margin: 0;
+  font-size: 0.95rem;
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+}
+
+.planner-day-date {
+  font-size: 0.8rem;
+  font-weight: 400;
+  color: #777;
+}
+
+.planner-add {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid #1c7c54;
+  border-radius: 8px;
+  background: #fff;
+  color: #1c7c54;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.planner-add:disabled {
+  opacity: 0.4;
+  border-color: #ccc;
+  color: #999;
+}
+
+.planner-day-empty {
+  margin: 6px 0 0;
+  font-size: 0.85rem;
+  color: #999;
+}
+
+.planner-slot {
+  margin-top: 8px;
+}
+
+.planner-slot-label {
+  font-size: 0.7rem;
+  text-transform: uppercase;
+  letter-spacing: 0.06em;
+  color: #7a8a80;
+}
+
+.planner-entries {
+  list-style: none;
+  margin: 2px 0 0;
+  padding: 0;
+}
+
+.planner-entry {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  min-height: 44px;
+  font-size: 0.9rem;
+}
+
+.planner-entry-missing {
+  color: #999;
+  font-style: italic;
+}
+
+.planner-remove {
+  min-width: 44px;
+  min-height: 44px;
+  border: none;
+  background: none;
+  color: #b3261e;
+  font-size: 1.2rem;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* The picker is a bottom sheet: on a phone it sits under the thumb, and the
+   backdrop gives a large dismiss target without a visible close affordance
+   competing with the recipe list. */
+.planner-sheet-backdrop {
+  position: fixed;
+  inset: 0;
+  z-index: 20;
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.35);
+}
+
+.planner-sheet {
+  width: 100%;
+  max-width: 640px;
+  max-height: 80vh;
+  max-height: 80dvh;
+  overflow-y: auto;
+  background: #fff;
+  border-radius: 14px 14px 0 0;
+  padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+}
+
+.planner-sheet-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 10px;
+}
+
+.planner-sheet-close {
+  min-height: 44px;
+  border: none;
+  background: none;
+  color: #1c7c54;
+  font-size: 0.9rem;
+  cursor: pointer;
+}
+
+.planner-slot-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 10px;
+}
+
+.planner-chip {
+  min-height: 44px;
+  padding: 0 14px;
+  border: 1px solid #ddd;
+  border-radius: 999px;
+  background: #f6f6f6;
+  color: #555;
+  font-size: 0.85rem;
+  cursor: pointer;
+}
+
+.planner-chip-active {
+  border-color: #1c7c54;
+  background: #eef8f1;
+  color: #1c7c54;
+  font-weight: 600;
+}
+
+.planner-search {
+  width: 100%;
+  min-height: 44px;
+  padding: 0 10px;
+  margin-bottom: 8px;
+  border: 1px solid #ccc;
+  border-radius: 8px;
+  /* 16px keeps iOS from zooming the page when the field takes focus. */
+  font-size: 16px;
+}
+
+.planner-picklist {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+}
+
+.planner-pick {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 52px;
+  padding: 6px 4px;
+  border: none;
+  border-bottom: 1px solid #f0f0f0;
+  background: none;
+  font-size: 0.95rem;
+  text-align: left;
+  cursor: pointer;
+}
+
+.planner-pick img {
+  width: 40px;
+  height: 40px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex-shrink: 0;
+}
+
 /* Pull-to-refresh indicator. Parked above the viewport and pushed down by an
    inline transform tracking the finger, so it costs no layout while idle. */
 .rb-pull {

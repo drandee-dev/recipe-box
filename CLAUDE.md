@@ -26,7 +26,9 @@ CORS defaults to `localhost:5173`/`4173`; set `RECIPE_CORS_ORIGINS` (comma-separ
 
 ## Conventions
 
-- Ingredients always keep the `raw` string; parsed qty/unit/item are best-effort (shopping list depends on them, phase 4).
+- Ingredients always keep the `raw` string; parsed qty/unit/item are best-effort (shopping list depends on them, phase 4b). Note `extract.py` sets all three to `null` on the JSON-LD path, so only AI-structured recipes have them.
+- Planner dates go through `lib/dates.js` and stay in local time. `plan_date` is a zoneless Postgres `date`, so `toISOString()` would save an evening assignment under the previous day west of Greenwich. Weeks start Sunday.
+- New stores mirror `lib/store.js`: a localStorage backend, a Supabase backend, one `make*Store(userId)` picker, and a one-time migrate on sign-in. `lib/plan.js` follows it. Plan rows migrate *after* recipes because `meal_plan.recipe_id` is a foreign key and the recipe upload preserves local ids.
 - Every server-side URL fetch goes through the SSRF guard in `extract.py` — never `httpx.get` a user URL directly.
 - Pydantic `BaseModel` + `Field` constraints on all POST bodies; log tracebacks server-side, return opaque errors.
 - CSS classes prefixed by component scope (`rb-`, `recipes-`, `planner-`); base styles before `@media` in the cascade.

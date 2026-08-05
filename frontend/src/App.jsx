@@ -2,8 +2,11 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { extractRecipe, structureText } from './lib/api.js'
 import { supabase, supabaseEnabled } from './lib/supabase.js'
 import { makeStore, migrateLocalRecipes } from './lib/store.js'
+import { makePlanStore, migrateLocalPlan } from './lib/plan.js'
+import { addDays, startOfWeek, toISODate } from './lib/dates.js'
 import { setBusy } from './lib/pwa.js'
 import Account from './components/Account.jsx'
+import Planner from './components/Planner.jsx'
 
 // PWA share target (Android) and the iOS Shortcuts workaround both land here:
 // the post arrives as ?url=, or buried in ?text=/?title= prose.
@@ -97,6 +100,10 @@ export default function App() {
 
   const userId = session?.user?.id || null
   const store = useMemo(() => makeStore(userId), [userId])
+  const planStore = useMemo(() => makePlanStore(userId), [userId])
+
+  const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
+  const [plan, setPlan] = useState([])
 
   // Load recipes once auth settles. On sign-in, local captures upload first —
   // one-time, since the local key is cleared after a successful upload.
@@ -123,6 +130,33 @@ export default function App() {
     }
   }, [authReady, userId, store])
 
+  // The plan is fetched a week at a time, so this re-runs on navigation as
+  // well as on sign-in. Recipes migrate before plan rows do: meal_plan.recipe_id
+  // is a foreign key, and migrateLocalRecipes keeps the local ids, so the
+  // references still resolve after the move.
+  const loadPlan = useCallback(async () => {
+    const from = toISODate(weekStart)
+    const to = toISODate(addDays(weekStart, 6))
+    return planStore.listWeek(from, to)
+  }, [planStore, weekStart])
+
+  useEffect(() => {
+    if (!authReady) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        if (userId) await migrateLocalPlan(userId)
+        const rows = await loadPlan()
+        if (!cancelled) setPlan(rows)
+      } catch (err) {
+        if (!cancelled) setError(err.message)
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [authReady, userId, loadPlan])
+
   // Re-read the store without the auth/migrate work the mount effect does.
   // An installed PWA is resumed, not reloaded, so without this it shows the
   // list it fetched the first time it opened — a capture made in the browser
@@ -134,8 +168,12 @@ export default function App() {
     refreshingRef.current = true
     setRefreshing(true)
     try {
-      const list = await store.list()
+      // Both, in parallel: the plan goes stale on resume for exactly the same
+      // reason the recipe list does, and a plan row is meaningless without the
+      // recipe it points at.
+      const [list, rows] = await Promise.all([store.list(), loadPlan()])
       setRecipes(list)
+      setPlan(rows)
       setError('')
     } catch (err) {
       setError(err.message)
@@ -143,7 +181,7 @@ export default function App() {
       refreshingRef.current = false
       setRefreshing(false)
     }
-  }, [store])
+  }, [store, loadPlan])
 
   // Kept in a ref so the gesture and foreground listeners can bind once with
   // stable deps and still call the current closure.
@@ -333,8 +371,49 @@ export default function App() {
     try {
       await store.remove(id)
       setRecipes((prev) => prev.filter((r) => r.id !== id))
+      // Postgres cascades this via the foreign key; the local backend has no
+      // such thing, so it is done by hand there. Either way the rows are gone,
+      // so drop them from view without a refetch.
+      await planStore.removeByRecipe(id)
+      setPlan((prev) => prev.filter((e) => e.recipe_id !== id))
       if (openId === id) setOpenId(null)
     } catch (err) {
+      setError(err.message)
+    }
+  }
+
+  function changeWeek(direction) {
+    // 0 means "back to today", which is its own case rather than an offset.
+    setWeekStart((prev) => (direction === 0 ? startOfWeek(new Date()) : addDays(prev, direction * 7)))
+  }
+
+  async function handleAssign(recipeId, dateISO, slot) {
+    const entry = {
+      id: crypto.randomUUID(),
+      recipe_id: recipeId,
+      plan_date: dateISO,
+      slot,
+      created_at: new Date().toISOString(),
+    }
+    // Optimistic: the sheet closes on tap, so waiting on the round trip would
+    // show an empty day for as long as the write takes.
+    setPlan((prev) => [...prev, entry])
+    try {
+      const saved = await planStore.add(entry)
+      setPlan((prev) => prev.map((e) => (e.id === entry.id ? saved : e)))
+    } catch (err) {
+      setPlan((prev) => prev.filter((e) => e.id !== entry.id))
+      setError(err.message)
+    }
+  }
+
+  async function handleUnassign(id) {
+    const removed = plan.find((e) => e.id === id)
+    setPlan((prev) => prev.filter((e) => e.id !== id))
+    try {
+      await planStore.remove(id)
+    } catch (err) {
+      if (removed) setPlan((prev) => [...prev, removed])
       setError(err.message)
     }
   }
@@ -519,10 +598,26 @@ export default function App() {
         </main>
       )}
 
-      {tab !== 'recipes' && (
+      {tab === 'planner' && (
+        <main className="rb-main">
+          <Planner
+            weekStart={weekStart}
+            plan={plan}
+            recipes={recipes}
+            loading={loading}
+            onWeekChange={changeWeek}
+            onAssign={handleAssign}
+            onUnassign={handleUnassign}
+          />
+          {error && <p className="rb-error">{error}</p>}
+        </main>
+      )}
+
+      {tab === 'shopping' && (
         <main className="rb-main">
           <p className="rb-empty">
-            {tab === 'planner' ? 'Weekly meal planner' : 'Shopping list'} lands in phase 4.
+            The shopping list is next. It will roll up the ingredients from
+            whatever you have planned for the week.
           </p>
         </main>
       )}
