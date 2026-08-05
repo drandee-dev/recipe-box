@@ -1,4 +1,6 @@
--- Recipe Box schema (phase 2). Run in Supabase SQL editor.
+-- Recipe Box schema. Run in the Supabase SQL editor.
+-- Safe to re-run: every statement is guarded, so applying it again is a no-op
+-- on what already exists and creates whatever is new.
 
 create table if not exists recipes (
   id uuid primary key default gen_random_uuid(),
@@ -59,10 +61,17 @@ alter table recipes enable row level security;
 alter table meal_plan enable row level security;
 alter table shopping_items enable row level security;
 
+-- Postgres has no "create policy if not exists", so drop first or a re-run
+-- aborts the whole script and rolls back everything above it.
+drop policy if exists "own recipes" on recipes;
 create policy "own recipes" on recipes
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "own meal plan" on meal_plan;
 create policy "own meal plan" on meal_plan
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+drop policy if exists "own shopping items" on shopping_items;
 create policy "own shopping items" on shopping_items
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
