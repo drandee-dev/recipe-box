@@ -7,6 +7,9 @@ body {
   font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
   color: #1a1a1a;
   background: #fafaf7;
+  /* Without this the installed PWA rubber-bands the whole document on a
+     downward drag and the pull-to-refresh gesture never gets the touch. */
+  overscroll-behavior-y: contain;
 }
 
 .rb-app {
@@ -62,6 +65,24 @@ body {
 
 /* Tabs, two fields, a checkbox and links don't fit a header row on a phone, so
    the open form stacks into a small panel under it instead. */
+/* Off-screen but still rendered, focusable and measurable. Safari's autofill
+   skips display:none/hidden/visibility:hidden fields, so anything a password
+   manager has to see must be hidden this way instead. Also used for the field
+   labels, which stay invisible to keep the header compact while still giving
+   each input a real associated label. */
+.rb-offscreen,
+.rb-auth-label {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  padding: 0;
+  margin: -1px;
+  overflow: hidden;
+  clip: rect(0, 0, 0, 0);
+  white-space: nowrap;
+  border: 0;
+}
+
 .rb-auth {
   display: flex;
   flex-direction: column;
@@ -411,4 +432,57 @@ body {
   font-size: 0.9rem;
   cursor: pointer;
   min-height: 44px;
+}
+
+/* Pull-to-refresh indicator. Parked above the viewport and pushed down by an
+   inline transform tracking the finger, so it costs no layout while idle. */
+.rb-pull {
+  position: fixed;
+  top: calc(env(safe-area-inset-top) - 44px);
+  left: 0;
+  right: 0;
+  z-index: 5;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  height: 44px;
+  font-size: 0.85rem;
+  color: #5a6b60;
+  pointer-events: none;
+  opacity: 0;
+}
+
+.rb-pull-active {
+  opacity: 1;
+}
+
+/* Only while the finger is off the screen — animating during the drag makes
+   the indicator lag behind the touch. */
+.rb-pull:not(.rb-pull-active) {
+  transition: transform 0.2s ease, opacity 0.2s ease;
+}
+
+.rb-pull-spinner {
+  width: 16px;
+  height: 16px;
+  border: 2px solid #cfdcd4;
+  border-top-color: #1c7c54;
+  border-radius: 50%;
+}
+
+.rb-pull-spinning {
+  animation: rb-spin 0.7s linear infinite;
+}
+
+@keyframes rb-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .rb-pull-spinning {
+    animation-duration: 2s;
+  }
 }

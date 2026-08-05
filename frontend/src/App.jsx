@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { extractRecipe, structureText } from './lib/api.js'
 import { supabase, supabaseEnabled } from './lib/supabase.js'
 import { makeStore, migrateLocalRecipes } from './lib/store.js'
+import { setBusy } from './lib/pwa.js'
 import Account from './components/Account.jsx'
 
 // PWA share target (Android) and the iOS Shortcuts workaround both land here:
@@ -9,6 +10,12 @@ import Account from './components/Account.jsx'
 const SHARE_PARAMS = ['url', 'text', 'title']
 
 const canPaste = Boolean(navigator.clipboard?.readText)
+
+// Pull-to-refresh gesture, in px of finger travel. PULL_RESIST damps the
+// indicator so a 140px drag reads as 70px of pull — matches the native feel.
+const PULL_THRESHOLD = 70
+const PULL_MAX = 110
+const PULL_RESIST = 0.5
 
 function readShare() {
   const params = new URLSearchParams(window.location.search)
@@ -40,6 +47,13 @@ export default function App() {
   const inputRef = useRef(null)
   const [error, setError] = useState('')
   const [openId, setOpenId] = useState(null)
+  const [refreshing, setRefreshing] = useState(false)
+  const [pull, setPull] = useState(0)
+  // Mirrors of state the native touch listeners read: they bind once, so they
+  // would otherwise see the values from first render forever.
+  const pullRef = useRef(0)
+  const refreshingRef = useRef(false)
+  const importingRef = useRef(false)
 
   // Consume the share params so a refresh doesn't re-fill the bar. Only the
   // share keys are removed; Supabase's auth callback params must survive.
@@ -108,6 +122,121 @@ export default function App() {
       cancelled = true
     }
   }, [authReady, userId, store])
+
+  // Re-read the store without the auth/migrate work the mount effect does.
+  // An installed PWA is resumed, not reloaded, so without this it shows the
+  // list it fetched the first time it opened — a capture made in the browser
+  // never appears. Skipped mid-import: that flow has already prepended the new
+  // recipe optimistically, and a list fetched before the write landed would
+  // wipe it back out.
+  const refresh = useCallback(async () => {
+    if (importingRef.current || refreshingRef.current) return
+    refreshingRef.current = true
+    setRefreshing(true)
+    try {
+      const list = await store.list()
+      setRecipes(list)
+      setError('')
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      refreshingRef.current = false
+      setRefreshing(false)
+    }
+  }, [store])
+
+  // Kept in a ref so the gesture and foreground listeners can bind once with
+  // stable deps and still call the current closure.
+  const refreshRef = useRef(refresh)
+  useEffect(() => {
+    refreshRef.current = refresh
+  }, [refresh])
+
+  useEffect(() => {
+    importingRef.current = importing
+  }, [importing])
+
+  // Hold off service worker update checks during a capture. An update reloads
+  // the page, which would discard whatever is in the paste box.
+  useEffect(() => {
+    setBusy(importing || pasteText.trim().length > 0)
+  }, [importing, pasteText])
+
+  // Foreground refetch. visibilitychange covers resuming a standalone PWA and
+  // unlocking the phone; focus covers desktop tab switches, where a background
+  // tab stays "visible". pageshow catches a bfcache restore, which fires
+  // neither of the other two.
+  useEffect(() => {
+    if (!authReady) return
+    function onVisible() {
+      if (document.visibilityState === 'visible') refreshRef.current()
+    }
+    function onPageShow(e) {
+      if (e.persisted) refreshRef.current()
+    }
+    document.addEventListener('visibilitychange', onVisible)
+    window.addEventListener('focus', onVisible)
+    window.addEventListener('pageshow', onPageShow)
+    return () => {
+      document.removeEventListener('visibilitychange', onVisible)
+      window.removeEventListener('focus', onVisible)
+      window.removeEventListener('pageshow', onPageShow)
+    }
+  }, [authReady])
+
+  // Pull-to-refresh. Listeners are native rather than React's onTouchMove:
+  // React registers touchmove as passive, so preventDefault there is ignored
+  // and iOS rubber-bands the page instead of showing the pull.
+  useEffect(() => {
+    let startY = null
+    let pulling = false
+
+    function reset() {
+      pulling = false
+      startY = null
+      pullRef.current = 0
+      setPull(0)
+    }
+
+    function onStart(e) {
+      if (e.touches.length !== 1 || window.scrollY > 0) return
+      startY = e.touches[0].clientY
+      pulling = true
+    }
+
+    function onMove(e) {
+      if (!pulling || startY === null) return
+      const delta = e.touches[0].clientY - startY
+      // Upward drag, or the page scrolled under us: hand the touch back so it
+      // behaves as an ordinary scroll.
+      if (delta <= 0 || window.scrollY > 0) {
+        reset()
+        return
+      }
+      e.preventDefault()
+      const distance = Math.min(PULL_MAX, delta * PULL_RESIST)
+      pullRef.current = distance
+      setPull(distance)
+    }
+
+    function onEnd() {
+      if (!pulling) return
+      const distance = pullRef.current
+      reset()
+      if (distance >= PULL_THRESHOLD) refreshRef.current()
+    }
+
+    document.addEventListener('touchstart', onStart, { passive: true })
+    document.addEventListener('touchmove', onMove, { passive: false })
+    document.addEventListener('touchend', onEnd)
+    document.addEventListener('touchcancel', reset)
+    return () => {
+      document.removeEventListener('touchstart', onStart)
+      document.removeEventListener('touchmove', onMove)
+      document.removeEventListener('touchend', onEnd)
+      document.removeEventListener('touchcancel', reset)
+    }
+  }, [])
 
   // iOS drops share-target params when it launches the installed home-screen
   // app, so "Copy link" in the IG/TikTok share sheet plus this button is the
@@ -210,8 +339,24 @@ export default function App() {
     }
   }
 
+  const pullActive = pull > 0 || refreshing
+
   return (
     <div className="rb-app">
+      <div
+        className={pullActive ? 'rb-pull rb-pull-active' : 'rb-pull'}
+        style={{ transform: `translateY(${refreshing ? PULL_THRESHOLD : pull}px)` }}
+        aria-hidden={!pullActive}
+      >
+        <span className={refreshing ? 'rb-pull-spinner rb-pull-spinning' : 'rb-pull-spinner'} />
+        <span className="rb-pull-label">
+          {refreshing
+            ? 'Refreshing…'
+            : pull >= PULL_THRESHOLD
+              ? 'Release to refresh'
+              : 'Pull to refresh'}
+        </span>
+      </div>
       <header className="rb-header">
         <div className="rb-header-row">
           <h1>Recipe Box</h1>

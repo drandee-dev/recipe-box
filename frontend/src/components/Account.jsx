@@ -10,6 +10,14 @@
 // Every field is typed for the device: type/inputMode/autoComplete together are
 // what make iOS show the @ keyboard and offer a saved password, and the form
 // wrapper is what makes Keychain associate the pair on submit.
+//
+// Autofill rules learned here, all easy to undo by accident:
+//   - A field a password manager must see cannot use `hidden`, `display:none`
+//     or `visibility:hidden`. Use `.rb-offscreen`, which keeps it rendered.
+//   - No autoFocus on the email field. Focusing it as the form mounts pre-empts
+//     the AutoFill bar on iOS, and it does not open the keyboard there anyway.
+//   - Every input needs an id with a matching label. Safari leans on
+//     autocomplete, but 1Password and Bitwarden score id/label heavily.
 
 import { useState } from 'react'
 import { supabase, supabaseEnabled } from '../lib/supabase.js'
@@ -168,15 +176,26 @@ export default function Account({ session }) {
         {settingPassword && (
           <form className="rb-auth" onSubmit={savePassword}>
             {/* Keychain files a password against a username. Without this it
-                prompts to overwrite some unrelated saved account. */}
+                prompts to overwrite some unrelated saved account.
+
+                Positioned off-screen rather than `hidden`: Safari skips hidden
+                and display:none inputs when it looks for the username to pair
+                with, so the attribute meant to fix the association was the
+                thing preventing it. It must stay rendered and focusable. */}
             <input
               {...EMAIL_FIELD}
+              id="rb-set-password-username"
               autoComplete="username"
+              className="rb-offscreen"
+              tabIndex={-1}
               value={session.user.email}
               readOnly
-              hidden
             />
+            <label className="rb-auth-label" htmlFor="rb-new-password">
+              New password ({MIN_PASSWORD}+ characters)
+            </label>
             <input
+              id="rb-new-password"
               type="password"
               name="new-password"
               autoComplete="new-password"
@@ -236,27 +255,36 @@ export default function Account({ session }) {
           <p className="rb-auth-title">{mode === 'magic' ? 'Email a sign-in link' : 'Reset password'}</p>
         )}
 
+        <label className="rb-auth-label" htmlFor="rb-email">
+          Email
+        </label>
         <input
           {...EMAIL_FIELD}
+          id="rb-email"
           // "username" is what pairs an address with a password for Keychain;
           // with no password field alongside it, plain "email" is right.
           autoComplete={emailOnly ? 'email' : 'username'}
           enterKeyHint={emailOnly ? 'send' : 'next'}
           value={email}
           onChange={(e) => setEmail(e.target.value)}
-          autoFocus
         />
 
         {!emailOnly && (
-          <input
-            type="password"
-            name="password"
-            autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-            enterKeyHint="go"
-            placeholder={mode === 'signup' ? `Choose a password (${MIN_PASSWORD}+)` : 'Password'}
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-          />
+          <>
+            <label className="rb-auth-label" htmlFor="rb-password">
+              Password
+            </label>
+            <input
+              id="rb-password"
+              type="password"
+              name="password"
+              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+              enterKeyHint="go"
+              placeholder={mode === 'signup' ? `Choose a password (${MIN_PASSWORD}+)` : 'Password'}
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+            />
+          </>
         )}
 
         {mode === 'signin' && (

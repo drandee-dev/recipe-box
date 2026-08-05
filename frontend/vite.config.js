@@ -7,6 +7,10 @@ export default defineConfig({
     react(),
     VitePWA({
       registerType: 'autoUpdate',
+      // src/lib/pwa.js imports virtual:pwa-register and registers the worker
+      // itself, so the plugin must not also inject registerSW.js into the HTML.
+      // That injected copy is what bound registration to the `load` event.
+      injectRegister: null,
       manifest: {
         name: 'Recipe Box',
         short_name: 'Recipes',
