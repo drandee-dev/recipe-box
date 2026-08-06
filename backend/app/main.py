@@ -5,10 +5,15 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .ai import AIBudgetError, AIError, ai_available, structure_recipe
-from .auth import AuthError, bearer_token, verify_token
 from .config import cors_origins
 from .extract import ExtractError, extract_recipe
-from .images import ImageError, mirror_image, storage_configured
+
+# auth.py and images.py are imported inside the handlers that use them, not here.
+# images.py pulls in Pillow, and a dependency that is missing in production takes
+# down every route in this file when it is imported at module scope — extraction
+# and paste both died over a photo resizer once. The rest of the app already
+# works this way: ai.py imports anthropic inside the call and extract.py imports
+# ai and social inside theirs.
 
 logging.basicConfig(level=logging.INFO)
 log = logging.getLogger("recipe.api")
@@ -40,7 +45,21 @@ class ImageRequest(BaseModel):
 
 @app.get("/api/health")
 def health():
-    return {"status": "ok", "ai": ai_available(), "storage": storage_configured()}
+    """Also the deploy check.
+
+    `images` reports whether the mirroring code can be imported at all, which is
+    otherwise invisible from outside: mirroring fails silently by design, so a
+    dependency missing from the bundle looks exactly like a photo that wouldn't
+    download. `storage` is the two env vars the uploads need.
+    """
+    try:
+        from .images import storage_configured
+
+        images, storage = True, storage_configured()
+    except ImportError:
+        log.exception("image pipeline is not importable")
+        images, storage = False, False
+    return {"status": "ok", "ai": ai_available(), "storage": storage, "images": images}
 
 
 @app.post("/api/recipes/extract")
@@ -92,6 +111,14 @@ def recipe_image(body: ImageRequest, authorization: str | None = Header(default=
     tries again on a later load, so the failure modes here — an expired URL, a
     hotlink block, something that isn't an image — are all a 422 and nothing more.
     """
+    try:
+        from .auth import AuthError, bearer_token, verify_token
+        from .images import ImageError, mirror_image
+    except ImportError:
+        # Only this endpoint is lost, and /api/health says so.
+        log.exception("image mirroring is unavailable: a dependency is missing")
+        raise HTTPException(status_code=503, detail="Photo storage is unavailable")
+
     try:
         user_id = verify_token(bearer_token(authorization))
     except AuthError as exc:

@@ -2,11 +2,16 @@
 name = "recipe-box-backend"
 version = "0.1.0"
 requires-python = ">=3.11"
+# Vercel installs from this list, not requirements.txt, so a dependency that is
+# only in requirements.txt is simply absent in production — and an absent import
+# at module scope takes the whole API down, not just the feature that needed it.
+# Every entry here must have a match in requirements.txt and the other way round.
 dependencies = [
     "fastapi>=0.115",
     "httpx>=0.27",
     "beautifulsoup4>=4.12",
     "anthropic>=0.52",
+    "pillow>=10.4",
     "pyjwt>=2.8",
     "supabase>=2.9",
 ]
