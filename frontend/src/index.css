@@ -68,6 +68,20 @@
   --star: #b8860b;
   --star-off: #7d827b;
 
+  /* Notice surfaces. Each ink is checked against its own tint rather than
+     against --surface, which is where the old hand-mixed pairs drifted: the
+     same #6b5b1f was reused on two different yellows. Warn 7.3:1, ok 7.6:1,
+     info 7.7:1. The lines are decorative, like --line. */
+  --warn-bg: #fdf8e4;
+  --warn-line: #dfd6ad;
+  --warn-ink: #5f5117;
+  --ok-bg: #e9f4ed;
+  --ok-line: #a8cfba;
+  --ok-ink: #14563a;
+  --info-bg: #eceff1;
+  --info-line: #b9c2c8;
+  --info-ink: #414b53;
+
   --sp-1: 4px;
   --sp-2: 8px;
   --sp-3: 12px;
@@ -117,6 +131,15 @@ select,
   touch-action: manipulation;
 }
 
+/* One focus ring for the whole app. Before this only the search field and the
+   card overlay had one, so keyboard focus vanished the moment it entered the
+   planner or the shopping list. :where() keeps the specificity at zero, so the
+   handful of components that draw their own ring still win. */
+:where(button, a, input, textarea, select, summary, [tabindex]):focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
+}
+
 .rb-app {
   max-width: 640px;
   margin: 0 auto;
@@ -153,8 +176,8 @@ select,
 }
 
 .rb-account-email {
-  font-size: 0.85rem;
-  color: #666;
+  font-size: var(--fs-sm);
+  color: var(--txt-2);
   max-width: 40vw;
   overflow: hidden;
   text-overflow: ellipsis;
@@ -163,11 +186,15 @@ select,
 
 .rb-account-btn {
   min-height: 40px;
-  padding: 0 12px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background: #fff;
-  font-size: 0.9rem;
+  padding: 0 var(--sp-3);
+  /* #ddd was 1.36:1 on the header. These sit on --ground with no fill of their
+     own, so the border is the whole button. */
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--txt);
+  font: inherit;
+  font-size: var(--fs-sm);
   cursor: pointer;
 }
 
@@ -194,14 +221,17 @@ select,
 .rb-auth {
   display: flex;
   flex-direction: column;
-  gap: 8px;
+  gap: var(--sp-2);
   width: 100%;
   max-width: 320px;
   margin-left: auto;
-  padding: 12px;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  background: #fff;
+  padding: var(--sp-4);
+  /* A panel is identified by its shadow, so the outline stays soft — the fields
+     inside it are what own --line-strong. */
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
   text-align: left;
 }
 
@@ -209,21 +239,26 @@ select,
 .rb-auth input[type='password'] {
   min-height: 44px;
   width: 100%;
-  padding: 0 10px;
-  border: 1px solid #ccc;
-  border-radius: 8px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--txt);
+  font: inherit;
   /* 16px keeps iOS from zooming the page when the field takes focus. */
-  font-size: 16px;
+  font-size: var(--fs-input);
 }
 
 .rb-auth button[type='submit'] {
   min-height: 44px;
-  padding: 0 12px;
+  padding: 0 var(--sp-3);
   border: none;
-  border-radius: 8px;
-  background: #1c7c54;
+  border-radius: var(--r-sm);
+  background: var(--accent);
   color: #fff;
-  font-size: 0.95rem;
+  font: inherit;
+  font-size: var(--fs-base);
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -233,58 +268,65 @@ select,
 
 .rb-auth-tabs {
   display: flex;
-  gap: 4px;
+  gap: var(--sp-1);
 }
 
 .rb-auth-tab {
   flex: 1;
   min-height: 40px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background: #f6f6f6;
-  color: #555;
-  font-size: 0.9rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--txt-2);
+  font: inherit;
+  font-size: var(--fs-sm);
   cursor: pointer;
 }
 
+/* Same treatment as the main tabs: the accent is a rule under the label, not a
+   fill. Two segmented controls on one screen reading differently is worse than
+   either choice on its own. */
 .rb-auth-tab-active {
-  border-color: #1c7c54;
-  background: #eef8f1;
-  color: #1c7c54;
-  font-weight: 600;
+  background: var(--surface);
+  color: var(--accent-ink);
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 .rb-auth-title {
   margin: 0;
-  font-size: 0.95rem;
+  font-family: 'Clash Display', 'Satoshi', sans-serif;
+  font-size: var(--fs-md);
   font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .rb-auth-remember {
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: var(--sp-2);
   min-height: 44px;
-  font-size: 0.9rem;
-  color: #555;
+  font-size: var(--fs-sm);
+  color: var(--txt-2);
   cursor: pointer;
 }
 
 .rb-auth-remember input {
   width: 20px;
   height: 20px;
+  accent-color: var(--accent);
 }
 
 .rb-auth-links {
   margin: 0;
-  font-size: 0.8rem;
-  color: #666;
+  font-size: var(--fs-xs);
+  color: var(--txt-2);
 }
 
 .rb-account-status {
   margin: 0;
-  font-size: 0.8rem;
-  color: #666;
+  font-size: var(--fs-xs);
+  color: var(--txt-2);
   text-align: right;
 }
 
@@ -294,10 +336,11 @@ select,
 .rb-account-status-help {
   text-align: left;
   line-height: 1.45;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: #fdf6e3;
-  color: #5c4813;
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--warn-line);
+  border-radius: var(--r-sm);
+  background: var(--warn-bg);
+  color: var(--warn-ink);
 }
 
 .rb-account-link {
@@ -305,8 +348,9 @@ select,
   padding: 0;
   border: none;
   background: none;
-  color: #666;
-  font-size: 0.8rem;
+  color: var(--txt-2);
+  font: inherit;
+  font-size: var(--fs-xs);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -341,28 +385,41 @@ select,
   box-shadow: inset 0 -2px 0 var(--accent);
 }
 
+/* The import bar is the first thing on the first tab, so it gets the field
+   treatment the search box already had: --line-strong outline, --r radius, a
+   real surface fill rather than the transparent default. */
 .rb-import {
   display: flex;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .rb-import input {
   flex: 1;
-  min-height: 44px;
-  padding: 0 12px;
-  border: 1px solid #ccc;
-  border-radius: 8px;
-  font-size: 1rem;
+  min-width: 0;
+  min-height: 46px;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--txt);
+  font: inherit;
+  font-size: var(--fs-input);
+}
+
+.rb-import input::placeholder {
+  color: var(--txt-3);
 }
 
 .rb-import button {
-  min-height: 44px;
-  padding: 0 16px;
+  min-height: 46px;
+  padding: 0 var(--sp-4);
   border: none;
-  border-radius: 8px;
-  background: #1c7c54;
+  border-radius: var(--r);
+  background: var(--accent);
   color: #fff;
-  font-size: 1rem;
+  font: inherit;
+  font-size: var(--fs-base);
+  font-weight: 600;
   cursor: pointer;
 }
 
@@ -370,54 +427,68 @@ select,
   opacity: 0.6;
 }
 
+/* The two paste routes are alternatives to the bar above, not competitors to
+   it: outlined, one accent per screen region. */
 .rb-paste {
   display: block;
   width: 100%;
   min-height: 44px;
-  margin-top: 8px;
-  border: 1px solid #cfd8d2;
-  border-radius: 8px;
-  background: #fff;
-  color: #1c7c54;
-  font-size: 0.95rem;
+  margin-top: var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: var(--fs-base);
+  font-weight: 500;
   cursor: pointer;
 }
 
 .rb-paste-text {
-  margin-top: 8px;
+  margin-top: var(--sp-2);
 }
 
 .rb-paste-text textarea {
   width: 100%;
-  padding: 10px 12px;
-  border: 1px solid #ccc;
-  border-radius: 8px;
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--txt);
   font: inherit;
-  font-size: 1rem;
+  font-size: var(--fs-input);
+  line-height: 1.45;
   resize: vertical;
+}
+
+.rb-paste-text textarea::placeholder {
+  color: var(--txt-3);
 }
 
 .rb-paste-text-actions {
   display: flex;
   justify-content: flex-end;
-  gap: 8px;
-  margin-top: 8px;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
 }
 
 .rb-paste-text-actions button {
   min-height: 44px;
-  padding: 0 16px;
-  border: 1px solid #cfd8d2;
-  border-radius: 8px;
-  background: #fff;
-  font-size: 0.95rem;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--txt);
+  font: inherit;
+  font-size: var(--fs-base);
   cursor: pointer;
 }
 
 .rb-paste-text-actions button[type='submit'] {
-  border-color: #1c7c54;
-  background: #1c7c54;
+  border-color: var(--accent);
+  background: var(--accent);
   color: #fff;
+  font-weight: 600;
 }
 
 .rb-paste-text-actions button:disabled {
@@ -431,40 +502,42 @@ select,
 }
 
 .rb-error {
-  color: #b3261e;
-  margin: 12px 0 0;
+  color: var(--danger);
+  margin: var(--sp-3) 0 0;
+  font-size: var(--fs-base);
+  line-height: 1.45;
+}
+
+.rb-notice,
+.rb-saved,
+.rb-offline {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4);
+  border: 1px solid;
+  border-radius: var(--r-sm);
+  font-size: var(--fs-sm);
+  line-height: 1.4;
 }
 
 .rb-notice {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 12px 0 0;
-  padding: 10px 12px;
-  border: 1px solid #e0d9b8;
-  border-radius: 8px;
-  background: #fdf8e4;
-  color: #6b5b1f;
-  font-size: 0.9rem;
+  margin: var(--sp-3) 0 0;
+  border-color: var(--warn-line);
+  background: var(--warn-bg);
+  color: var(--warn-ink);
 }
 
 .rb-saved {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 12px 0 0;
-  padding: 10px 12px;
-  border: 1px solid #b7ddc6;
-  border-radius: 8px;
-  background: #eef8f1;
-  color: #1c7c54;
-  font-size: 0.9rem;
+  margin: var(--sp-3) 0 0;
+  border-color: var(--ok-line);
+  background: var(--ok-bg);
+  color: var(--ok-ink);
 }
 
 .rb-saved .rb-notice-close {
-  color: #1c7c54;
+  color: var(--ok-ink);
 }
 
 .rb-notice-close {
@@ -472,8 +545,9 @@ select,
   min-height: 44px;
   border: none;
   background: none;
-  color: #6b5b1f;
-  font-size: 0.85rem;
+  color: var(--warn-ink);
+  font: inherit;
+  font-size: var(--fs-xs);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -481,17 +555,10 @@ select,
 /* Deliberately quieter than .rb-error: nothing has gone wrong, the recipes on
    screen are real, they are just the copy saved on this device. */
 .rb-offline {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 12px;
-  margin: 0 0 12px;
-  padding: 10px 12px;
-  border: 1px solid #d9dee2;
-  border-radius: 8px;
-  background: #f1f4f6;
-  color: #4a5560;
-  font-size: 0.9rem;
+  margin: 0 0 var(--sp-3);
+  border-color: var(--info-line);
+  background: var(--info-bg);
+  color: var(--info-ink);
 }
 
 .rb-offline button {
@@ -499,8 +566,9 @@ select,
   min-height: 44px;
   border: none;
   background: none;
-  color: #4a5560;
-  font-size: 0.85rem;
+  color: var(--info-ink);
+  font: inherit;
+  font-size: var(--fs-xs);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -517,16 +585,16 @@ select,
 .rb-install {
   position: sticky;
   bottom: 0;
-  z-index: 5;
+  z-index: var(--z-sticky);
   display: flex;
   align-items: center;
-  gap: 12px;
-  margin-top: 24px;
-  padding: 12px 14px calc(12px + env(safe-area-inset-bottom));
-  border: 1px solid #b7ddc6;
-  border-radius: 12px;
-  background: #eef8f1;
-  box-shadow: 0 -2px 12px rgb(0 0 0 / 6%);
+  gap: var(--sp-3);
+  margin-top: var(--sp-6);
+  padding: var(--sp-3) var(--sp-4) calc(var(--sp-3) + env(safe-area-inset-bottom));
+  border: 1px solid var(--ok-line);
+  border-radius: var(--r);
+  background: var(--ok-bg);
+  box-shadow: 0 -2px 12px rgb(25 28 24 / 8%);
 }
 
 .rb-install-text {
@@ -535,32 +603,32 @@ select,
   gap: 2px;
   flex: 1;
   min-width: 0;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   line-height: 1.35;
-  color: #2f5c46;
+  color: var(--ok-ink);
 }
 
 .rb-install-text strong {
-  font-size: 0.9rem;
-  color: #1c7c54;
+  font-size: var(--fs-base);
 }
 
 .rb-install-actions {
   display: flex;
   flex-direction: column;
   align-items: stretch;
-  gap: 4px;
+  gap: var(--sp-1);
   flex-shrink: 0;
 }
 
 .rb-install-go {
   min-height: 44px;
-  padding: 0 16px;
+  padding: 0 var(--sp-4);
   border: none;
-  border-radius: 8px;
-  background: #1c7c54;
+  border-radius: var(--r-sm);
+  background: var(--accent);
   color: #fff;
-  font-size: 0.9rem;
+  font: inherit;
+  font-size: var(--fs-sm);
   font-weight: 600;
   cursor: pointer;
 }
@@ -569,16 +637,40 @@ select,
   min-height: 36px;
   border: none;
   background: none;
-  color: #4a6b59;
-  font-size: 0.8rem;
+  color: var(--ok-ink);
+  font: inherit;
+  font-size: var(--fs-xs);
   text-decoration: underline;
   cursor: pointer;
 }
 
+/* An empty state is a place in the app, not a stray grey sentence floating on
+   the ground. It gets the same surface and radius as the cards that will
+   eventually replace it, so the screen looks built rather than broken. The
+   dashed outline is what says "this fills in", and it is the one place a
+   dashed border earns its keep. */
 .rb-empty {
-  color: #666;
+  margin: var(--sp-6) 0;
+  padding: var(--sp-6) var(--sp-4);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--txt-2);
+  font-size: var(--fs-base);
+  line-height: 1.5;
   text-align: center;
-  margin-top: 48px;
+  text-wrap: pretty;
+}
+
+/* The lead line names the situation, the rest says what to do about it. */
+.rb-empty strong {
+  display: block;
+  margin-bottom: var(--sp-1);
+  font-family: 'Clash Display', 'Satoshi', sans-serif;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--txt);
 }
 
 .recipes-list {
@@ -725,8 +817,9 @@ select,
 .rb-danger {
   border: none;
   background: none;
-  color: #b3261e;
-  font-size: 0.9rem;
+  color: var(--danger);
+  font: inherit;
+  font-size: var(--fs-sm);
   cursor: pointer;
   min-height: 44px;
 }
@@ -806,18 +899,19 @@ select,
 .recipes-count {
   display: flex;
   align-items: center;
-  gap: 10px;
-  margin: 10px 0 0;
-  font-size: 0.85rem;
-  color: #666;
+  gap: var(--sp-3);
+  margin: var(--sp-3) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--txt-2);
 }
 
 .recipes-clear {
   border: none;
   background: none;
   padding: 0;
-  color: #1c7c54;
-  font-size: 0.85rem;
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: var(--fs-sm);
   text-decoration: underline;
   cursor: pointer;
 }
@@ -848,6 +942,19 @@ select,
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* Row-sized variant for the planner's picker. Same component, so the same three
+   states hold — a picker built on a bare <img> showed the browser's broken-image
+   icon on every expired Instagram URL, and nothing at all for a recipe with no
+   photo, which left the list ragged. */
+.recipes-thumb-sm {
+  width: 56px;
+  border-radius: var(--r-sm);
+}
+
+.recipes-thumb-sm .recipes-thumb-mono {
+  font-size: 1.1rem;
 }
 
 /* Fallback tile. Never a gap and never a broken-image icon: an origin that
@@ -910,7 +1017,7 @@ select,
 
 .recipes-fav-on {
   border-color: var(--star);
-  background: #fdf8e8;
+  background: var(--warn-bg);
   color: #6b5100;
 }
 
@@ -946,40 +1053,47 @@ select,
 
 .recipes-tag-remove {
   min-height: 30px;
-  padding: 0 10px;
-  border: 1px solid #d7e3dc;
-  font-size: 0.8rem;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-strong);
+  font: inherit;
+  font-size: var(--fs-xs);
   cursor: pointer;
 }
 
 .recipes-tag-add {
   display: flex;
-  gap: 6px;
+  gap: var(--sp-2);
 }
 
 .recipes-tag-add input {
   width: 130px;
-  min-height: 34px;
-  padding: 0 10px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  font-size: 1rem;
+  min-height: 38px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--txt);
+  font: inherit;
+  /* Still 16px: a tag field triggers the same iOS focus zoom as any other. */
+  font-size: var(--fs-input);
 }
 
 .recipes-tag-add button {
-  min-height: 34px;
-  padding: 0 12px;
-  border: 1px solid #1c7c54;
-  border-radius: 8px;
-  background: #fff;
-  color: #1c7c54;
-  font-size: 0.85rem;
+  min-height: 38px;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
   cursor: pointer;
 }
 
 .recipes-tag-add button:disabled {
-  border-color: #ddd;
-  color: #aaa;
+  border-color: var(--line-strong);
+  color: var(--txt-3);
   cursor: default;
 }
 
@@ -989,18 +1103,18 @@ select,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
 }
 
 .planner-nav {
   min-width: 44px;
   min-height: 44px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background: #fff;
-  color: #1c7c54;
-  font-size: 1.3rem;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--accent-ink);
+  font-size: var(--fs-lg);
   line-height: 1;
   cursor: pointer;
 }
@@ -1013,81 +1127,126 @@ select,
   text-align: center;
 }
 
+.planner-weeklabel strong {
+  font-family: 'Clash Display', 'Satoshi', sans-serif;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+}
+
 .planner-thisweek {
+  /* Full target height: it sits in a row whose other controls are already 44px,
+     so the row does not grow to pay for it. */
+  min-height: 44px;
+  padding: 0 var(--sp-2);
   border: none;
   background: none;
-  color: #1c7c54;
-  font-size: 0.8rem;
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: var(--fs-xs);
+  text-decoration: underline;
   cursor: pointer;
-  padding: 0;
 }
 
 .planner-day {
-  border: 1px solid #e6e6e6;
-  border-radius: 10px;
-  background: #fff;
-  padding: 10px 12px;
-  margin-bottom: 8px;
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+  padding: var(--sp-3) var(--sp-4);
+  margin-bottom: var(--sp-2);
 }
 
+/* Today is a rule and a label, not a tinted card. A green fill across a whole
+   day is the same full-bleed chrome the tabs gave up in 6a, and seven cards
+   deep in a scroll it was the loudest thing on a screen whose colour is
+   supposed to come from the food. Inset rather than a real left border so the
+   content does not shift 2px against the other six days. */
 .planner-day-today {
-  border-color: #1c7c54;
-  background: #f4fbf7;
+  box-shadow: inset 3px 0 0 var(--accent), var(--shadow-card);
+}
+
+.planner-today-pill {
+  padding: 2px var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-family: 'Satoshi', sans-serif;
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
 }
 
 .planner-day-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .planner-day-head h3 {
   margin: 0;
-  font-size: 0.95rem;
+  font-family: 'Clash Display', 'Satoshi', sans-serif;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
   display: flex;
   align-items: baseline;
-  gap: 8px;
+  gap: var(--sp-2);
 }
 
 .planner-day-date {
-  font-size: 0.8rem;
+  font-family: 'Satoshi', sans-serif;
+  font-size: var(--fs-xs);
   font-weight: 400;
-  color: #777;
+  /* #777 was 4.48:1 — under the line by a hair, at the size where it matters. */
+  color: var(--txt-2);
 }
 
+/* Outlined, not filled. Seven of these down the screen in solid accent would
+   read as seven primary actions competing with the import bar. */
 .planner-add {
   min-height: 44px;
-  padding: 0 14px;
-  border: 1px solid #1c7c54;
-  border-radius: 8px;
-  background: #fff;
-  color: #1c7c54;
-  font-size: 0.85rem;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
   cursor: pointer;
 }
 
+/* A flat inert fill rather than opacity. Dropping an outlined button to 40%
+   opacity puts its label under the contrast floor and still leaves it looking
+   like a button; taking the accent away and filling it grey is what actually
+   reads as "not yet". */
 .planner-add:disabled {
-  opacity: 0.4;
-  border-color: #ccc;
-  color: #999;
+  border-color: var(--line);
+  background: var(--surface-2);
+  color: var(--txt-3);
+  cursor: default;
 }
 
 .planner-day-empty {
-  margin: 6px 0 0;
-  font-size: 0.85rem;
-  color: #999;
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--txt-3);
 }
 
 .planner-slot {
-  margin-top: 8px;
+  margin-top: var(--sp-3);
 }
 
 .planner-slot-label {
-  font-size: 0.7rem;
+  font-size: var(--fs-2xs);
+  font-weight: 600;
   text-transform: uppercase;
   letter-spacing: 0.06em;
-  color: #7a8a80;
+  /* #7a8a80 was 3.6:1, and this is the smallest text on the screen. */
+  color: var(--txt-2);
 }
 
 .planner-entries {
@@ -1100,13 +1259,13 @@ select,
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
+  gap: var(--sp-2);
   min-height: 44px;
-  font-size: 0.9rem;
+  font-size: var(--fs-base);
 }
 
 .planner-entry-missing {
-  color: #999;
+  color: var(--txt-3);
   font-style: italic;
 }
 
@@ -1115,8 +1274,8 @@ select,
   min-height: 44px;
   border: none;
   background: none;
-  color: #b3261e;
-  font-size: 1.2rem;
+  color: var(--danger);
+  font-size: var(--fs-lg);
   line-height: 1;
   cursor: pointer;
 }
@@ -1127,11 +1286,13 @@ select,
 .planner-sheet-backdrop {
   position: fixed;
   inset: 0;
-  z-index: 20;
+  /* The sheet tier, not a bare 20 — the install prompt is sticky at --z-sticky
+     and would otherwise sit on top of a sheet covering the screen. */
+  z-index: var(--z-sheet);
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: rgba(0, 0, 0, 0.35);
+  background: rgb(25 28 24 / 45%);
 }
 
 .planner-sheet {
@@ -1140,62 +1301,79 @@ select,
   max-height: 80vh;
   max-height: 80dvh;
   overflow-y: auto;
-  background: #fff;
-  border-radius: 14px 14px 0 0;
-  padding: 12px 16px calc(16px + env(safe-area-inset-bottom));
+  background: var(--surface);
+  border-radius: var(--r-lg) var(--r-lg) 0 0;
+  padding: var(--sp-4) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom));
 }
 
 .planner-sheet-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 8px;
-  margin-bottom: 10px;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.planner-sheet-head strong {
+  font-family: 'Clash Display', 'Satoshi', sans-serif;
+  font-size: var(--fs-md);
+  font-weight: 600;
+  letter-spacing: -0.01em;
 }
 
 .planner-sheet-close {
   min-height: 44px;
+  padding: 0 var(--sp-2);
   border: none;
   background: none;
-  color: #1c7c54;
-  font-size: 0.9rem;
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: var(--fs-base);
   cursor: pointer;
 }
 
 .planner-slot-chips {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
-  margin-bottom: 10px;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
 }
 
+/* Same chip as the recipe filters, on purpose: a chip that selects a slot and a
+   chip that selects a tag do the same job, and two shapes for one interaction
+   is what makes an app feel assembled from parts. */
 .planner-chip {
-  min-height: 44px;
-  padding: 0 14px;
-  border: 1px solid #ddd;
-  border-radius: 999px;
-  background: #f6f6f6;
-  color: #555;
-  font-size: 0.85rem;
+  min-height: 40px;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--txt);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
   cursor: pointer;
 }
 
 .planner-chip-active {
-  border-color: #1c7c54;
-  background: #eef8f1;
-  color: #1c7c54;
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
   font-weight: 600;
 }
 
 .planner-search {
   width: 100%;
-  min-height: 44px;
-  padding: 0 10px;
-  margin-bottom: 8px;
-  border: 1px solid #ccc;
-  border-radius: 8px;
+  min-height: 46px;
+  padding: 0 var(--sp-4);
+  margin-bottom: var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--txt);
+  font: inherit;
   /* 16px keeps iOS from zooming the page when the field takes focus. */
-  font-size: 16px;
+  font-size: var(--fs-input);
 }
 
 .planner-picklist {
@@ -1207,82 +1385,106 @@ select,
 .planner-pick {
   display: flex;
   align-items: center;
-  gap: 10px;
+  gap: var(--sp-3);
   width: 100%;
-  min-height: 52px;
-  padding: 6px 4px;
+  min-height: 60px;
+  padding: var(--sp-2) var(--sp-1);
   border: none;
-  border-bottom: 1px solid #f0f0f0;
+  border-bottom: 1px solid var(--line);
   background: none;
-  font-size: 0.95rem;
+  color: var(--txt);
+  font: inherit;
+  font-size: var(--fs-base);
+  font-weight: 500;
   text-align: left;
   cursor: pointer;
 }
 
-.planner-pick img {
-  width: 40px;
-  height: 40px;
-  border-radius: 6px;
-  object-fit: cover;
-  flex-shrink: 0;
+.planner-pick-empty {
+  padding: var(--sp-4) var(--sp-1);
+  font-size: var(--fs-sm);
+  color: var(--txt-3);
 }
 
 /* --- Shopping list ------------------------------------------------------ */
 
 .shopping-progress {
-  font-size: 0.8rem;
-  color: #777;
+  font-size: var(--fs-xs);
+  color: var(--txt-2);
+  font-variant-numeric: tabular-nums;
 }
 
 .shopping-add {
   display: flex;
-  gap: 8px;
-  margin-bottom: 12px;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-4);
 }
 
 .shopping-add input {
   flex: 1;
-  min-height: 44px;
-  padding: 0 10px;
-  border: 1px solid #ccc;
-  border-radius: 8px;
+  min-width: 0;
+  min-height: 46px;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--txt);
+  font: inherit;
   /* 16px keeps iOS from zooming the page when the field takes focus. */
-  font-size: 16px;
+  font-size: var(--fs-input);
+}
+
+.shopping-add input::placeholder {
+  color: var(--txt-3);
 }
 
 .shopping-add button {
-  min-height: 44px;
-  padding: 0 16px;
+  min-height: 46px;
+  padding: 0 var(--sp-4);
   border: none;
-  border-radius: 8px;
-  background: #1c7c54;
+  border-radius: var(--r);
+  background: var(--accent);
   color: #fff;
-  font-size: 0.9rem;
+  font: inherit;
+  font-size: var(--fs-base);
+  font-weight: 600;
   cursor: pointer;
 }
 
 .shopping-add button:disabled {
-  opacity: 0.5;
+  opacity: 0.6;
 }
 
 .shopping-aisle {
-  margin-bottom: 16px;
+  margin-bottom: var(--sp-6);
 }
 
+/* The aisle name is a label for the card below it, so it sits outside the card
+   rather than inside a rule. It also loses the accent: a heading is not an
+   action, and green section heads all the way down a shopping list is exactly
+   the coloured chrome 6a moved away from. */
 .shopping-aisle h3 {
-  margin: 0 0 4px;
-  font-size: 0.72rem;
+  margin: 0 0 var(--sp-2);
+  padding: 0 var(--sp-1);
+  font-family: 'Satoshi', sans-serif;
+  font-size: var(--fs-2xs);
+  font-weight: 700;
   text-transform: uppercase;
   letter-spacing: 0.08em;
-  color: #1c7c54;
-  border-bottom: 1px solid #e3ede7;
-  padding-bottom: 4px;
+  color: var(--txt-2);
 }
 
-.shopping-aisle ul {
+/* Items sit on a card like the planner's days do. On bare --ground a column of
+   hairline-separated rows read as an unfinished screen next to the other two
+   tabs. Direct child only — the variant group's nested list keeps its rule. */
+.shopping-aisle > ul {
   list-style: none;
   margin: 0;
-  padding: 0;
+  padding: var(--sp-1) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
 }
 
 /* Variant group: chicken breast and chicken thigh under one "chicken" head.
@@ -1290,42 +1492,43 @@ select,
    look like a second aisle. */
 .shopping-group {
   list-style: none;
-  margin: 6px 0;
+  margin: var(--sp-2) 0;
 }
 
 .shopping-group-head {
   display: block;
-  font-size: 0.85rem;
+  font-size: var(--fs-sm);
   font-weight: 600;
   text-transform: capitalize;
-  color: #3c4a42;
+  color: var(--txt);
 }
 
 .shopping-group > ul {
   list-style: none;
   margin: 0;
-  padding: 0 0 0 10px;
-  border-left: 2px solid #e3ede7;
+  padding: 0 0 0 var(--sp-3);
+  border-left: 2px solid var(--line);
 }
 
 .shopping-item {
   display: flex;
   align-items: center;
-  gap: 4px;
-  border-bottom: 1px solid #f2f2f2;
+  gap: var(--sp-1);
+  border-bottom: 1px solid var(--line);
 }
 
-.shopping-group .shopping-item:last-child {
+.shopping-group .shopping-item:last-child,
+.shopping-aisle > ul > .shopping-item:last-child {
   border-bottom: none;
 }
 
 .shopping-item label {
   display: flex;
   align-items: flex-start;
-  gap: 10px;
+  gap: var(--sp-3);
   flex: 1;
   min-height: 44px;
-  padding: 8px 0;
+  padding: var(--sp-2) 0;
   cursor: pointer;
 }
 
@@ -1334,27 +1537,32 @@ select,
   height: 22px;
   margin-top: 1px;
   flex-shrink: 0;
-  accent-color: #1c7c54;
+  accent-color: var(--accent);
 }
 
 .shopping-item-text {
-  font-size: 0.95rem;
+  font-size: var(--fs-base);
   line-height: 1.35;
 }
 
 /* Which recipes wanted this, so a merged line stays traceable. */
 .shopping-item-from {
   display: block;
-  font-size: 0.75rem;
-  color: #999;
+  /* #999 was 2.85:1 on white, and this is 12px text in a shop under bad
+     lighting — the worst place in the app to have been failing contrast. */
+  font-size: var(--fs-2xs);
+  color: var(--txt-2);
 }
 
+/* Ticked lines stay legible. #aaa was 2.32:1: the strike-through already says
+   "done", so dropping the text below readable earned nothing. */
 .shopping-item-done .shopping-item-text {
-  color: #aaa;
+  color: var(--txt-3);
   text-decoration: line-through;
 }
 
 .shopping-item-done .shopping-item-from {
+  color: var(--txt-3);
   text-decoration: none;
 }
 
@@ -1365,14 +1573,14 @@ select,
   top: calc(env(safe-area-inset-top) - 44px);
   left: 0;
   right: 0;
-  z-index: 5;
+  z-index: var(--z-sticky);
   display: flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
+  gap: var(--sp-2);
   height: 44px;
-  font-size: 0.85rem;
-  color: #5a6b60;
+  font-size: var(--fs-sm);
+  color: var(--txt-2);
   pointer-events: none;
   opacity: 0;
 }
@@ -1390,8 +1598,8 @@ select,
 .rb-pull-spinner {
   width: 16px;
   height: 16px;
-  border: 2px solid #cfdcd4;
-  border-top-color: #1c7c54;
+  border: 2px solid var(--line);
+  border-top-color: var(--accent);
   border-radius: 50%;
 }
 

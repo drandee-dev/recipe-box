@@ -6,6 +6,7 @@
 // buttons on a phone screen, most of them empty most weeks.
 
 import { useEffect, useRef, useState } from 'react'
+import RecipeThumb from './RecipeThumb.jsx'
 import {
   SLOTS,
   dayName,
@@ -96,7 +97,9 @@ export default function Planner({
 
       {recipes.length === 0 && !loading && (
         <p className="rb-empty">
-          Save a recipe first, then you can plan it into a day.
+          <strong>Nothing to plan with yet</strong>
+          Save a recipe on the Recipes tab and it will show up here, ready to drop into
+          a day.
         </p>
       )}
 
@@ -113,6 +116,10 @@ export default function Planner({
               <h3>
                 {dayName(date)}
                 <span className="planner-day-date">{shortDate(date)}</span>
+                {/* The accent rule down the card's edge is decoration and
+                    assistive tech never sees it, so today is also said in
+                    words. */}
+                {isToday && <span className="planner-today-pill">Today</span>}
               </h3>
               <button
                 className="planner-add"
@@ -204,12 +211,18 @@ export default function Planner({
               {matches.map((r) => (
                 <li key={r.id}>
                   <button className="planner-pick" onClick={() => choose(r.id)}>
-                    {r.image_url && <img src={r.image_url} alt="" loading="lazy" />}
+                    {/* RecipeThumb rather than a bare <img>: these URLs expire
+                        and get hotlink-blocked exactly as often here as they do
+                        on a card, and a recipe with no photo used to leave the
+                        row with no tile at all. */}
+                    <RecipeThumb recipe={r} size="sm" />
                     <span>{r.title}</span>
                   </button>
                 </li>
               ))}
-              {matches.length === 0 && <li className="planner-day-empty">No recipe matches that.</li>}
+              {matches.length === 0 && (
+                <li className="planner-pick-empty">No recipe matches that.</li>
+              )}
             </ul>
           </div>
         </div>

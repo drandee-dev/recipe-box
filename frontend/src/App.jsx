@@ -653,10 +653,14 @@ export default function App() {
       {tab === 'recipes' && (
         <main className="rb-main">
           <form className="rb-import" onSubmit={handleImport}>
+            {/* Placeholder kept short enough to survive the field's real width
+                on a phone: the old one ended mid-word at "…TikTok, In", and the
+                social routes are already named by the button below it and by
+                the empty state. */}
             <input
               ref={inputRef}
               type="url"
-              placeholder="Paste a recipe URL (website, TikTok, Instagram)"
+              placeholder="Paste a recipe link"
               value={importUrl}
               onChange={(e) => setImportUrl(e.target.value)}
               onPaste={(e) => {

@@ -14,20 +14,27 @@ import { TagGlyph, glyphNameFor, monogramColor, monogramLetter } from '../lib/gl
 // `priority` marks the first couple of cards. Those load eagerly at high fetch
 // priority; everything below stays lazy. Lazy-loading the largest image in the
 // viewport is a measured regression, not a saving.
-export default function RecipeThumb({ recipe, priority = false }) {
+//
+// `size="sm"` is the row-sized variant used by the planner's picker. Same three
+// states, since a picker row has exactly the same problem a card does.
+const SIZES = { md: { w: 128, h: 96 }, sm: { w: 56, h: 42 } }
+
+export default function RecipeThumb({ recipe, priority = false, size = 'md' }) {
   const [failed, setFailed] = useState(false)
 
   const src = recipe.image_url
   const showPhoto = Boolean(src) && !failed
+  const box = SIZES[size] || SIZES.md
+  const cls = size === 'md' ? 'recipes-thumb' : `recipes-thumb recipes-thumb-${size}`
 
   if (showPhoto) {
     return (
-      <div className="recipes-thumb">
+      <div className={cls}>
         <img
           src={src}
           alt=""
-          width="128"
-          height="96"
+          width={box.w}
+          height={box.h}
           decoding="async"
           loading={priority ? 'eager' : 'lazy'}
           fetchPriority={priority ? 'high' : 'auto'}
@@ -45,7 +52,7 @@ export default function RecipeThumb({ recipe, priority = false }) {
   // meant to be extra information on the same tile rather than a different tile.
   const glyph = glyphNameFor(recipe.tags)
   return (
-    <div className="recipes-thumb">
+    <div className={cls}>
       <div
         className={
           glyph

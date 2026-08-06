@@ -119,8 +119,9 @@ export default function ShoppingList({
 
       {totalCount === 0 && (
         <p className="rb-empty">
-          Nothing planned for this week yet. Add meals on the Planner tab and their
-          ingredients show up here.
+          <strong>No list for this week</strong>
+          Add meals on the Planner tab and their ingredients gather here, merged and
+          sorted by aisle. You can also type anything you need into the box above.
         </p>
       )}
 

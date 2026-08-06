@@ -149,14 +149,16 @@ export default function RecipeList({
 
       {recipes.length > 0 && visible.length === 0 && (
         <p className="rb-empty">
-          Nothing matches that. Try fewer words, or clear the filters above.
+          <strong>Nothing matches that</strong>
+          Try fewer words, or clear the filters above.
         </p>
       )}
 
       {recipes.length === 0 && !loading && (
         <p className="rb-empty">
-          No recipes yet. Paste a recipe link above, or copy a post link in Instagram or TikTok
-          and tap Paste copied link.
+          <strong>The box is empty</strong>
+          Paste a recipe link above, or copy a post link in Instagram or TikTok and tap
+          Paste copied link.
         </p>
       )}
 
