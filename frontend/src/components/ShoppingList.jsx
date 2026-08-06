@@ -6,7 +6,7 @@
 
 import { useMemo, useState } from 'react'
 import { buildShoppingList, formatQuantity, formatSource, groupByAisle } from '../lib/ingredients.js'
-import { weekRangeLabel } from '../lib/dates.js'
+import { addDays, toISODate, weekRangeLabel } from '../lib/dates.js'
 
 function DerivedItem({ item, checked, onToggle }) {
   return (
@@ -48,16 +48,29 @@ export default function ShoppingList({
 }) {
   const [draft, setDraft] = useState('')
 
-  const derived = useMemo(() => buildShoppingList(plan, recipes), [plan, recipes])
+  // App fetches a week at a time, so these arrays are normally this week's rows
+  // already. Filtering anyway is what keeps last week's list off the screen when
+  // a week change couldn't be fetched — offline with no cached copy of the week
+  // being navigated to, the old rows are still in state. Planner never showed
+  // this because it buckets entries by exact date.
+  const week = toISODate(weekStart)
+  const weekEnd = toISODate(addDays(weekStart, 6))
+  const thisWeek = useMemo(
+    () => plan.filter((e) => e.plan_date >= week && e.plan_date <= weekEnd),
+    [plan, week, weekEnd],
+  )
+  const rows = useMemo(() => overlay.filter((r) => r.week_start === week), [overlay, week])
+
+  const derived = useMemo(() => buildShoppingList(thisWeek, recipes), [thisWeek, recipes])
   const groups = useMemo(() => groupByAisle(derived), [derived])
 
   const checkedKeys = useMemo(() => {
     const set = new Set()
-    for (const row of overlay) if (row.kind === 'check' && row.checked) set.add(row.name)
+    for (const row of rows) if (row.kind === 'check' && row.checked) set.add(row.name)
     return set
-  }, [overlay])
+  }, [rows])
 
-  const manual = overlay.filter((row) => row.kind === 'manual')
+  const manual = rows.filter((row) => row.kind === 'manual')
 
   const totalCount = derived.length + manual.length
   const doneCount =

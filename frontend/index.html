@@ -4,7 +4,17 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#1c7c54" />
+    <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+    <!-- Fallback for anything that won't take an SVG favicon. -->
+    <link rel="icon" href="/favicon-96.png" sizes="96x96" type="image/png" />
     <link rel="apple-touch-icon" href="/apple-touch-icon.png" />
+    <!-- Add to Home Screen is the only install path on iOS, and these are what
+         it reads: capable makes the launch standalone rather than a Safari tab,
+         title names the icon. status-bar-style stays "default" (opaque, content
+         below it) because the layout adds no top safe-area padding of its own. -->
+    <meta name="apple-mobile-web-app-capable" content="yes" />
+    <meta name="apple-mobile-web-app-status-bar-style" content="default" />
+    <meta name="apple-mobile-web-app-title" content="Recipes" />
     <title>Recipe Box</title>
   </head>
   <body>

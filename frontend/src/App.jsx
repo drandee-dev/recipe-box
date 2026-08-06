@@ -4,9 +4,11 @@ import { supabase, supabaseEnabled } from './lib/supabase.js'
 import { makeStore, migrateLocalRecipes } from './lib/store.js'
 import { makePlanStore, migrateLocalPlan } from './lib/plan.js'
 import { makeShoppingStore, migrateLocalShopping } from './lib/shopping.js'
+import { cacheKeys, clearCache, withMirror } from './lib/cache.js'
 import { addDays, startOfWeek, toISODate } from './lib/dates.js'
 import { setBusy } from './lib/pwa.js'
 import Account from './components/Account.jsx'
+import InstallPrompt from './components/InstallPrompt.jsx'
 import Planner from './components/Planner.jsx'
 import RecipeList from './components/RecipeList.jsx'
 import ShoppingList from './components/ShoppingList.jsx'
@@ -16,6 +18,21 @@ import ShoppingList from './components/ShoppingList.jsx'
 const SHARE_PARAMS = ['url', 'text', 'title']
 
 const canPaste = Boolean(navigator.clipboard?.readText)
+
+// A write that fails with no network surfaces the fetch layer's own wording
+// ("Failed to fetch", "Load failed" on Safari), which explains nothing. Real
+// errors pass through untouched.
+function writeError(err) {
+  if (!navigator.onLine) return "You're offline. That change didn't save."
+  return err.message
+}
+
+// Only reached when the offline mirror had nothing to fall back on, which for a
+// signed-in account means this device has never loaded the list.
+function readError(err) {
+  if (!navigator.onLine) return "You're offline, and nothing is saved on this device yet."
+  return err.message
+}
 
 // Pull-to-refresh gesture, in px of finger travel. PULL_RESIST damps the
 // indicator so a 140px drag reads as 70px of pull — matches the native feel.
@@ -58,6 +75,10 @@ export default function App() {
   const [query, setQuery] = useState('')
   const [activeTags, setActiveTags] = useState([])
   const [favoritesOnly, setFavoritesOnly] = useState(false)
+  // True when what's on screen came out of the offline mirror rather than the
+  // cloud. One flag for all three lists: they share a network, so in practice
+  // they fall back and recover together.
+  const [offline, setOffline] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [pull, setPull] = useState(0)
   // Mirrors of state the native touch listeners read: they bind once, so they
@@ -87,7 +108,11 @@ export default function App() {
       setSession(data.session)
       setAuthReady(true)
     })
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, s) => {
+    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+      // The mirror is keyed per user, so the next account can't read it anyway;
+      // dropping it on sign-out just avoids leaving one person's recipes in
+      // storage on a shared phone.
+      if (event === 'SIGNED_OUT') clearCache()
       setSession(s)
       setAuthReady(true)
     })
@@ -125,13 +150,16 @@ export default function App() {
     ;(async () => {
       try {
         if (userId) await migrateLocalRecipes(userId)
-        const list = await store.list()
+        const { rows, stale } = await withMirror(userId && cacheKeys.recipes(userId), () =>
+          store.list(),
+        )
         if (!cancelled) {
-          setRecipes(list)
+          setRecipes(rows)
+          setOffline(stale)
           setError('')
         }
       } catch (err) {
-        if (!cancelled) setError(err.message)
+        if (!cancelled) setError(readError(err))
       } finally {
         if (!cancelled) setLoading(false)
       }
@@ -145,16 +173,22 @@ export default function App() {
   // well as on sign-in. Recipes migrate before plan rows do: meal_plan.recipe_id
   // is a foreign key, and migrateLocalRecipes keeps the local ids, so the
   // references still resolve after the move.
+  //
+  // Both return { rows, stale } from the offline mirror rather than a bare
+  // array, so the mount effect and the resume refetch below share one code path
+  // for the fallback.
   const loadPlan = useCallback(async () => {
     const from = toISODate(weekStart)
     const to = toISODate(addDays(weekStart, 6))
-    return planStore.listWeek(from, to)
-  }, [planStore, weekStart])
+    const key = userId && cacheKeys.plan(userId, from)
+    return withMirror(key, () => planStore.listWeek(from, to))
+  }, [planStore, userId, weekStart])
 
-  const loadOverlay = useCallback(
-    async () => shoppingStore.listWeek(toISODate(weekStart)),
-    [shoppingStore, weekStart],
-  )
+  const loadOverlay = useCallback(async () => {
+    const week = toISODate(weekStart)
+    const key = userId && cacheKeys.shopping(userId, week)
+    return withMirror(key, () => shoppingStore.listWeek(week))
+  }, [shoppingStore, userId, weekStart])
 
   useEffect(() => {
     if (!authReady) return
@@ -165,13 +199,14 @@ export default function App() {
           await migrateLocalPlan(userId)
           await migrateLocalShopping(userId)
         }
-        const [planRows, overlayRows] = await Promise.all([loadPlan(), loadOverlay()])
+        const [planned, overlaid] = await Promise.all([loadPlan(), loadOverlay()])
         if (!cancelled) {
-          setPlan(planRows)
-          setOverlay(overlayRows)
+          setPlan(planned.rows)
+          setOverlay(overlaid.rows)
+          if (planned.stale || overlaid.stale) setOffline(true)
         }
       } catch (err) {
-        if (!cancelled) setError(err.message)
+        if (!cancelled) setError(readError(err))
       }
     })()
     return () => {
@@ -193,22 +228,23 @@ export default function App() {
       // Both, in parallel: the plan goes stale on resume for exactly the same
       // reason the recipe list does, and a plan row is meaningless without the
       // recipe it points at.
-      const [list, rows, overlayRows] = await Promise.all([
-        store.list(),
+      const [listed, planned, overlaid] = await Promise.all([
+        withMirror(userId && cacheKeys.recipes(userId), () => store.list()),
         loadPlan(),
         loadOverlay(),
       ])
-      setRecipes(list)
-      setPlan(rows)
-      setOverlay(overlayRows)
+      setRecipes(listed.rows)
+      setPlan(planned.rows)
+      setOverlay(overlaid.rows)
+      setOffline(listed.stale || planned.stale || overlaid.stale)
       setError('')
     } catch (err) {
-      setError(err.message)
+      setError(readError(err))
     } finally {
       refreshingRef.current = false
       setRefreshing(false)
     }
-  }, [store, loadPlan, loadOverlay])
+  }, [store, userId, loadPlan, loadOverlay])
 
   // Kept in a ref so the gesture and foreground listeners can bind once with
   // stable deps and still call the current closure.
@@ -239,13 +275,21 @@ export default function App() {
     function onPageShow(e) {
       if (e.persisted) refreshRef.current()
     }
+    // Coming back from the mirror. Without this the offline banner stays up,
+    // and the list stays behind, until something else happens to trigger a
+    // refetch — which in an app left open on the shopping tab may be nothing.
+    function onOnline() {
+      refreshRef.current()
+    }
     document.addEventListener('visibilitychange', onVisible)
     window.addEventListener('focus', onVisible)
     window.addEventListener('pageshow', onPageShow)
+    window.addEventListener('online', onOnline)
     return () => {
       document.removeEventListener('visibilitychange', onVisible)
       window.removeEventListener('focus', onVisible)
       window.removeEventListener('pageshow', onPageShow)
+      window.removeEventListener('online', onOnline)
     }
   }, [authReady])
 
@@ -347,7 +391,7 @@ export default function App() {
       setOpenId(saved.id)
       setSavedTitle(saved.title)
     } catch (err) {
-      setError(err.message)
+      setError(writeError(err))
     } finally {
       setImporting(false)
     }
@@ -388,7 +432,7 @@ export default function App() {
       setPasteOpen(false)
       setOpenId(saved.id)
     } catch (err) {
-      setError(err.message)
+      setError(writeError(err))
     } finally {
       setImporting(false)
     }
@@ -406,7 +450,7 @@ export default function App() {
       setRecipes((prev) => prev.map((r) => (r.id === recipe.id ? saved : r)))
     } catch (err) {
       setRecipes((prev) => prev.map((r) => (r.id === recipe.id ? recipe : r)))
-      setError(err.message)
+      setError(writeError(err))
     }
   }
 
@@ -439,7 +483,7 @@ export default function App() {
       setPlan((prev) => prev.filter((e) => e.recipe_id !== id))
       if (openId === id) setOpenId(null)
     } catch (err) {
-      setError(err.message)
+      setError(writeError(err))
     }
   }
 
@@ -464,7 +508,7 @@ export default function App() {
       setPlan((prev) => prev.map((e) => (e.id === entry.id ? saved : e)))
     } catch (err) {
       setPlan((prev) => prev.filter((e) => e.id !== entry.id))
-      setError(err.message)
+      setError(writeError(err))
     }
   }
 
@@ -472,7 +516,12 @@ export default function App() {
   // afterwards. There is no unique constraint to upsert against, and adding one
   // for a partial index is more trouble through PostgREST than just looking.
   async function handleToggleDerived(key, checked) {
-    const existing = overlay.find((row) => row.kind === 'check' && row.name === key)
+    // week_start is part of the match because state can still be holding another
+    // week's rows if a week change failed to fetch, and two weeks can easily
+    // have a line with the same merge key.
+    const existing = overlay.find(
+      (row) => row.kind === 'check' && row.name === key && row.week_start === toISODate(weekStart),
+    )
     const before = overlay
     if (existing) {
       setOverlay((prev) => prev.map((r) => (r.id === existing.id ? { ...r, checked } : r)))
@@ -480,7 +529,7 @@ export default function App() {
         await shoppingStore.update(existing.id, { checked })
       } catch (err) {
         setOverlay(before)
-        setError(err.message)
+        setError(writeError(err))
       }
       return
     }
@@ -498,7 +547,7 @@ export default function App() {
       setOverlay((prev) => prev.map((r) => (r.id === row.id ? saved : r)))
     } catch (err) {
       setOverlay(before)
-      setError(err.message)
+      setError(writeError(err))
     }
   }
 
@@ -509,7 +558,7 @@ export default function App() {
       await shoppingStore.update(id, { checked })
     } catch (err) {
       setOverlay(before)
-      setError(err.message)
+      setError(writeError(err))
     }
   }
 
@@ -528,7 +577,7 @@ export default function App() {
       setOverlay((prev) => prev.map((r) => (r.id === row.id ? saved : r)))
     } catch (err) {
       setOverlay((prev) => prev.filter((r) => r.id !== row.id))
-      setError(err.message)
+      setError(writeError(err))
     }
   }
 
@@ -539,7 +588,7 @@ export default function App() {
       await shoppingStore.remove(id)
     } catch (err) {
       setOverlay(before)
-      setError(err.message)
+      setError(writeError(err))
     }
   }
 
@@ -550,7 +599,7 @@ export default function App() {
       await planStore.remove(id)
     } catch (err) {
       if (removed) setPlan((prev) => [...prev, removed])
-      setError(err.message)
+      setError(writeError(err))
     }
   }
 
@@ -589,6 +638,17 @@ export default function App() {
           ))}
         </nav>
       </header>
+
+      {/* Outside the tab switch: being offline affects the plan and the list
+          equally, and the shopping tab is where it matters most. */}
+      {offline && (
+        <p className="rb-offline" role="status">
+          <span>Offline. Showing the copy saved on this device.</span>
+          <button type="button" onClick={() => refresh()} disabled={refreshing}>
+            {refreshing ? 'Retrying…' : 'Retry'}
+          </button>
+        </p>
+      )}
 
       {tab === 'recipes' && (
         <main className="rb-main">
@@ -717,6 +777,8 @@ export default function App() {
           {error && <p className="rb-error">{error}</p>}
         </main>
       )}
+
+      <InstallPrompt ready={recipes.length > 0} />
     </div>
   )
 }
