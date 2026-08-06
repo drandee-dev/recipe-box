@@ -12,8 +12,9 @@ import { supabase } from './supabase.js'
 const LOCAL_KEY = 'recipebox:recipes'
 
 const COLS =
-  'id,title,source_url,source_type,image_url,description,ingredients,instructions,' +
-  'prep_min,cook_min,total_min,servings,tags,favorite,created_at,updated_at'
+  'id,title,source_url,source_type,image_url,image_thumb_url,image_blur,description,' +
+  'ingredients,instructions,prep_min,cook_min,total_min,servings,tags,favorite,' +
+  'created_at,updated_at'
 
 const SOURCE_TYPES = new Set(['web', 'tiktok', 'instagram', 'manual'])
 
@@ -26,6 +27,11 @@ function toRow(recipe) {
     source_url: recipe.source_url || null,
     source_type: SOURCE_TYPES.has(recipe.source_type) ? recipe.source_type : 'manual',
     image_url: recipe.image_url || null,
+    // Every write goes through here, so a column left out of this shape is a
+    // column that a favourite toggle silently wipes. Phase 7's three travel
+    // together: the mirrored widths and the inline blur are one photo.
+    image_thumb_url: recipe.image_thumb_url || null,
+    image_blur: recipe.image_blur || null,
     description: recipe.description || null,
     ingredients: recipe.ingredients || [],
     instructions: recipe.instructions || [],
@@ -61,6 +67,17 @@ const localStore = {
   async remove(id) {
     localStorage.setItem(LOCAL_KEY, JSON.stringify(readLocal().filter((r) => r.id !== id)))
   },
+  // Unreachable in practice — mirroring needs a bucket, so it only runs signed
+  // in — but the two backends stay interchangeable, and a store method missing
+  // from one of them is how that stops being true.
+  async saveImage(id, columns) {
+    const recipes = readLocal()
+    const idx = recipes.findIndex((r) => r.id === id)
+    if (idx < 0) return null
+    recipes[idx] = { ...recipes[idx], ...columns }
+    localStorage.setItem(LOCAL_KEY, JSON.stringify(recipes))
+    return recipes[idx]
+  },
 }
 
 function supabaseStore(userId) {
@@ -83,9 +100,35 @@ function supabaseStore(userId) {
       if (error) throw new Error(error.message)
       return data
     },
+    // An update, not the save() upsert above, and that is the point: mirroring
+    // runs in the background seconds after a recipe appears, so the row it was
+    // handed is already out of date if the user starred it in the meantime.
+    // Writing three named columns can't undo an edit it never saw.
+    async saveImage(id, columns) {
+      const { data, error } = await supabase
+        .from('recipes')
+        .update({ ...columns, updated_at: new Date().toISOString() })
+        .eq('id', id)
+        .select(COLS)
+        .maybeSingle()
+      if (error) throw new Error(error.message)
+      return data
+    },
     async remove(id) {
       const { error } = await supabase.from('recipes').delete().eq('id', id)
       if (error) throw new Error(error.message)
+      // Storage has no foreign keys, so deleting the row leaves the photos
+      // behind. Nothing would ever read them again and nothing would ever
+      // remove them either, which on a free tier is a quota that fills up for
+      // no reason. Best effort: the row is already gone, and failing the whole
+      // delete over a leftover object would be the wrong trade.
+      try {
+        await supabase.storage
+          .from('recipe-images')
+          .remove([`${userId}/${id}-lg.jpg`, `${userId}/${id}-sm.jpg`])
+      } catch {
+        // Offline, or the objects were never there because the mirror failed.
+      }
     },
   }
 }

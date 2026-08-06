@@ -9,6 +9,9 @@ beautifulsoup4>=4.12
 # AI structuring (phase 3: caption/paste extraction)
 anthropic>=0.52
 
+# Image mirroring (phase 7: resize a saved photo before it goes in the bucket)
+pillow>=10.4
+
 # Auth + storage (phase 2: Supabase JWT verification, sync)
 pyjwt>=2.8
 supabase>=2.9

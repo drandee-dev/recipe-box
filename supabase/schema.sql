@@ -59,6 +59,34 @@ begin
   end if;
 end $$;
 
+-- Phase 7: the mirrored photo. image_url holds the 960px copy once we own the
+-- bytes (it still holds the origin's URL until then, which is what tells the
+-- backfill what is left to do), image_thumb_url the 320px one the card actually
+-- renders, and image_blur a ~20px JPEG inlined as a data URI so the image box
+-- has something in it while the photo loads.
+alter table recipes add column if not exists image_thumb_url text;
+alter table recipes add column if not exists image_blur text;
+
+-- Public read, because these are <img> sources: a signed URL would expire and
+-- put us back where we started, and the service worker's CacheFirst rule can
+-- only keep a plain one. The path is two UUIDs, so nothing is guessable.
+insert into storage.buckets (id, name, public)
+values ('recipe-images', 'recipe-images', true)
+on conflict (id) do update set public = true;
+
+-- Uploads come from the backend with the service role key, which bypasses RLS,
+-- so there is deliberately no insert policy: the client cannot write here.
+-- Delete is the client's job — a recipe deleted in the app removes its own two
+-- objects, and on the free tier orphans are the thing that eventually costs
+-- something. foldername(name)[1] is the user id the backend filed it under.
+drop policy if exists "own recipe images" on storage.objects;
+create policy "own recipe images" on storage.objects
+  for delete to authenticated
+  using (
+    bucket_id = 'recipe-images'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
 -- Phase 3: AI spend log. Written by the backend with the service role key, so
 -- RLS stays on with no policy — clients get nothing.
 create table if not exists ai_usage_events (

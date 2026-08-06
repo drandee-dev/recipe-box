@@ -1,15 +1,18 @@
 import { useState } from 'react'
 import { TagGlyph, glyphNameFor, monogramColor, monogramLetter } from '../lib/glyphs.jsx'
+import { thumbSources } from '../lib/images.js'
 
 // The image box for a recipe card.
 //
 // Three states, and the second one is why this is a component rather than an
-// <img> tag: photo, failed photo, no photo. These URLs point at whatever site the
-// recipe was saved from, so failure is normal — signed CDN URLs from Instagram
-// and TikTok expire, origins turn on hotlink protection, and a "200 OK" HTML
-// error page fires the same error event as a 404. When that happens we render the
-// fallback element instead of an img, which removes the broken-image icon
-// entirely rather than swapping one source for another.
+// <img> tag: photo, failed photo, no photo. Since phase 7 most photos are ours,
+// fetched at import and stored in our own bucket, so failure is rarer than it
+// was — but a recipe saved before the mirror ran, or one whose photo the mirror
+// could not fetch, still points at the origin. Those URLs go away: signed CDN
+// URLs from Instagram and TikTok expire, origins turn on hotlink protection, and
+// a "200 OK" HTML error page fires the same error event as a 404. When that
+// happens we render the fallback element instead of an img, which removes the
+// broken-image icon entirely rather than swapping one source for another.
 //
 // `priority` marks the first couple of cards. Those load eagerly at high fetch
 // priority; everything below stays lazy. Lazy-loading the largest image in the
@@ -22,16 +25,26 @@ const SIZES = { md: { w: 128, h: 96 }, sm: { w: 56, h: 42 } }
 export default function RecipeThumb({ recipe, priority = false, size = 'md' }) {
   const [failed, setFailed] = useState(false)
 
-  const src = recipe.image_url
-  const showPhoto = Boolean(src) && !failed
   const box = SIZES[size] || SIZES.md
+  const photo = thumbSources(recipe, box.w)
+  const showPhoto = Boolean(photo) && !failed
   const cls = size === 'md' ? 'recipes-thumb' : `recipes-thumb recipes-thumb-${size}`
 
   if (showPhoto) {
     return (
-      <div className={cls}>
+      <div
+        className={cls}
+        // A ~20px JPEG of the photo itself, inlined in the row. The box already
+        // held its space; this is so what it holds resembles the picture that is
+        // about to arrive rather than a flat grey rectangle. Only mirrored
+        // recipes have one, so this is undefined for the rest and the tinted
+        // background stays.
+        style={recipe.image_blur ? { backgroundImage: `url("${recipe.image_blur}")` } : undefined}
+      >
         <img
-          src={src}
+          src={photo.src}
+          srcSet={photo.srcSet}
+          sizes={photo.sizes}
           alt=""
           width={box.w}
           height={box.h}

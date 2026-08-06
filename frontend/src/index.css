@@ -955,6 +955,13 @@ textarea.field {
   overflow: hidden;
   border-radius: 11px;
   background: var(--surface-2);
+  /* Phase 7 sets background-image to a ~20px inline JPEG of the photo, so the
+     reserved box holds a blurred version of what is coming instead of a flat
+     tint. Sized and centred here rather than inline so the component only has to
+     supply the URL. No CSS filter: a 20px image blown up to 128 is already soft,
+     and a filter on the same element that clips the photo costs a layer. */
+  background-size: cover;
+  background-position: center;
 }
 
 .recipes-thumb img {

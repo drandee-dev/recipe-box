@@ -18,6 +18,9 @@ from bs4 import BeautifulSoup
 log = logging.getLogger("recipe.extract")
 
 MAX_BYTES = 3 * 1024 * 1024
+# Photos are allowed to be bigger than a page of HTML — a magazine site's hero
+# is routinely 3000px wide, which is the whole reason we resize before storing.
+MAX_IMAGE_BYTES = 8 * 1024 * 1024
 TIMEOUT = 10.0
 UA = "Mozilla/5.0 (compatible; RecipeBox/0.1; personal recipe saver)"
 
@@ -53,6 +56,31 @@ def fetch_html(url: str) -> str:
         if len(resp.content) > MAX_BYTES:
             raise ExtractError("page too large")
         return resp.text
+
+
+def fetch_bytes(url: str, max_bytes: int = MAX_IMAGE_BYTES) -> tuple[bytes, str]:
+    """Binary fetch behind the same SSRF guard, for image mirroring.
+
+    Streamed and cut off mid-download once the cap is passed, which fetch_html
+    does not do — it reads the whole body and checks the length afterwards. That
+    is fine against a 3 MB HTML cap and not fine here, where a hostile or merely
+    broken origin can keep sending bytes for as long as we keep reading them.
+    """
+    _assert_public_host(url)
+    headers = {"User-Agent": UA, "Accept": "image/*,*/*"}
+    with httpx.Client(timeout=TIMEOUT, follow_redirects=True, headers=headers) as client:
+        with client.stream("GET", url) as resp:
+            _assert_public_host(str(resp.url))
+            resp.raise_for_status()
+            content_type = resp.headers.get("content-type", "").split(";")[0].strip().lower()
+            chunks: list[bytes] = []
+            total = 0
+            for chunk in resp.iter_bytes():
+                total += len(chunk)
+                if total > max_bytes:
+                    raise ExtractError("file too large")
+                chunks.append(chunk)
+    return b"".join(chunks), content_type
 
 
 def _iso_duration_to_min(value) -> int | None:

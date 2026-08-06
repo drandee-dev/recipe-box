@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { extractRecipe, structureText } from './lib/api.js'
+import { extractRecipe, mirrorRecipeImage, structureText } from './lib/api.js'
 import { supabase, supabaseEnabled } from './lib/supabase.js'
 import { makeStore, migrateLocalRecipes } from './lib/store.js'
 import { makePlanStore, migrateLocalPlan } from './lib/plan.js'
 import { makeShoppingStore, migrateLocalShopping } from './lib/shopping.js'
 import { cacheKeys, clearCache, withMirror } from './lib/cache.js'
+import { MIRROR_CONCURRENCY, needsMirror } from './lib/images.js'
 import { addDays, startOfWeek, toISODate } from './lib/dates.js'
 import { setBusy } from './lib/pwa.js'
 import Account from './components/Account.jsx'
@@ -157,6 +158,65 @@ export default function App() {
   const planStore = useMemo(() => makePlanStore(userId), [userId])
   const shoppingStore = useMemo(() => makeShoppingStore(userId), [userId])
 
+  // Recipes this session has already handed to the mirror, successfully or not.
+  // Success needs it because the list re-renders and reloads constantly and the
+  // row won't say it's ours until the write lands. Failure needs it more: an
+  // Instagram URL that expired months ago fails the same way every time, and
+  // without this every resume would spend a serverless invocation rediscovering
+  // that. A reload clears it, which is the retry.
+  const mirrored = useRef(new Set())
+
+  // Phase 7. Fetch the photo while its URL still works and store it under our
+  // own account, so it stops mattering that the origin will take it away.
+  //
+  // Deliberately in the background rather than inside the import: it adds a
+  // download, a resize and two uploads, and making the capture flow wait on all
+  // of that to show a recipe that already has its photo would be paying at the
+  // one moment the app is being watched. The same function does the backfill,
+  // since a recipe saved last week and one saved ten seconds ago are the same
+  // problem.
+  const mirrorImages = useCallback(
+    async (list) => {
+      // No account means no bucket to write to, and offline means the attempt
+      // burns a slot in `mirrored` on a failure that says nothing about the URL.
+      if (!userId || !supabase || !navigator.onLine) return
+      const pending = list.filter((r) => needsMirror(r) && !mirrored.current.has(r.id))
+      if (pending.length === 0) return
+
+      const { data } = await supabase.auth.getSession()
+      const token = data?.session?.access_token
+      if (!token) return
+
+      // Claimed after the await, not before it: getSession can yield long enough
+      // for a resume refetch to arrive with the same recipes in it.
+      const queue = pending.filter((r) => !mirrored.current.has(r.id))
+      queue.forEach((r) => mirrored.current.add(r.id))
+
+      // A small pool rather than Promise.all: each item is a full download,
+      // resize and two uploads on the backend, and a box of forty recipes on
+      // first sign-in should not open forty serverless invocations at once.
+      async function worker() {
+        while (queue.length > 0) {
+          const recipe = queue.shift()
+          try {
+            const columns = await mirrorRecipeImage(recipe.id, recipe.image_url, token)
+            const saved = await store.saveImage(recipe.id, columns)
+            if (saved) setRecipes((prev) => prev.map((r) => (r.id === saved.id ? saved : r)))
+          } catch {
+            // Silent on purpose. The recipe keeps the origin's URL, which is
+            // exactly what it had before phase 7, and RecipeThumb already
+            // handles that URL dying. Telling someone their photo didn't get
+            // backed up asks them to do something about it, and there is
+            // nothing they can do.
+          }
+        }
+      }
+
+      await Promise.all(Array.from({ length: MIRROR_CONCURRENCY }, () => worker()))
+    },
+    [userId, store],
+  )
+
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [plan, setPlan] = useState([])
   // Checks and hand-added items. The list itself is derived from the plan.
@@ -178,6 +238,11 @@ export default function App() {
           setRecipes(rows)
           setOffline(stale)
           setError('')
+          // The backfill. Anything still pointing at an origin gets mirrored
+          // now, quietly, a couple at a time — including everything that just
+          // came up from localStorage on a first sign-in. Not awaited: the list
+          // is on screen and this is housekeeping behind it.
+          if (!stale) mirrorImages(rows)
         }
       } catch (err) {
         if (!cancelled) setError(readError(err))
@@ -188,7 +253,7 @@ export default function App() {
     return () => {
       cancelled = true
     }
-  }, [authReady, userId, store])
+  }, [authReady, userId, store, mirrorImages])
 
   // The plan is fetched a week at a time, so this re-runs on navigation as
   // well as on sign-in. Recipes migrate before plan rows do: meal_plan.recipe_id
@@ -260,6 +325,9 @@ export default function App() {
       setOverlay(overlaid.rows)
       setOffline(listed.stale || planned.stale || overlaid.stale)
       setError('')
+      // Catches anything captured on another device since this one last looked,
+      // and retries whatever was offline when the mirror last ran here.
+      if (!listed.stale) mirrorImages(listed.rows)
     } catch (err) {
       setError(readError(err))
     } finally {
@@ -277,7 +345,7 @@ export default function App() {
       refreshingRef.current = false
       setRefreshing(false)
     }
-  }, [store, userId, loadPlan, loadOverlay])
+  }, [store, userId, loadPlan, loadOverlay, mirrorImages])
 
   // Kept in a ref so the gesture and foreground listeners can bind once with
   // stable deps and still call the current closure.
@@ -457,6 +525,9 @@ export default function App() {
       setImportUrl('')
       setOpenId(saved.id)
       setSavedTitle(saved.title)
+      // Now, while the URL the origin just gave us is at its freshest. Not
+      // awaited: the recipe is already on screen with its photo showing.
+      mirrorImages([saved])
     } catch (err) {
       setError(writeError(err))
     } finally {
@@ -498,6 +569,7 @@ export default function App() {
       setPasteText('')
       setPasteOpen(false)
       setOpenId(saved.id)
+      mirrorImages([saved])
     } catch (err) {
       setError(writeError(err))
     } finally {
