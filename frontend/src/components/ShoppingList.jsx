@@ -88,7 +88,12 @@ export default function ShoppingList({
   return (
     <div className="shopping">
       <div className="planner-weeknav">
-        <button className="planner-nav" onClick={() => onWeekChange(-1)} aria-label="Previous week">
+        <button
+          type="button"
+          className="btn btn-secondary btn-icon"
+          onClick={() => onWeekChange(-1)}
+          aria-label="Previous week"
+        >
           ‹
         </button>
         <div className="planner-weeklabel">
@@ -99,20 +104,26 @@ export default function ShoppingList({
             </span>
           )}
         </div>
-        <button className="planner-nav" onClick={() => onWeekChange(1)} aria-label="Next week">
+        <button
+          type="button"
+          className="btn btn-secondary btn-icon"
+          onClick={() => onWeekChange(1)}
+          aria-label="Next week"
+        >
           ›
         </button>
       </div>
 
       <form className="shopping-add" onSubmit={submitManual}>
         <input
+          className="field"
           type="text"
           placeholder="Add an item (milk, coffee…)"
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           enterKeyHint="done"
         />
-        <button type="submit" disabled={!draft.trim()}>
+        <button type="submit" className="btn btn-primary btn-lg" disabled={!draft.trim()}>
           Add
         </button>
       </form>
@@ -177,7 +188,8 @@ export default function ShoppingList({
                   <span className="shopping-item-text">{row.name}</span>
                 </label>
                 <button
-                  className="planner-remove"
+                  type="button"
+                  className="btn btn-danger btn-icon"
                   onClick={() => onRemoveManual(row.id)}
                   aria-label={`Remove ${row.name}`}
                 >

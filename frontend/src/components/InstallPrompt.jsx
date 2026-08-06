@@ -98,11 +98,11 @@ export default function InstallPrompt({ ready }) {
       </div>
       <div className="rb-install-actions">
         {!ios && (
-          <button type="button" className="rb-install-go" onClick={install}>
+          <button type="button" className="btn btn-primary btn-sm" onClick={install}>
             Install
           </button>
         )}
-        <button type="button" className="rb-install-close" onClick={dismiss}>
+        <button type="button" className="btn btn-quiet rb-install-close" onClick={dismiss}>
           {ios ? 'Got it' : 'Not now'}
         </button>
       </div>

@@ -20,6 +20,7 @@
 //     autocomplete, but 1Password and Bitwarden score id/label heavily.
 
 import { useState } from 'react'
+import Sheet from './Sheet.jsx'
 import { supabase, supabaseEnabled } from '../lib/supabase.js'
 
 const REMEMBER_EMAIL_KEY = 'recipebox:rememberedEmail'
@@ -95,6 +96,12 @@ export default function Account({ session }) {
     setPassword('')
     setStatus('')
     setMode('signin')
+    setSettingPassword(false)
+  }
+
+  async function signOut() {
+    await supabase.auth.signOut()
+    close()
   }
 
   async function handlePasswordAuth(e) {
@@ -187,199 +194,261 @@ export default function Account({ session }) {
     }
   }
 
+  const address = session?.user?.email || ''
+  const statusClass =
+    status === RATE_LIMIT_HELP ? 'account-status account-status-help' : 'account-status'
+
+  // The header gets one control, and it is the size of a control rather than a
+  // row of them. Everything the account can do lives in the sheet behind it:
+  // a title bar is not a settings screen, and the old version proved it by
+  // truncating the address to 40vw to make room for two buttons.
+  const trigger = (
+    <button
+      type="button"
+      className={session ? 'rb-avatar rb-avatar-in' : 'rb-avatar'}
+      onClick={() => setOpen(true)}
+      aria-haspopup="dialog"
+      aria-label={session ? `Account — signed in as ${address}` : 'Sign in'}
+    >
+      {session ? (
+        <span aria-hidden="true">{address.trim().charAt(0).toUpperCase() || '?'}</span>
+      ) : (
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" aria-hidden="true">
+          <circle cx="12" cy="8" r="3.5" />
+          <path d="M4.5 20a7.5 7.5 0 0 1 15 0" strokeLinecap="round" />
+        </svg>
+      )}
+    </button>
+  )
+
   if (session) {
     return (
-      <div className="rb-account">
-        <div className="rb-account-row">
-          <span className="rb-account-email">{session.user.email}</span>
-          <button className="rb-account-btn" onClick={() => setSettingPassword((v) => !v)}>
-            {settingPassword ? 'Close' : 'Set password'}
-          </button>
-          <button className="rb-account-btn" onClick={() => supabase.auth.signOut()}>
-            Sign out
-          </button>
-        </div>
-        {settingPassword && (
-          <form className="rb-auth" onSubmit={savePassword}>
-            {/* Keychain files a password against a username. Without this it
-                prompts to overwrite some unrelated saved account.
+      <>
+        {trigger}
+        {open && (
+          <Sheet title="Account" closeLabel="Done" onClose={close}>
+            <p className="account-identity">
+              <span className="account-identity-label">Signed in as</span>
+              <span className="account-identity-email">{address}</span>
+            </p>
+            <p className="account-note">
+              Recipes, plans and lists sync to this account on every device you sign in
+              on.
+            </p>
 
-                Positioned off-screen rather than `hidden`: Safari skips hidden
-                and display:none inputs when it looks for the username to pair
-                with, so the attribute meant to fix the association was the
-                thing preventing it. It must stay rendered and focusable. */}
-            <input
-              {...EMAIL_FIELD}
-              id="rb-set-password-username"
-              autoComplete="username"
-              className="rb-offscreen"
-              tabIndex={-1}
-              value={session.user.email}
-              readOnly
-            />
-            <label className="rb-auth-label" htmlFor="rb-new-password">
-              New password ({MIN_PASSWORD}+ characters)
-            </label>
-            <input
-              id="rb-new-password"
-              type="password"
-              name="new-password"
-              autoComplete="new-password"
-              enterKeyHint="done"
-              placeholder={`New password (${MIN_PASSWORD}+ characters)`}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              autoFocus
-            />
-            <button type="submit" disabled={busy || password.length < MIN_PASSWORD}>
-              {busy ? 'Saving…' : 'Save password'}
-            </button>
-          </form>
-        )}
-        {status && (
-          <p
-            className={
-              status === RATE_LIMIT_HELP
-                ? 'rb-account-status rb-account-status-help'
-                : 'rb-account-status'
-            }
-          >
-            {status}
-          </p>
-        )}
-      </div>
-    )
-  }
+            {settingPassword ? (
+              <form className="account-form" onSubmit={savePassword}>
+                {/* Keychain files a password against a username. Without this it
+                    prompts to overwrite some unrelated saved account.
 
-  if (!open) {
-    return (
-      <div className="rb-account">
-        <div className="rb-account-row">
-          <button className="rb-account-btn" onClick={() => setOpen(true)}>
-            Sign in
-          </button>
-        </div>
-      </div>
+                    Positioned off-screen rather than `hidden`: Safari skips
+                    hidden and display:none inputs when it looks for the username
+                    to pair with, so the attribute meant to fix the association
+                    was the thing preventing it. It must stay rendered and
+                    focusable. */}
+                <input
+                  {...EMAIL_FIELD}
+                  id="rb-set-password-username"
+                  autoComplete="username"
+                  className="rb-offscreen"
+                  tabIndex={-1}
+                  value={address}
+                  readOnly
+                />
+                <label className="account-label" htmlFor="rb-new-password">
+                  New password ({MIN_PASSWORD}+ characters)
+                </label>
+                <input
+                  className="field"
+                  id="rb-new-password"
+                  type="password"
+                  name="new-password"
+                  autoComplete="new-password"
+                  enterKeyHint="done"
+                  placeholder={`At least ${MIN_PASSWORD} characters`}
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                  autoFocus
+                />
+                <div className="account-form-actions">
+                  <button
+                    type="button"
+                    className="btn btn-quiet"
+                    onClick={() => {
+                      setSettingPassword(false)
+                      setPassword('')
+                    }}
+                  >
+                    Cancel
+                  </button>
+                  <button
+                    type="submit"
+                    className="btn btn-primary"
+                    disabled={busy || password.length < MIN_PASSWORD}
+                  >
+                    {busy ? 'Saving…' : 'Save password'}
+                  </button>
+                </div>
+              </form>
+            ) : (
+              <div className="account-actions">
+                <button
+                  type="button"
+                  className="btn btn-secondary btn-block"
+                  onClick={() => setSettingPassword(true)}
+                >
+                  Set a password
+                </button>
+                {/* Worth saying plainly: an emailed link opens in Safari, and the
+                    installed app has its own storage, so a link can never sign
+                    you in there. A password is the only route that works. */}
+                <p className="account-hint">
+                  A password is the only way to sign in inside the installed app on
+                  iPhone, because an emailed link always opens in Safari.
+                </p>
+                <button type="button" className="btn btn-secondary btn-block" onClick={signOut}>
+                  Sign out
+                </button>
+              </div>
+            )}
+
+            {status && <p className={statusClass}>{status}</p>}
+          </Sheet>
+        )}
+      </>
     )
   }
 
   const emailOnly = mode === 'magic' || mode === 'forgot'
   const submit = mode === 'magic' ? sendLink : mode === 'forgot' ? sendPasswordReset : handlePasswordAuth
 
+  // Not "Sign in": the segmented control below already says that, and a title
+  // repeating the selected tab wastes the one line that could answer "why would
+  // I?". The single-purpose modes have no tabs, so they title themselves.
+  const sheetTitle =
+    mode === 'magic'
+      ? 'Email a sign-in link'
+      : mode === 'forgot'
+        ? 'Reset password'
+        : 'Sync your recipes'
+
   return (
-    <div className="rb-account">
-      <form className="rb-auth" onSubmit={submit}>
-        {!emailOnly && (
-          <div className="rb-auth-tabs">
-            <button
-              type="button"
-              className={mode === 'signin' ? 'rb-auth-tab rb-auth-tab-active' : 'rb-auth-tab'}
-              onClick={() => go('signin')}
-            >
-              Sign in
-            </button>
-            <button
-              type="button"
-              className={mode === 'signup' ? 'rb-auth-tab rb-auth-tab-active' : 'rb-auth-tab'}
-              onClick={() => go('signup')}
-            >
-              Create account
-            </button>
-          </div>
-        )}
-        {emailOnly && (
-          <p className="rb-auth-title">{mode === 'magic' ? 'Email a sign-in link' : 'Reset password'}</p>
-        )}
+    <>
+      {trigger}
+      {open && (
+        <Sheet title={sheetTitle} onClose={close}>
+          <form className="account-form" onSubmit={submit}>
+            {/* Segmented, not two equal buttons: these are two states of one
+                form, and the tabs say so. The magic-link and reset modes have
+                no second state, so they get the sheet title instead. */}
+            {!emailOnly && (
+              <div className="account-modes">
+                <button
+                  type="button"
+                  className={mode === 'signin' ? 'account-mode account-mode-on' : 'account-mode'}
+                  aria-pressed={mode === 'signin'}
+                  onClick={() => go('signin')}
+                >
+                  Sign in
+                </button>
+                <button
+                  type="button"
+                  className={mode === 'signup' ? 'account-mode account-mode-on' : 'account-mode'}
+                  aria-pressed={mode === 'signup'}
+                  onClick={() => go('signup')}
+                >
+                  Create account
+                </button>
+              </div>
+            )}
 
-        <label className="rb-auth-label" htmlFor="rb-email">
-          Email
-        </label>
-        <input
-          {...EMAIL_FIELD}
-          id="rb-email"
-          // "username" is what pairs an address with a password for Keychain;
-          // with no password field alongside it, plain "email" is right.
-          autoComplete={emailOnly ? 'email' : 'username'}
-          enterKeyHint={emailOnly ? 'send' : 'next'}
-          value={email}
-          onChange={(e) => setEmail(e.target.value)}
-        />
-
-        {!emailOnly && (
-          <>
-            <label className="rb-auth-label" htmlFor="rb-password">
-              Password
+            <label className="account-label" htmlFor="rb-email">
+              Email
             </label>
             <input
-              id="rb-password"
-              type="password"
-              name="password"
-              autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
-              enterKeyHint="go"
-              placeholder={mode === 'signup' ? `Choose a password (${MIN_PASSWORD}+)` : 'Password'}
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
+              {...EMAIL_FIELD}
+              className="field"
+              id="rb-email"
+              // "username" is what pairs an address with a password for Keychain;
+              // with no password field alongside it, plain "email" is right.
+              autoComplete={emailOnly ? 'email' : 'username'}
+              enterKeyHint={emailOnly ? 'send' : 'next'}
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
             />
-          </>
-        )}
 
-        {mode === 'signin' && (
-          <label className="rb-auth-remember">
-            <input
-              type="checkbox"
-              checked={rememberMe}
-              onChange={(e) => setRememberMe(e.target.checked)}
-            />
-            <span>Remember me</span>
-          </label>
-        )}
+            {!emailOnly && (
+              <>
+                <label className="account-label" htmlFor="rb-password">
+                  Password
+                </label>
+                <input
+                  className="field"
+                  id="rb-password"
+                  type="password"
+                  name="password"
+                  autoComplete={mode === 'signup' ? 'new-password' : 'current-password'}
+                  enterKeyHint="go"
+                  placeholder={
+                    mode === 'signup' ? `At least ${MIN_PASSWORD} characters` : 'Your password'
+                  }
+                  value={password}
+                  onChange={(e) => setPassword(e.target.value)}
+                />
+              </>
+            )}
 
-        <button type="submit" disabled={busy || !email.trim() || (!emailOnly && !password)}>
-          {busy
-            ? 'Working…'
-            : mode === 'signup'
-              ? 'Create account'
-              : mode === 'magic'
-                ? 'Send link'
-                : mode === 'forgot'
-                  ? 'Send reset link'
-                  : 'Sign in'}
-        </button>
+            {mode === 'signin' && (
+              <label className="account-remember">
+                <input
+                  type="checkbox"
+                  checked={rememberMe}
+                  onChange={(e) => setRememberMe(e.target.checked)}
+                />
+                <span>Remember my email on this device</span>
+              </label>
+            )}
 
-        {status && (
-          <p
-            className={
-              status === RATE_LIMIT_HELP
-                ? 'rb-account-status rb-account-status-help'
-                : 'rb-account-status'
-            }
-          >
-            {status}
-          </p>
-        )}
-
-        <p className="rb-auth-links">
-          {mode === 'signin' && (
-            <button type="button" className="rb-account-link" onClick={() => go('forgot')}>
-              Forgot password?
+            <button
+              type="submit"
+              className="btn btn-primary btn-block"
+              disabled={busy || !email.trim() || (!emailOnly && !password)}
+            >
+              {busy
+                ? 'Working…'
+                : mode === 'signup'
+                  ? 'Create account'
+                  : mode === 'magic'
+                    ? 'Send link'
+                    : mode === 'forgot'
+                      ? 'Send reset link'
+                      : 'Sign in'}
             </button>
-          )}
-          {mode === 'signin' && ' · '}
-          {emailOnly ? (
-            <button type="button" className="rb-account-link" onClick={() => go('signin')}>
-              Back to password sign-in
-            </button>
-          ) : (
-            <button type="button" className="rb-account-link" onClick={() => go('magic')}>
-              Use a magic link instead
-            </button>
-          )}
-          {' · '}
-          <button type="button" className="rb-account-link" onClick={close}>
-            Cancel
-          </button>
-        </p>
-      </form>
-    </div>
+
+            {status && <p className={statusClass}>{status}</p>}
+
+            {/* Alternate routes, below the action they are alternatives to.
+                Cancel is gone: the sheet's own Cancel and its backdrop both do
+                it, and a third way out was just noise. */}
+            <p className="account-links">
+              {mode === 'signin' && (
+                <button type="button" className="btn btn-quiet" onClick={() => go('forgot')}>
+                  Forgot password?
+                </button>
+              )}
+              {emailOnly ? (
+                <button type="button" className="btn btn-quiet" onClick={() => go('signin')}>
+                  Back to password sign-in
+                </button>
+              ) : (
+                <button type="button" className="btn btn-quiet" onClick={() => go('magic')}>
+                  Email me a link instead
+                </button>
+              )}
+            </p>
+          </form>
+        </Sheet>
+      )}
+    </>
   )
 }

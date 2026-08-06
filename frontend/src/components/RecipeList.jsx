@@ -139,7 +139,7 @@ export default function RecipeList({
           {filtering && (
             <p className="recipes-count">
               {visible.length} of {recipes.length}
-              <button type="button" className="recipes-clear" onClick={onClearFilters}>
+              <button type="button" className="btn btn-quiet" onClick={onClearFilters}>
                 Clear
               </button>
             </p>
@@ -272,13 +272,18 @@ export default function RecipeList({
                       {/* datalist gives the vocabulary as suggestions without
                           preventing anything else being typed. */}
                       <input
+                        className="field"
                         list="recipes-tag-options"
                         placeholder="Add a tag"
                         value={tagDraft}
                         onChange={(e) => setTagDraft(e.target.value)}
                         aria-label="Add a tag"
                       />
-                      <button type="submit" disabled={!normalizeTag(tagDraft)}>
+                      <button
+                        type="submit"
+                        className="btn btn-secondary btn-sm"
+                        disabled={!normalizeTag(tagDraft)}
+                      >
                         Add
                       </button>
                     </form>
@@ -301,11 +306,20 @@ export default function RecipeList({
                       {r.favorite ? 'Favorited' : 'Favorite'}
                     </button>
                     {r.source_url && (
-                      <a href={r.source_url} target="_blank" rel="noreferrer">
+                      <a
+                        className="btn btn-secondary btn-sm"
+                        href={r.source_url}
+                        target="_blank"
+                        rel="noreferrer"
+                      >
                         View source
                       </a>
                     )}
-                    <button className="rb-danger" onClick={() => onDelete(r.id)}>
+                    <button
+                      type="button"
+                      className="btn btn-danger btn-sm"
+                      onClick={() => onDelete(r.id)}
+                    >
                       Delete
                     </button>
                   </div>

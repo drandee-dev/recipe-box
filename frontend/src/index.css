@@ -140,6 +140,151 @@ select,
   outline-offset: 2px;
 }
 
+/* --- Buttons ---------------------------------------------------------------
+   Five roles, not twenty. Before this the app had about twenty button rules for
+   what were really five jobs — eight separate quiet/text buttons alone, three
+   definitions of the same solid accent, and heights running 30/34/36/38/40/44/
+   46/52px with no rule behind which was which. 6a and 6b tokenised the values
+   inside those rules but never merged the rules, so every button was correctly
+   coloured in its own private way.
+
+   The roles:
+     primary    one per region, the thing the region exists to do
+     secondary  everything else that needs to look pressable
+     quiet      text-only, for actions that must not compete (dismiss, clear)
+     danger     destructive, text-only so it never looks like the happy path
+     icon       square, for a glyph with an aria-label
+
+   There is deliberately no outlined-accent role. It existed for the paste
+   buttons and the planner's Add, and having two outline weights meant "how
+   important is this" got answered twice per screen. One filled accent per
+   region, everything else neutral, is both the industry default and what keeps
+   the accent meaning "action" rather than meaning "button".
+   ------------------------------------------------------------------------- */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  min-height: 44px;
+  padding: 0 var(--sp-4);
+  border: 1px solid transparent;
+  border-radius: var(--r-sm);
+  background: none;
+  font: inherit;
+  font-size: var(--fs-base);
+  font-weight: 500;
+  line-height: 1.2;
+  text-align: center;
+  /* An <a> carrying .btn is still a link and would keep the underline. Only
+     .btn-quiet wants one, and it asks for it. */
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.btn:disabled {
+  cursor: default;
+}
+
+.btn-primary {
+  background: var(--accent);
+  border-color: var(--accent);
+  color: #fff;
+  font-weight: 600;
+}
+
+.btn-primary:disabled {
+  opacity: 0.6;
+}
+
+.btn-secondary {
+  background: var(--surface);
+  border-color: var(--line-strong);
+  color: var(--txt);
+}
+
+/* A flat inert fill rather than opacity. Fading an outlined button to 40% puts
+   its own label under the contrast floor and still leaves it looking pressable;
+   taking the outline down to --line and filling it grey reads as "not yet". */
+.btn-secondary:disabled {
+  background: var(--surface-2);
+  border-color: var(--line);
+  color: var(--txt-3);
+}
+
+.btn-quiet {
+  padding: 0 var(--sp-2);
+  color: var(--txt-2);
+  font-size: var(--fs-sm);
+  text-decoration: underline;
+}
+
+.btn-quiet:disabled {
+  color: var(--txt-3);
+  text-decoration: none;
+}
+
+/* Text-only on purpose. A filled red button next to a filled green one turns
+   every screen into a choice between two equally loud options. */
+.btn-danger {
+  padding: 0 var(--sp-2);
+  color: var(--danger);
+  font-size: var(--fs-sm);
+}
+
+.btn-icon {
+  min-width: 44px;
+  padding: 0;
+  font-size: var(--fs-lg);
+  line-height: 1;
+}
+
+/* Sizes. lg matches the 46px fields it sits beside in a row; sm is for dense
+   inline spots like the tag editor. Nothing else gets a custom height. */
+.btn-lg {
+  min-height: 46px;
+}
+
+.btn-sm {
+  min-height: 38px;
+  padding: 0 var(--sp-3);
+  font-size: var(--fs-sm);
+}
+
+.btn-block {
+  display: flex;
+  width: 100%;
+}
+
+/* --- Fields ---------------------------------------------------------------
+   Same consolidation, same reason: six near-identical input rules differing
+   only in which border grey they had been given. A field's outline is its only
+   affordance, so --line-strong (3.42:1) is the boundary WCAG 1.4.11 asks for,
+   and --fs-input is a hard 16px because anything smaller makes iOS zoom the
+   page on focus and never zoom back.
+   ------------------------------------------------------------------------- */
+.field {
+  width: 100%;
+  min-height: 46px;
+  padding: 0 var(--sp-4);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--txt);
+  font: inherit;
+  font-size: var(--fs-input);
+}
+
+.field::placeholder {
+  color: var(--txt-3);
+}
+
+textarea.field {
+  padding: var(--sp-3) var(--sp-4);
+  line-height: 1.45;
+  resize: vertical;
+}
+
 .rb-app {
   max-width: 640px;
   margin: 0 auto;
@@ -162,51 +307,50 @@ select,
   gap: 12px;
 }
 
-.rb-account {
-  display: flex;
-  flex-direction: column;
-  align-items: flex-end;
-  gap: 4px;
-}
+/* --- Account ---------------------------------------------------------------
+   One control in the header, everything else in a sheet.
 
-.rb-account-row {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.rb-account-email {
-  font-size: var(--fs-sm);
-  color: var(--txt-2);
-  max-width: 40vw;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.rb-account-btn {
-  min-height: 40px;
-  padding: 0 var(--sp-3);
-  /* #ddd was 1.36:1 on the header. These sit on --ground with no fill of their
-     own, so the border is the whole button. */
+   The header used to carry the address truncated to 40vw plus a "Set password"
+   button that relabelled itself "Close" and a "Sign out" of equal weight — a
+   settings screen crammed into a title bar, with a 320px form dropping out of
+   it. A title bar has room for identity, not for administration.
+   ------------------------------------------------------------------------- */
+.rb-avatar {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 40px;
+  height: 40px;
+  padding: 0;
   border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
+  border-radius: var(--r-pill);
   background: var(--surface);
-  color: var(--txt);
+  color: var(--txt-2);
   font: inherit;
-  font-size: var(--fs-sm);
   cursor: pointer;
 }
 
-/* Tabs, two fields, a checkbox and links don't fit a header row on a phone, so
-   the open form stacks into a small panel under it instead. */
+.rb-avatar svg {
+  width: 22px;
+  height: 22px;
+}
+
+/* Signed in it carries the address's initial on the accent, which is the one
+   place a filled accent is identity rather than an action — and it is the only
+   way the header can say "you are signed in" in 40px. */
+.rb-avatar-in {
+  border-color: var(--accent);
+  background: var(--accent);
+  color: #fff;
+  font-family: 'Clash Display', 'Satoshi', sans-serif;
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
 /* Off-screen but still rendered, focusable and measurable. Safari's autofill
    skips display:none/hidden/visibility:hidden fields, so anything a password
-   manager has to see must be hidden this way instead. Also used for the field
-   labels, which stay invisible to keep the header compact while still giving
-   each input a real associated label. */
-.rb-offscreen,
-.rb-auth-label {
+   manager has to see must be hidden this way instead. */
+.rb-offscreen {
   position: absolute;
   width: 1px;
   height: 1px;
@@ -218,141 +362,147 @@ select,
   border: 0;
 }
 
-.rb-auth {
+.account-identity {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: 0 0 var(--sp-3);
+}
+
+.account-identity-label {
+  font-size: var(--fs-xs);
+  color: var(--txt-2);
+}
+
+/* No truncation. The address is the one fact this screen exists to show, and
+   there is a full sheet width to show it in — `overflow-wrap` because a long
+   address has no spaces to break at. */
+.account-identity-email {
+  font-family: 'Clash Display', 'Satoshi', sans-serif;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  overflow-wrap: anywhere;
+}
+
+.account-note,
+.account-hint {
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--txt-2);
+  line-height: 1.45;
+}
+
+.account-note {
+  margin-bottom: var(--sp-6);
+}
+
+.account-actions {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-3);
+}
+
+/* The hint belongs to the button above it, so it sits tight under it and the
+   gap before Sign out is what separates the two decisions. */
+.account-hint {
+  margin: calc(var(--sp-3) * -1 + var(--sp-1)) 0 var(--sp-4);
+  font-size: var(--fs-xs);
+}
+
+.account-form {
   display: flex;
   flex-direction: column;
   gap: var(--sp-2);
-  width: 100%;
-  max-width: 320px;
-  margin-left: auto;
-  padding: var(--sp-4);
-  /* A panel is identified by its shadow, so the outline stays soft — the fields
-     inside it are what own --line-strong. */
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
-  text-align: left;
 }
 
-.rb-auth input[type='email'],
-.rb-auth input[type='password'] {
-  min-height: 44px;
-  width: 100%;
-  padding: 0 var(--sp-3);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--txt);
-  font: inherit;
-  /* 16px keeps iOS from zooming the page when the field takes focus. */
-  font-size: var(--fs-input);
+/* Visible labels. They were clipped off-screen to keep the header compact, a
+   constraint the sheet removes — and a password field labelled only by its
+   placeholder loses its label the moment you start typing. */
+.account-label {
+  margin-top: var(--sp-2);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--txt-2);
 }
 
-.rb-auth button[type='submit'] {
-  min-height: 44px;
-  padding: 0 var(--sp-3);
-  border: none;
-  border-radius: var(--r-sm);
-  background: var(--accent);
-  color: #fff;
-  font: inherit;
-  font-size: var(--fs-base);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.rb-auth button[type='submit']:disabled {
-  opacity: 0.6;
-}
-
-.rb-auth-tabs {
+.account-modes {
   display: flex;
   gap: var(--sp-1);
-}
-
-.rb-auth-tab {
-  flex: 1;
-  min-height: 40px;
-  border: 1px solid var(--line-strong);
+  margin-bottom: var(--sp-2);
+  padding: var(--sp-1);
   border-radius: var(--r-sm);
   background: var(--surface-2);
+}
+
+.account-mode {
+  flex: 1;
+  min-height: 40px;
+  border: none;
+  border-radius: calc(var(--r-sm) - 2px);
+  background: none;
   color: var(--txt-2);
   font: inherit;
   font-size: var(--fs-sm);
+  font-weight: 500;
   cursor: pointer;
 }
 
-/* Same treatment as the main tabs: the accent is a rule under the label, not a
-   fill. Two segmented controls on one screen reading differently is worse than
-   either choice on its own. */
-.rb-auth-tab-active {
+/* A raised pill inside a recessed track — the standard segmented control, and
+   unlike the old bordered pair it can't be mistaken for two separate buttons
+   you might press in sequence. */
+.account-mode-on {
   background: var(--surface);
-  color: var(--accent-ink);
-  font-weight: 700;
-  box-shadow: inset 0 -2px 0 var(--accent);
-}
-
-.rb-auth-title {
-  margin: 0;
-  font-family: 'Clash Display', 'Satoshi', sans-serif;
-  font-size: var(--fs-md);
+  color: var(--txt);
   font-weight: 600;
-  letter-spacing: -0.01em;
+  box-shadow: 0 1px 2px rgb(25 28 24 / 8%);
 }
 
-.rb-auth-remember {
+.account-remember {
   display: flex;
   align-items: center;
-  gap: var(--sp-2);
+  gap: var(--sp-3);
   min-height: 44px;
   font-size: var(--fs-sm);
   color: var(--txt-2);
   cursor: pointer;
 }
 
-.rb-auth-remember input {
+.account-remember input {
   width: 20px;
   height: 20px;
+  flex-shrink: 0;
   accent-color: var(--accent);
 }
 
-.rb-auth-links {
-  margin: 0;
-  font-size: var(--fs-xs);
-  color: var(--txt-2);
+.account-form-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
 }
 
-.rb-account-status {
-  margin: 0;
-  font-size: var(--fs-xs);
-  color: var(--txt-2);
-  text-align: right;
+.account-links {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: var(--sp-4);
+  margin: var(--sp-2) 0 0;
 }
 
-/* Statuses are short one-liners, so they sit right-aligned with the rest of
-   the header. The rate-limit explanation is a paragraph, and right-aligned
-   ragged-left body text in a 320px column is hard to read. */
-.rb-account-status-help {
-  text-align: left;
+.account-status {
+  margin: var(--sp-2) 0 0;
+  font-size: var(--fs-sm);
   line-height: 1.45;
-  padding: var(--sp-2) var(--sp-3);
+  color: var(--txt-2);
+}
+
+.account-status-help {
+  padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--warn-line);
   border-radius: var(--r-sm);
   background: var(--warn-bg);
   color: var(--warn-ink);
-}
-
-.rb-account-link {
-  min-height: 44px;
-  padding: 0;
-  border: none;
-  background: none;
-  color: var(--txt-2);
-  font: inherit;
-  font-size: var(--fs-xs);
-  text-decoration: underline;
-  cursor: pointer;
 }
 
 .rb-tabs {
@@ -393,76 +543,20 @@ select,
   gap: var(--sp-2);
 }
 
-.rb-import input {
+.rb-import .field {
   flex: 1;
   min-width: 0;
-  min-height: 46px;
-  padding: 0 var(--sp-4);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r);
-  background: var(--surface);
-  color: var(--txt);
-  font: inherit;
-  font-size: var(--fs-input);
 }
 
-.rb-import input::placeholder {
-  color: var(--txt-3);
-}
-
-.rb-import button {
-  min-height: 46px;
-  padding: 0 var(--sp-4);
-  border: none;
-  border-radius: var(--r);
-  background: var(--accent);
-  color: #fff;
-  font: inherit;
-  font-size: var(--fs-base);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.rb-import button:disabled {
-  opacity: 0.6;
-}
-
-/* The two paste routes are alternatives to the bar above, not competitors to
-   it: outlined, one accent per screen region. */
-.rb-paste {
-  display: block;
-  width: 100%;
-  min-height: 44px;
+.rb-paste-routes {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
   margin-top: var(--sp-2);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--accent-ink);
-  font: inherit;
-  font-size: var(--fs-base);
-  font-weight: 500;
-  cursor: pointer;
 }
 
 .rb-paste-text {
   margin-top: var(--sp-2);
-}
-
-.rb-paste-text textarea {
-  width: 100%;
-  padding: var(--sp-3) var(--sp-4);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r);
-  background: var(--surface);
-  color: var(--txt);
-  font: inherit;
-  font-size: var(--fs-input);
-  line-height: 1.45;
-  resize: vertical;
-}
-
-.rb-paste-text textarea::placeholder {
-  color: var(--txt-3);
 }
 
 .rb-paste-text-actions {
@@ -470,29 +564,6 @@ select,
   justify-content: flex-end;
   gap: var(--sp-2);
   margin-top: var(--sp-2);
-}
-
-.rb-paste-text-actions button {
-  min-height: 44px;
-  padding: 0 var(--sp-4);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--txt);
-  font: inherit;
-  font-size: var(--fs-base);
-  cursor: pointer;
-}
-
-.rb-paste-text-actions button[type='submit'] {
-  border-color: var(--accent);
-  background: var(--accent);
-  color: #fff;
-  font-weight: 600;
-}
-
-.rb-paste-text-actions button:disabled {
-  opacity: 0.6;
 }
 
 .recipes-caption {
@@ -540,16 +611,11 @@ select,
   color: var(--ok-ink);
 }
 
+/* Quiet buttons inherit their notice's ink rather than --txt-2, so a dismiss
+   sits inside its banner instead of on top of it. */
 .rb-notice-close {
   flex-shrink: 0;
-  min-height: 44px;
-  border: none;
-  background: none;
   color: var(--warn-ink);
-  font: inherit;
-  font-size: var(--fs-xs);
-  text-decoration: underline;
-  cursor: pointer;
 }
 
 /* Deliberately quieter than .rb-error: nothing has gone wrong, the recipes on
@@ -561,16 +627,9 @@ select,
   color: var(--info-ink);
 }
 
-.rb-offline button {
+.rb-offline-retry {
   flex-shrink: 0;
-  min-height: 44px;
-  border: none;
-  background: none;
   color: var(--info-ink);
-  font: inherit;
-  font-size: var(--fs-xs);
-  text-decoration: underline;
-  cursor: pointer;
 }
 
 .rb-offline button:disabled {
@@ -620,28 +679,10 @@ select,
   flex-shrink: 0;
 }
 
-.rb-install-go {
-  min-height: 44px;
-  padding: 0 var(--sp-4);
-  border: none;
-  border-radius: var(--r-sm);
-  background: var(--accent);
-  color: #fff;
-  font: inherit;
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  cursor: pointer;
-}
-
 .rb-install-close {
   min-height: 36px;
-  border: none;
-  background: none;
   color: var(--ok-ink);
-  font: inherit;
   font-size: var(--fs-xs);
-  text-decoration: underline;
-  cursor: pointer;
 }
 
 /* An empty state is a place in the app, not a stray grey sentence floating on
@@ -810,18 +851,8 @@ select,
 }
 
 /* Delete sits apart from the two constructive actions beside it. */
-.recipes-actions .rb-danger {
+.recipes-actions .btn-danger {
   margin-left: auto;
-}
-
-.rb-danger {
-  border: none;
-  background: none;
-  color: var(--danger);
-  font: inherit;
-  font-size: var(--fs-sm);
-  cursor: pointer;
-  min-height: 44px;
 }
 
 /* --- Search, filters, tags ---------------------------------------------- */
@@ -899,21 +930,10 @@ select,
 .recipes-count {
   display: flex;
   align-items: center;
-  gap: var(--sp-3);
+  gap: var(--sp-2);
   margin: var(--sp-3) 0 0;
   font-size: var(--fs-sm);
   color: var(--txt-2);
-}
-
-.recipes-clear {
-  border: none;
-  background: none;
-  padding: 0;
-  color: var(--accent-ink);
-  font: inherit;
-  font-size: var(--fs-sm);
-  text-decoration: underline;
-  cursor: pointer;
 }
 
 /* --- The image box ---------------------------------------------------------
@@ -1065,36 +1085,14 @@ select,
   gap: var(--sp-2);
 }
 
-.recipes-tag-add input {
-  width: 130px;
+/* The one field that isn't full width: it sits inline among the tag chips. Its
+   font-size still comes from .field, because a 130px field triggers the same
+   iOS focus zoom as a wide one. */
+.recipes-tag-add .field {
+  width: 150px;
   min-height: 38px;
   padding: 0 var(--sp-3);
-  border: 1px solid var(--line-strong);
   border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--txt);
-  font: inherit;
-  /* Still 16px: a tag field triggers the same iOS focus zoom as any other. */
-  font-size: var(--fs-input);
-}
-
-.recipes-tag-add button {
-  min-height: 38px;
-  padding: 0 var(--sp-3);
-  border: 1px solid var(--accent);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--accent-ink);
-  font: inherit;
-  font-size: var(--fs-sm);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-.recipes-tag-add button:disabled {
-  border-color: var(--line-strong);
-  color: var(--txt-3);
-  cursor: default;
 }
 
 /* --- Planner ------------------------------------------------------------ */
@@ -1105,18 +1103,6 @@ select,
   justify-content: space-between;
   gap: var(--sp-2);
   margin-bottom: var(--sp-3);
-}
-
-.planner-nav {
-  min-width: 44px;
-  min-height: 44px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--accent-ink);
-  font-size: var(--fs-lg);
-  line-height: 1;
-  cursor: pointer;
 }
 
 .planner-weeklabel {
@@ -1132,20 +1118,6 @@ select,
   font-size: var(--fs-md);
   font-weight: 600;
   letter-spacing: -0.01em;
-}
-
-.planner-thisweek {
-  /* Full target height: it sits in a row whose other controls are already 44px,
-     so the row does not grow to pay for it. */
-  min-height: 44px;
-  padding: 0 var(--sp-2);
-  border: none;
-  background: none;
-  color: var(--accent-ink);
-  font: inherit;
-  font-size: var(--fs-xs);
-  text-decoration: underline;
-  cursor: pointer;
 }
 
 .planner-day {
@@ -1204,32 +1176,6 @@ select,
   color: var(--txt-2);
 }
 
-/* Outlined, not filled. Seven of these down the screen in solid accent would
-   read as seven primary actions competing with the import bar. */
-.planner-add {
-  min-height: 44px;
-  padding: 0 var(--sp-4);
-  border: 1px solid var(--accent);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--accent-ink);
-  font: inherit;
-  font-size: var(--fs-sm);
-  font-weight: 500;
-  cursor: pointer;
-}
-
-/* A flat inert fill rather than opacity. Dropping an outlined button to 40%
-   opacity puts its label under the contrast floor and still leaves it looking
-   like a button; taking the accent away and filling it grey is what actually
-   reads as "not yet". */
-.planner-add:disabled {
-  border-color: var(--line);
-  background: var(--surface-2);
-  color: var(--txt-3);
-  cursor: default;
-}
-
 .planner-day-empty {
   margin: var(--sp-2) 0 0;
   font-size: var(--fs-sm);
@@ -1269,21 +1215,13 @@ select,
   font-style: italic;
 }
 
-.planner-remove {
-  min-width: 44px;
-  min-height: 44px;
-  border: none;
-  background: none;
-  color: var(--danger);
-  font-size: var(--fs-lg);
-  line-height: 1;
-  cursor: pointer;
-}
 
-/* The picker is a bottom sheet: on a phone it sits under the thumb, and the
-   backdrop gives a large dismiss target without a visible close affordance
-   competing with the recipe list. */
-.planner-sheet-backdrop {
+/* --- Sheets ----------------------------------------------------------------
+   Everything modal is a bottom sheet: on a phone it sits under the thumb, and
+   the backdrop is a dismiss target the size of the screen. Behaviour lives in
+   components/Sheet.jsx — these are only its clothes.
+   ------------------------------------------------------------------------- */
+.sheet-backdrop {
   position: fixed;
   inset: 0;
   /* The sheet tier, not a bare 20 — the install prompt is sticky at --z-sticky
@@ -1293,43 +1231,73 @@ select,
   align-items: flex-end;
   justify-content: center;
   background: rgb(25 28 24 / 45%);
+  animation: sheet-fade 0.18s ease-out;
 }
 
-.planner-sheet {
+.sheet {
   width: 100%;
   max-width: 640px;
-  max-height: 80vh;
-  max-height: 80dvh;
+  max-height: 85vh;
+  max-height: 85dvh;
   overflow-y: auto;
+  /* The sheet scrolls, the page behind does not. Without this a flick that
+     starts inside a scrolled-to-top sheet is handed to the document. */
+  overscroll-behavior: contain;
   background: var(--surface);
   border-radius: var(--r-lg) var(--r-lg) 0 0;
-  padding: var(--sp-4) var(--sp-4) calc(var(--sp-4) + env(safe-area-inset-bottom));
+  padding: var(--sp-4) var(--sp-4) calc(var(--sp-6) + env(safe-area-inset-bottom));
+  animation: sheet-rise 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
-.planner-sheet-head {
+.sheet:focus {
+  outline: none;
+}
+
+/* A grab handle. It is decoration, but it is the decoration that tells someone
+   the panel came from the bottom edge and can go back there. */
+.sheet::before {
+  content: '';
+  display: block;
+  width: 36px;
+  height: 4px;
+  margin: 0 auto var(--sp-3);
+  border-radius: var(--r-pill);
+  background: var(--line);
+}
+
+.sheet-head {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-2);
-  margin-bottom: var(--sp-3);
+  margin-bottom: var(--sp-4);
 }
 
-.planner-sheet-head strong {
+.sheet-title {
+  margin: 0;
   font-family: 'Clash Display', 'Satoshi', sans-serif;
-  font-size: var(--fs-md);
+  font-size: var(--fs-lg);
   font-weight: 600;
   letter-spacing: -0.01em;
 }
 
-.planner-sheet-close {
-  min-height: 44px;
-  padding: 0 var(--sp-2);
-  border: none;
-  background: none;
-  color: var(--accent-ink);
-  font: inherit;
-  font-size: var(--fs-base);
-  cursor: pointer;
+@keyframes sheet-fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@keyframes sheet-rise {
+  from {
+    transform: translateY(12%);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .sheet-backdrop,
+  .sheet {
+    animation: none;
+  }
 }
 
 .planner-slot-chips {
@@ -1363,17 +1331,7 @@ select,
 }
 
 .planner-search {
-  width: 100%;
-  min-height: 46px;
-  padding: 0 var(--sp-4);
   margin-bottom: var(--sp-3);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r);
-  background: var(--surface);
-  color: var(--txt);
-  font: inherit;
-  /* 16px keeps iOS from zooming the page when the field takes focus. */
-  font-size: var(--fs-input);
 }
 
 .planner-picklist {
@@ -1420,39 +1378,9 @@ select,
   margin-bottom: var(--sp-4);
 }
 
-.shopping-add input {
+.shopping-add .field {
   flex: 1;
   min-width: 0;
-  min-height: 46px;
-  padding: 0 var(--sp-4);
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r);
-  background: var(--surface);
-  color: var(--txt);
-  font: inherit;
-  /* 16px keeps iOS from zooming the page when the field takes focus. */
-  font-size: var(--fs-input);
-}
-
-.shopping-add input::placeholder {
-  color: var(--txt-3);
-}
-
-.shopping-add button {
-  min-height: 46px;
-  padding: 0 var(--sp-4);
-  border: none;
-  border-radius: var(--r);
-  background: var(--accent);
-  color: #fff;
-  font: inherit;
-  font-size: var(--fs-base);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.shopping-add button:disabled {
-  opacity: 0.6;
 }
 
 .shopping-aisle {
@@ -1566,11 +1494,15 @@ select,
   text-decoration: none;
 }
 
-/* Pull-to-refresh indicator. Parked above the viewport and pushed down by an
-   inline transform tracking the finger, so it costs no layout while idle. */
+/* --- Pull to refresh -------------------------------------------------------
+   Parked above the viewport and pushed down by an inline transform tracking the
+   finger, so it costs no layout while idle. It rides in a pill rather than as
+   loose text on the page: the indicator arrives over whatever is at the top of
+   the list, and bare 13px text over a recipe photo is unreadable.
+   ------------------------------------------------------------------------- */
 .rb-pull {
   position: fixed;
-  top: calc(env(safe-area-inset-top) - 44px);
+  top: calc(env(safe-area-inset-top) - 46px);
   left: 0;
   right: 0;
   z-index: var(--z-sticky);
@@ -1578,29 +1510,61 @@ select,
   align-items: center;
   justify-content: center;
   gap: var(--sp-2);
-  height: 44px;
-  font-size: var(--fs-sm);
-  color: var(--txt-2);
+  height: 46px;
   pointer-events: none;
   opacity: 0;
+  /* Animate to rest on release. Suppressed mid-drag by .rb-pull-dragging —
+     transitioning while the finger is down makes the indicator lag the touch,
+     which is the single thing that makes a pull gesture feel broken. */
+  transition: transform 0.32s cubic-bezier(0.22, 1, 0.36, 1), opacity 0.2s ease;
 }
 
-.rb-pull-active {
-  opacity: 1;
+.rb-pull-dragging {
+  transition: none;
 }
 
-/* Only while the finger is off the screen — animating during the drag makes
-   the indicator lag behind the touch. */
-.rb-pull:not(.rb-pull-active) {
-  transition: transform 0.2s ease, opacity 0.2s ease;
+/* The pill is what actually shows; the 46px row is only its track. */
+.rb-pull-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.rb-pull-label {
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--txt-2);
 }
 
 .rb-pull-spinner {
-  width: 16px;
-  height: 16px;
+  width: 18px;
+  height: 18px;
+  flex-shrink: 0;
   border: 2px solid var(--line);
   border-top-color: var(--accent);
   border-radius: 50%;
+  /* No transition: the rotation is driven from the pull distance frame by
+     frame, so easing it would fight the finger. */
+}
+
+/* Crossing the trigger is the one moment worth marking, and it is marked by the
+   ring completing rather than by the label changing — you feel a gesture arm,
+   you don't read that it has. */
+.rb-pull-armed .rb-pull-spinner {
+  border-color: var(--accent);
+}
+
+.rb-pull-armed .rb-pull-label {
+  color: var(--accent-ink);
+}
+
+.rb-pull-armed .rb-pull-pill {
+  border-color: var(--accent);
 }
 
 .rb-pull-spinning {
@@ -1614,6 +1578,10 @@ select,
 }
 
 @media (prefers-reduced-motion: reduce) {
+  .rb-pull {
+    transition: none;
+  }
+
   .rb-pull-spinning {
     animation-duration: 2s;
   }

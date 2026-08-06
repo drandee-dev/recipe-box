@@ -5,8 +5,9 @@
 // per day rather than one per slot. Four slots across seven days would be 28
 // buttons on a phone screen, most of them empty most weeks.
 
-import { useEffect, useRef, useState } from 'react'
+import { useState } from 'react'
 import RecipeThumb from './RecipeThumb.jsx'
+import Sheet from './Sheet.jsx'
 import {
   SLOTS,
   dayName,
@@ -37,7 +38,6 @@ export default function Planner({
   const [picking, setPicking] = useState(null)
   const [slot, setSlot] = useState('dinner')
   const [query, setQuery] = useState('')
-  const closeRef = useRef(null)
 
   const today = new Date()
   const days = weekDays(weekStart)
@@ -45,18 +45,7 @@ export default function Planner({
 
   const byId = new Map(recipes.map((r) => [r.id, r]))
 
-  // Escape closes the picker, and focus moves into it on open so the sheet is
-  // reachable without a pointer.
-  useEffect(() => {
-    if (!picking) return
-    closeRef.current?.focus()
-    function onKey(e) {
-      if (e.key === 'Escape') setPicking(null)
-    }
-    document.addEventListener('keydown', onKey)
-    return () => document.removeEventListener('keydown', onKey)
-  }, [picking])
-
+  // Escape, focus and the backdrop are Sheet's job now, not this component's.
   function openPicker(date) {
     setQuery('')
     setSlot('dinner')
@@ -76,7 +65,8 @@ export default function Planner({
     <div className="planner">
       <div className="planner-weeknav">
         <button
-          className="planner-nav"
+          type="button"
+          className="btn btn-secondary btn-icon"
           onClick={() => onWeekChange(-1)}
           aria-label="Previous week"
         >
@@ -85,12 +75,17 @@ export default function Planner({
         <div className="planner-weeklabel">
           <strong>{weekRangeLabel(weekStart)}</strong>
           {!viewingThisWeek && (
-            <button className="planner-thisweek" onClick={() => onWeekChange(0)}>
+            <button type="button" className="btn btn-quiet" onClick={() => onWeekChange(0)}>
               This week
             </button>
           )}
         </div>
-        <button className="planner-nav" onClick={() => onWeekChange(1)} aria-label="Next week">
+        <button
+          type="button"
+          className="btn btn-secondary btn-icon"
+          onClick={() => onWeekChange(1)}
+          aria-label="Next week"
+        >
           ›
         </button>
       </div>
@@ -122,7 +117,8 @@ export default function Planner({
                 {isToday && <span className="planner-today-pill">Today</span>}
               </h3>
               <button
-                className="planner-add"
+                type="button"
+                className="btn btn-secondary btn-sm"
                 onClick={() => openPicker(date)}
                 disabled={recipes.length === 0}
                 aria-label={`Add a meal to ${dayName(date)}`}
@@ -151,7 +147,8 @@ export default function Planner({
                               {recipe ? recipe.title : 'Recipe no longer saved'}
                             </span>
                             <button
-                              className="planner-remove"
+                              type="button"
+                              className="btn btn-danger btn-icon"
                               onClick={() => onUnassign(entry.id)}
                               aria-label={`Remove ${recipe ? recipe.title : 'this meal'} from ${dayName(date)}`}
                             >
@@ -169,63 +166,48 @@ export default function Planner({
       })}
 
       {picking && (
-        <div className="planner-sheet-backdrop" onClick={() => setPicking(null)}>
-          <div
-            className="planner-sheet"
-            role="dialog"
-            aria-modal="true"
-            aria-label={`Add a meal to ${picking.dayLabel}`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            <div className="planner-sheet-head">
-              <strong>{picking.dayLabel}</strong>
-              <button ref={closeRef} className="planner-sheet-close" onClick={() => setPicking(null)}>
-                Cancel
+        <Sheet title={picking.dayLabel} onClose={() => setPicking(null)}>
+          <div className="planner-slot-chips">
+            {SLOTS.map((s) => (
+              <button
+                key={s}
+                className={s === slot ? 'planner-chip planner-chip-active' : 'planner-chip'}
+                onClick={() => setSlot(s)}
+                aria-pressed={s === slot}
+              >
+                {SLOT_LABELS[s]}
               </button>
-            </div>
-
-            <div className="planner-slot-chips">
-              {SLOTS.map((s) => (
-                <button
-                  key={s}
-                  className={s === slot ? 'planner-chip planner-chip-active' : 'planner-chip'}
-                  onClick={() => setSlot(s)}
-                  aria-pressed={s === slot}
-                >
-                  {SLOT_LABELS[s]}
-                </button>
-              ))}
-            </div>
-
-            {recipes.length > 6 && (
-              <input
-                className="planner-search"
-                type="search"
-                placeholder="Search saved recipes"
-                value={query}
-                onChange={(e) => setQuery(e.target.value)}
-              />
-            )}
-
-            <ul className="planner-picklist">
-              {matches.map((r) => (
-                <li key={r.id}>
-                  <button className="planner-pick" onClick={() => choose(r.id)}>
-                    {/* RecipeThumb rather than a bare <img>: these URLs expire
-                        and get hotlink-blocked exactly as often here as they do
-                        on a card, and a recipe with no photo used to leave the
-                        row with no tile at all. */}
-                    <RecipeThumb recipe={r} size="sm" />
-                    <span>{r.title}</span>
-                  </button>
-                </li>
-              ))}
-              {matches.length === 0 && (
-                <li className="planner-pick-empty">No recipe matches that.</li>
-              )}
-            </ul>
+            ))}
           </div>
-        </div>
+
+          {recipes.length > 6 && (
+            <input
+              className="field planner-search"
+              type="search"
+              placeholder="Search saved recipes"
+              value={query}
+              onChange={(e) => setQuery(e.target.value)}
+            />
+          )}
+
+          <ul className="planner-picklist">
+            {matches.map((r) => (
+              <li key={r.id}>
+                <button className="planner-pick" onClick={() => choose(r.id)}>
+                  {/* RecipeThumb rather than a bare <img>: these URLs expire and
+                      get hotlink-blocked exactly as often here as they do on a
+                      card, and a recipe with no photo used to leave the row with
+                      no tile at all. */}
+                  <RecipeThumb recipe={r} size="sm" />
+                  <span>{r.title}</span>
+                </button>
+              </li>
+            ))}
+            {matches.length === 0 && (
+              <li className="planner-pick-empty">No recipe matches that.</li>
+            )}
+          </ul>
+        </Sheet>
       )}
     </div>
   )

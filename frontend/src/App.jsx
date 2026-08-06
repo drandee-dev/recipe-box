@@ -34,11 +34,29 @@ function readError(err) {
   return err.message
 }
 
-// Pull-to-refresh gesture, in px of finger travel. PULL_RESIST damps the
-// indicator so a 140px drag reads as 70px of pull — matches the native feel.
-const PULL_THRESHOLD = 70
-const PULL_MAX = 110
-const PULL_RESIST = 0.5
+// Pull-to-refresh tuning.
+//
+// The indicator follows the finger through a damped curve rather than a fixed
+// multiplier into a hard clamp. `distance = MAX * (1 - e^(-travel / DAMP))` is
+// asymptotic: the first pixels track the finger almost exactly (initial slope
+// is MAX/DAMP, here 1.02), it stiffens as you go, and it can never reach MAX,
+// so there is no wall to hit. The old version moved at a flat 0.5 and then
+// stopped dead at 110px, which is the part that felt mechanical.
+//
+// SLOP is finger travel spent before the gesture takes the touch at all, and it
+// is subtracted afterwards so nothing jumps at the moment of capture. Without
+// it, one stray pixel of downward movement at the top of the list committed to
+// a pull.
+const PULL_SLOP = 8
+const PULL_TRIGGER = 64
+const PULL_MAX = 90
+const PULL_DAMP = 88
+// Minimum time the spinner stays up once a pull has armed it. See refresh().
+const PULL_MIN_SPIN = 550
+
+function pullDistance(travel) {
+  return PULL_MAX * (1 - Math.exp(-travel / PULL_DAMP))
+}
 
 function readShare() {
   const params = new URLSearchParams(window.location.search)
@@ -81,6 +99,9 @@ export default function App() {
   const [offline, setOffline] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
   const [pull, setPull] = useState(0)
+  // Separate from `pull` so the indicator can animate to rest on release while
+  // tracking the finger exactly during the drag.
+  const [dragging, setDragging] = useState(false)
   // Mirrors of state the native touch listeners read: they bind once, so they
   // would otherwise see the values from first render forever.
   const pullRef = useRef(0)
@@ -220,10 +241,11 @@ export default function App() {
   // never appears. Skipped mid-import: that flow has already prepended the new
   // recipe optimistically, and a list fetched before the write landed would
   // wipe it back out.
-  const refresh = useCallback(async () => {
+  const refresh = useCallback(async (opts) => {
     if (importingRef.current || refreshingRef.current) return
     refreshingRef.current = true
     setRefreshing(true)
+    const startedAt = Date.now()
     try {
       // Both, in parallel: the plan goes stale on resume for exactly the same
       // reason the recipe list does, and a plan row is meaningless without the
@@ -241,6 +263,17 @@ export default function App() {
     } catch (err) {
       setError(readError(err))
     } finally {
+      // Signed out the store is localStorage, so this whole function can finish
+      // inside a single frame. A pull that triggered one flashed the indicator
+      // out of existence and read as though the gesture had done nothing, which
+      // is worse than it being slow. Hold the spinner long enough to be seen —
+      // only for the gesture, since nobody is watching the resume-time refresh.
+      if (opts?.gesture) {
+        const elapsed = Date.now() - startedAt
+        if (elapsed < PULL_MIN_SPIN) {
+          await new Promise((resolve) => setTimeout(resolve, PULL_MIN_SPIN - elapsed))
+        }
+      }
       refreshingRef.current = false
       setRefreshing(false)
     }
@@ -298,41 +331,75 @@ export default function App() {
   // and iOS rubber-bands the page instead of showing the pull.
   useEffect(() => {
     let startY = null
+    // 'watching' means a touch began somewhere a pull could start from but has
+    // not travelled far enough to be one yet; 'pulling' means it has, and from
+    // then on the gesture owns the touch. Splitting them is what lets a normal
+    // scroll or a tap survive an imprecise finger.
+    let watching = false
     let pulling = false
 
     function reset() {
+      watching = false
       pulling = false
       startY = null
       pullRef.current = 0
       setPull(0)
+      setDragging(false)
     }
 
     function onStart(e) {
       if (e.touches.length !== 1 || window.scrollY > 0) return
+      // A sheet covers the page and scrolls on its own. Dragging inside one
+      // must not pull the list hidden behind it.
+      if (document.querySelector('.sheet-backdrop')) return
       startY = e.touches[0].clientY
-      pulling = true
+      watching = true
+      pulling = false
     }
 
     function onMove(e) {
-      if (!pulling || startY === null) return
-      const delta = e.touches[0].clientY - startY
-      // Upward drag, or the page scrolled under us: hand the touch back so it
-      // behaves as an ordinary scroll.
-      if (delta <= 0 || window.scrollY > 0) {
+      if (!watching || startY === null) return
+      // A second finger means a pinch or a two-finger scroll, neither of which
+      // is this gesture.
+      if (e.touches.length !== 1) {
         reset()
         return
       }
+      const travel = e.touches[0].clientY - startY
+      // Upward drag, or the page scrolled under us: hand the touch back so it
+      // behaves as an ordinary scroll.
+      if (travel <= 0 || window.scrollY > 0) {
+        reset()
+        return
+      }
+      if (!pulling) {
+        if (travel < PULL_SLOP) return
+        pulling = true
+        setDragging(true)
+      }
       e.preventDefault()
-      const distance = Math.min(PULL_MAX, delta * PULL_RESIST)
+      const distance = pullDistance(travel - PULL_SLOP)
       pullRef.current = distance
       setPull(distance)
     }
 
     function onEnd() {
-      if (!pulling) return
+      if (!pulling) {
+        reset()
+        return
+      }
       const distance = pullRef.current
-      reset()
-      if (distance >= PULL_THRESHOLD) refreshRef.current()
+      // Not a full reset: dragging goes false so the indicator animates to its
+      // resting place, and pull goes to 0 so that place is either the parked
+      // position (refreshing) or off-screen. Resetting the transform without
+      // releasing the drag flag is what made the old one snap.
+      watching = false
+      pulling = false
+      startY = null
+      pullRef.current = 0
+      setDragging(false)
+      setPull(0)
+      if (distance >= PULL_TRIGGER) refreshRef.current({ gesture: true })
     }
 
     document.addEventListener('touchstart', onStart, { passive: true })
@@ -604,21 +671,48 @@ export default function App() {
   }
 
   const pullActive = pull > 0 || refreshing
+  // How far through the gesture the finger is, 0 to 1. Everything the indicator
+  // does is driven off this rather than off a set of thresholds, so the
+  // feedback is continuous and the arming moment is something you watch arrive
+  // instead of something you read.
+  const pullProgress = refreshing ? 1 : Math.min(1, pull / PULL_TRIGGER)
+  const armed = pullProgress >= 1
+  const pullClass = [
+    'rb-pull',
+    pullActive && 'rb-pull-active',
+    dragging && 'rb-pull-dragging',
+    armed && !refreshing && 'rb-pull-armed',
+  ]
+    .filter(Boolean)
+    .join(' ')
 
   return (
     <div className="rb-app">
       <div
-        className={pullActive ? 'rb-pull rb-pull-active' : 'rb-pull'}
-        style={{ transform: `translateY(${refreshing ? PULL_THRESHOLD : pull}px)` }}
+        className={pullClass}
+        style={{
+          transform: `translate3d(0, ${refreshing ? PULL_TRIGGER : pull}px, 0)`,
+          opacity: refreshing ? 1 : Math.min(1, pullProgress * 1.4),
+        }}
         aria-hidden={!pullActive}
       >
-        <span className={refreshing ? 'rb-pull-spinner rb-pull-spinning' : 'rb-pull-spinner'} />
-        <span className="rb-pull-label">
-          {refreshing
-            ? 'Refreshing…'
-            : pull >= PULL_THRESHOLD
-              ? 'Release to refresh'
-              : 'Pull to refresh'}
+        <span className="rb-pull-pill">
+          <span
+            className={refreshing ? 'rb-pull-spinner rb-pull-spinning' : 'rb-pull-spinner'}
+            // Sweeping the ring round as the finger travels is what makes the
+            // gesture feel attached to the indicator rather than merely followed
+            // by it; at full sweep it has visibly become the spinner it becomes.
+            style={
+              refreshing
+                ? undefined
+                : {
+                    transform: `rotate(${pullProgress * 270}deg) scale(${0.7 + pullProgress * 0.3})`,
+                  }
+            }
+          />
+          <span className="rb-pull-label">
+            {refreshing ? 'Refreshing…' : armed ? 'Release to refresh' : 'Pull to refresh'}
+          </span>
         </span>
       </div>
       <header className="rb-header">
@@ -627,10 +721,15 @@ export default function App() {
           <Account session={session} />
         </div>
         <nav className="rb-tabs">
+          {/* aria-current is what tells a screen reader which of the three is
+              showing. Without it the active tab was a purely visual state and
+              the nav read as three identical buttons. */}
           {['recipes', 'planner', 'shopping'].map((t) => (
             <button
               key={t}
+              type="button"
               className={tab === t ? 'rb-tab rb-tab-active' : 'rb-tab'}
+              aria-current={tab === t ? 'page' : undefined}
               onClick={() => setTab(t)}
             >
               {t[0].toUpperCase() + t.slice(1)}
@@ -644,7 +743,12 @@ export default function App() {
       {offline && (
         <p className="rb-offline" role="status">
           <span>Offline. Showing the copy saved on this device.</span>
-          <button type="button" onClick={() => refresh()} disabled={refreshing}>
+          <button
+            type="button"
+            className="btn btn-quiet rb-offline-retry"
+            onClick={() => refresh()}
+            disabled={refreshing}
+          >
             {refreshing ? 'Retrying…' : 'Retry'}
           </button>
         </p>
@@ -659,6 +763,7 @@ export default function App() {
                 the empty state. */}
             <input
               ref={inputRef}
+              className="field"
               type="url"
               placeholder="Paste a recipe link"
               value={importUrl}
@@ -674,18 +779,32 @@ export default function App() {
                 }
               }}
             />
-            <button type="submit" disabled={importing}>
+            <button type="submit" className="btn btn-primary btn-lg" disabled={importing}>
               {importing ? 'Importing…' : 'Import'}
             </button>
           </form>
-          {canPaste && (
-            <button type="button" className="rb-paste" onClick={pasteLink}>
-              Paste copied link
-            </button>
-          )}
-          {pasteOpen ? (
+          {/* Alternatives to the bar above, so secondary. One filled accent per
+              region is what keeps the accent meaning "the thing to press". */}
+          <div className="rb-paste-routes">
+            {canPaste && (
+              <button type="button" className="btn btn-secondary btn-block" onClick={pasteLink}>
+                Paste copied link
+              </button>
+            )}
+            {!pasteOpen && (
+              <button
+                type="button"
+                className="btn btn-secondary btn-block"
+                onClick={() => setPasteOpen(true)}
+              >
+                Paste recipe text
+              </button>
+            )}
+          </div>
+          {pasteOpen && (
             <form className="rb-paste-text" onSubmit={handlePasteText}>
               <textarea
+                className="field"
                 rows={6}
                 placeholder="Paste a recipe here — ingredients, steps, a caption, anything."
                 value={pasteText}
@@ -693,18 +812,18 @@ export default function App() {
                 autoFocus
               />
               <div className="rb-paste-text-actions">
-                <button type="button" onClick={() => setPasteOpen(false)}>
+                <button type="button" className="btn btn-quiet" onClick={() => setPasteOpen(false)}>
                   Cancel
                 </button>
-                <button type="submit" disabled={importing || pasteText.trim().length < 20}>
+                <button
+                  type="submit"
+                  className="btn btn-primary"
+                  disabled={importing || pasteText.trim().length < 20}
+                >
                   {importing ? 'Reading…' : 'Save recipe'}
                 </button>
               </div>
             </form>
-          ) : (
-            <button type="button" className="rb-paste" onClick={() => setPasteOpen(true)}>
-              Paste recipe text
-            </button>
           )}
           {fromShare && importing && (
             <p className="rb-notice">Saving the shared link…</p>
@@ -716,7 +835,7 @@ export default function App() {
                 {fromShare && ' You can close this tab.'}
                 {supabaseEnabled && !userId && ' Sign in to sync it to your other devices.'}
               </span>
-              <button className="rb-notice-close" onClick={() => setSavedTitle('')}>
+              <button type="button" className="btn btn-quiet rb-notice-close" onClick={() => setSavedTitle('')}>
                 Dismiss
               </button>
             </p>
@@ -724,7 +843,7 @@ export default function App() {
           {shareNotice && (
             <p className="rb-notice">
               A share arrived without a link in it. Copy the post link and paste it above.
-              <button className="rb-notice-close" onClick={() => setShareNotice(false)}>
+              <button type="button" className="btn btn-quiet rb-notice-close" onClick={() => setShareNotice(false)}>
                 Dismiss
               </button>
             </p>
