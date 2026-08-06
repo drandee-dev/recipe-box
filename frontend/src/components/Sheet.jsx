@@ -25,6 +25,19 @@ export default function Sheet({ title, onClose, children, closeLabel = 'Cancel' 
   const sheetRef = useRef(null)
   const headingId = useRef(`sheet-title-${Math.random().toString(36).slice(2, 9)}`)
 
+  // onClose goes through a ref so the effect below can keep empty deps, and it
+  // has to stay that way. The effect used to list [onClose], and every caller
+  // passes a freshly created closure on each render — so any state change while
+  // a sheet was open tore the effect down and set it up again, and the teardown
+  // ends by returning focus to the opener. Typing one letter in the sign-in form
+  // therefore yanked focus out of the field and onto the avatar button, which on
+  // iOS dismisses the keyboard and reads as the sheet having closed. The body
+  // scroll lock was flickering off and on for the same reason.
+  const onCloseRef = useRef(onClose)
+  useEffect(() => {
+    onCloseRef.current = onClose
+  })
+
   useEffect(() => {
     // Whatever had focus when the sheet opened gets it back when it closes.
     // Without this, dismissing the picker drops focus to <body> and the next Tab
@@ -46,7 +59,7 @@ export default function Sheet({ title, onClose, children, closeLabel = 'Cancel' 
     function onKey(e) {
       if (e.key === 'Escape') {
         e.stopPropagation()
-        onClose()
+        onCloseRef.current()
         return
       }
       if (e.key !== 'Tab') return
@@ -72,7 +85,8 @@ export default function Sheet({ title, onClose, children, closeLabel = 'Cancel' 
       if (sheetCount === 0) document.body.style.overflow = previousOverflow
       if (opener instanceof HTMLElement && document.contains(opener)) opener.focus()
     }
-  }, [onClose])
+    // Mount and unmount only. See the onCloseRef note above before adding a dep.
+  }, [])
 
   return (
     <div className="sheet-backdrop" onClick={onClose}>

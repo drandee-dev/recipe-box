@@ -4,6 +4,13 @@ Captions are untrusted third-party text, so they are wrapped in <user_input>
 tags and the system prompt carries injection defense. The response is
 constrained by a JSON schema (structured outputs), so no fence-stripping or
 best-effort parsing is needed — the model cannot return prose.
+
+Output is normalized to English on purpose, including each ingredient's `raw`
+line. TikTok's oEmbed hands back the creator's original caption, never the
+auto-translation shown in the app, and everything downstream of here reads
+English: unit and aisle matching in lib/ingredients.js, the tag vocabulary
+below, and search. A `raw` kept verbatim in Spanish parses to nothing and
+lands in the shopping list unmerged.
 """
 
 import json
@@ -42,9 +49,20 @@ Extract only what the text actually states. Do not invent ingredients, quantitie
 or steps that are not there. If the text does not contain an actual recipe, set
 has_recipe to false and leave the other fields empty.
 
-For each ingredient, keep the original line verbatim in `raw`. Fill `item`, `qty`,
-and `unit` only when they are unambiguous; use null otherwise. Times are whole
-minutes.
+Write the recipe in English no matter what language the input is in: the title, the
+description, every instruction and every ingredient line. A caption a viewer read
+through an app's auto-translation arrives here untranslated, so translating is your
+job and not something that already happened upstream.
+
+Translate the wording only. Amounts stay exactly as the source gave them, in the
+source's own units, because a quiet conversion error is only discovered halfway
+through cooking. Where a dish or ingredient has no ordinary English name, keep the
+original name and put a short English gloss after it in parentheses.
+
+For each ingredient, `raw` is the complete line as it should be shown to the user:
+the source's own line when the source is already English, otherwise your English
+rendering of it. Fill `item`, `qty`, and `unit` only when they are unambiguous; use
+null otherwise. Times are whole minutes.
 
 Tags come from a fixed list, enforced by the schema. Pick at most five, and only
 ones the recipe clearly is — a tag you are unsure about makes the list worse than
