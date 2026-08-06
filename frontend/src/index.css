@@ -1,15 +1,120 @@
+/* Satoshi carries the UI; Clash Display is display-only (headings, the wordmark).
+   Same files and the same split as mtg-web, so the two apps read as related.
+   font-display: swap because a recipe list is readable in the fallback face and a
+   blocked first paint on a cold phone is worse than one reflow. */
+@font-face {
+  font-family: 'Satoshi';
+  src: url('/fonts/Satoshi-Regular.woff2') format('woff2');
+  font-weight: 400;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Satoshi';
+  src: url('/fonts/Satoshi-Medium.woff2') format('woff2');
+  font-weight: 500;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Satoshi';
+  src: url('/fonts/Satoshi-Bold.woff2') format('woff2');
+  font-weight: 600 700;
+  font-display: swap;
+}
+@font-face {
+  font-family: 'Clash Display';
+  src: url('/fonts/ClashDisplay-Semibold.woff2') format('woff2');
+  font-weight: 600;
+  font-display: swap;
+}
+
+:root {
+  /* --- Type scale. mtg-web's pattern: the rem half scales with the root, the px
+     floor stops anything shrinking below legibility. Use these rather than raw
+     sizes. --fs-input is a hard 16px because anything smaller makes iOS zoom the
+     page on focus and never zoom back. --- */
+  --fs-2xs: max(0.72rem, 11px);
+  --fs-xs: max(0.78rem, 12px);
+  --fs-sm: max(0.85rem, 13px);
+  --fs-base: max(0.95rem, 15px);
+  --fs-md: max(1rem, 16px);
+  --fs-lg: 1.25rem;
+  --fs-xl: 1.5rem;
+  --fs-input: 16px;
+
+  /* --- Neutrals, warmed. The old #fafaf7 page sat 1.02:1 against a white card,
+     so the card was a hairline rather than an object. A step darker and warmer
+     gives it something to sit on, and food photographs read appetising on warm
+     ground and clinical on grey. --- */
+  --ground: #f0ede6;
+  --surface: #fffefb;
+  --surface-2: #f6f4ee;
+  --line: #e0dbcd;
+  /* 3.42:1 on --surface. Used where a border IS the component boundary (fields,
+     chips), which is what WCAG 1.4.11 is about. --line stays light because a
+     card is identified by its shadow and its content, not its outline. */
+  --line-strong: #8f8a7b;
+  --txt: #191c18;
+  --txt-2: #5f665d;
+  --txt-3: #70776e;
+
+  /* Accent is for actions now: buttons, the on-state of a chip, focus. Tags use
+     --accent-ink on --accent-soft, which clears 4.5:1 where the accent itself
+     would not. */
+  --accent: #1c7c54;
+  --accent-ink: #14563a;
+  --accent-soft: #e3efe8;
+  --danger: #b3261e;
+  /* Both star states clear 3:1 on --surface; the old #bbb was 1.92:1. */
+  --star: #b8860b;
+  --star-off: #7d827b;
+
+  --sp-1: 4px;
+  --sp-2: 8px;
+  --sp-3: 12px;
+  --sp-4: 16px;
+  --sp-6: 24px;
+  --sp-8: 32px;
+
+  --r-sm: 8px;
+  --r: 12px;
+  --r-lg: 16px;
+  --r-pill: 999px;
+
+  --shadow-card: 0 1px 2px rgb(25 28 24 / 5%), 0 6px 16px rgb(25 28 24 / 5%);
+
+  /* Layering tiers, same ladder as mtg-web. */
+  --z-sticky: 10;
+  --z-nav: 50;
+  --z-sheet: 950;
+  --z-modal: 1000;
+  --z-toast: 2000;
+}
+
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  font-family: system-ui, -apple-system, 'Segoe UI', sans-serif;
-  color: #1a1a1a;
-  background: #fafaf7;
+  font-family: 'Satoshi', system-ui, -apple-system, 'Segoe UI', sans-serif;
+  color: var(--txt);
+  background: var(--ground);
   /* Without this the installed PWA rubber-bands the whole document on a
      downward drag and the pull-to-refresh gesture never gets the touch. */
   overscroll-behavior-y: contain;
+}
+
+h1,
+h2,
+h3 {
+  text-wrap: balance;
+}
+
+button,
+a,
+select,
+[role='button'] {
+  touch-action: manipulation;
 }
 
 .rb-app {
@@ -20,8 +125,11 @@ body {
 }
 
 .rb-header h1 {
-  font-size: 1.5rem;
-  margin: 8px 0 12px;
+  font-family: 'Clash Display', 'Satoshi', sans-serif;
+  font-weight: 600;
+  font-size: var(--fs-xl);
+  letter-spacing: -0.015em;
+  margin: var(--sp-2) 0 var(--sp-3);
 }
 
 .rb-header-row {
@@ -212,17 +320,25 @@ body {
 .rb-tab {
   flex: 1;
   min-height: 44px;
-  border: 1px solid #ddd;
-  border-radius: 8px;
-  background: #fff;
-  font-size: 0.95rem;
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--txt-2);
+  font: inherit;
+  font-size: var(--fs-base);
+  font-weight: 500;
   cursor: pointer;
 }
 
+/* Not a solid green slab. Full-bleed chrome colour is the thing that dates the
+   older recipe apps, and on a screen whose colour should come from the food it
+   was the loudest element present. The accent moves to the label and a 2px rule. */
 .rb-tab-active {
-  background: #1c7c54;
-  border-color: #1c7c54;
-  color: #fff;
+  border-color: var(--line);
+  background: var(--surface);
+  color: var(--accent-ink);
+  font-weight: 700;
+  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 .rb-import {
@@ -468,58 +584,123 @@ body {
 .recipes-list {
   list-style: none;
   padding: 0;
-  margin: 16px 0 0;
+  margin: var(--sp-4) 0 0;
   display: flex;
   flex-direction: column;
-  gap: 12px;
+  gap: 10px;
 }
 
 .recipes-card {
-  background: #fff;
-  border: 1px solid #e5e5e0;
-  border-radius: 12px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: var(--r-lg);
+  box-shadow: var(--shadow-card);
   overflow: hidden;
 }
 
+/* The whole row is the disclosure control. It holds only phrasing content now —
+   the old version wrapped a div, an h2 and two p tags in a button, which is an
+   invalid content model and cost screen readers the heading. */
 .recipes-card-head {
+  position: relative;
   display: flex;
-  gap: 12px;
-  align-items: center;
+  gap: 13px;
+  /* flex-start, not stretch: stretching the thumb to match the text column would
+     let the crop ratio drift with title length, and an inconsistent crop across
+     rows is exactly what makes an image list hard to scan. */
+  align-items: flex-start;
   width: 100%;
-  padding: 12px;
+  padding: 11px;
+}
+
+/* Stretched across the whole head. Keeps the row one big tap target while the
+   markup underneath stays valid — a button cannot legally contain an h2. */
+.recipes-card-toggle {
+  position: absolute;
+  inset: 0;
+  z-index: 1;
+  width: 100%;
   border: none;
+  border-radius: var(--r-lg);
   background: none;
-  text-align: left;
   cursor: pointer;
 }
 
-.recipes-card-head img {
-  width: 64px;
-  height: 64px;
-  object-fit: cover;
-  border-radius: 8px;
+.recipes-card-toggle:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+
+.recipes-card-text {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  justify-content: center;
+}
+
+.recipes-card-title {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  line-height: 1.25;
+  letter-spacing: -0.006em;
+  margin: 0;
+}
+
+/* Time first, then servings, then where it came from. Every app surveyed leads
+   with time; not one shows an ingredient count, which answers "how much
+   shopping" rather than "do I want this tonight". */
+.recipes-meta {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 3px 7px;
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--txt-2);
+  font-variant-numeric: tabular-nums;
+}
+
+/* Without this "25 min" can break after the number when the row runs short. */
+.recipes-meta > span:not(.recipes-meta-dot) {
+  white-space: nowrap;
+}
+
+.recipes-meta-dot {
+  width: 3px;
+  height: 3px;
+  border-radius: 50%;
+  background: var(--txt-3);
   flex-shrink: 0;
 }
 
-.recipes-card-head h2 {
-  font-size: 1.05rem;
-  margin: 0 0 4px;
+.recipes-card-src {
+  font-size: var(--fs-xs);
+  color: var(--txt-3);
 }
 
-.recipes-meta {
-  margin: 0;
-  font-size: 0.85rem;
-  color: #666;
+/* Two clamped lines of the description, and only on cards with no photo. A
+   picture does this job better; without one the row needs something to say. */
+.recipes-card-desc {
+  margin: 1px 0 0;
+  font-size: var(--fs-xs);
+  line-height: 1.38;
+  color: var(--txt-2);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
 .recipes-detail {
-  padding: 0 16px 16px;
-  border-top: 1px solid #eee;
+  padding: 0 var(--sp-4) var(--sp-4);
+  border-top: 1px solid var(--line);
 }
 
 .recipes-detail h3 {
-  font-size: 0.95rem;
-  margin: 16px 0 8px;
+  font-size: var(--fs-base);
+  margin: var(--sp-4) 0 var(--sp-2);
 }
 
 .recipes-detail li {
@@ -529,9 +710,16 @@ body {
 
 .recipes-actions {
   display: flex;
-  justify-content: space-between;
+  flex-wrap: wrap;
+  justify-content: flex-start;
   align-items: center;
-  margin-top: 16px;
+  gap: var(--sp-3);
+  margin-top: var(--sp-4);
+}
+
+/* Delete sits apart from the two constructive actions beside it. */
+.recipes-actions .rb-danger {
+  margin-left: auto;
 }
 
 .rb-danger {
@@ -551,18 +739,21 @@ body {
 
 .recipes-search input {
   width: 100%;
-  min-height: 44px;
-  padding: 0 12px;
-  border: 1px solid #ddd;
-  border-radius: 10px;
-  /* 1rem, not smaller: iOS zooms the whole page when a focused input's text is
+  min-height: 46px;
+  padding: 0 14px;
+  /* #ddd was 1.36:1. A field whose only affordance is its outline owes 3:1. */
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  /* 16px, not smaller: iOS zooms the whole page when a focused input's text is
      under 16px, and the zoom doesn't come back on blur. */
-  font-size: 1rem;
-  background: #fff;
+  font: inherit;
+  font-size: var(--fs-input);
+  background: var(--surface);
+  color: var(--txt);
 }
 
 .recipes-search input:focus-visible {
-  outline: 2px solid #1c7c54;
+  outline: 2px solid var(--accent);
   outline-offset: 1px;
 }
 
@@ -580,24 +771,28 @@ body {
   /* Chips are a dense row, so they sit below the 44px target used elsewhere.
      The generous horizontal padding keeps each one comfortably tappable. */
   min-height: 34px;
-  padding: 0 11px;
-  border: 1px solid #ddd;
-  border-radius: 999px;
-  background: #fff;
-  color: #333;
-  font-size: 0.85rem;
+  padding: 0 12px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  color: var(--txt);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 500;
   cursor: pointer;
 }
 
 .recipes-chip-on {
-  background: #1c7c54;
-  border-color: #1c7c54;
+  background: var(--accent);
+  border-color: var(--accent);
   color: #fff;
 }
 
 .recipes-chip-count {
-  font-size: 0.75rem;
-  color: #888;
+  font-size: var(--fs-xs);
+  /* #888 was 3.54:1 at this size, under the 4.5:1 small-text minimum. */
+  color: var(--txt-3);
+  font-variant-numeric: tabular-nums;
 }
 
 .recipes-chip-on .recipes-chip-count {
@@ -605,7 +800,7 @@ body {
 }
 
 .recipes-chip-more {
-  color: #1c7c54;
+  color: var(--accent);
 }
 
 .recipes-count {
@@ -627,35 +822,100 @@ body {
   cursor: pointer;
 }
 
-/* The open-detail button and the favorite star are siblings so neither nests
-   inside the other's hit area. */
-.recipes-card-row {
-  display: flex;
-  align-items: flex-start;
-}
+/* --- The image box ---------------------------------------------------------
+   128px at 4:3. The old 64px square was a dense-list-row thumbnail doing a
+   browsing screen's job: at that size a roast chicken and a bowl of soup are two
+   brown smudges. 4:3 is the shape most food photography is already framed in, so
+   the crop takes less away than a square does.
 
-.recipes-card-row .recipes-card-head {
-  flex: 1;
-  /* Without this a long title stretches the row instead of wrapping. */
-  min-width: 0;
-}
-
-.recipes-fav {
+   aspect-ratio reserves the space before the photo arrives, which matters
+   because these come from arbitrary origins at unknown dimensions. The tinted
+   background is what shows during that wait, so there is no flash of white.
+   ------------------------------------------------------------------------- */
+.recipes-thumb {
+  position: relative;
   flex-shrink: 0;
-  min-width: 44px;
-  min-height: 44px;
-  margin: 8px 8px 0 0;
-  border: none;
-  border-radius: 8px;
-  background: none;
-  color: #bbb;
-  font-size: 1.25rem;
+  align-self: flex-start;
+  width: 128px;
+  aspect-ratio: 4 / 3;
+  overflow: hidden;
+  border-radius: 11px;
+  background: var(--surface-2);
+}
+
+.recipes-thumb img {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+
+/* Fallback tile. Never a gap and never a broken-image icon: an origin that
+   expires its URLs or blocks hotlinking is not an edge case here. */
+.recipes-thumb-fallback {
+  width: 100%;
+  height: 100%;
+  display: grid;
+  place-items: center;
+}
+
+/* Same solid tile as the monogram, so the two fallbacks read as one system. The
+   background comes from the title via monogramColor; every colour in that list
+   clears 4.5:1 against this mark. */
+.recipes-thumb-glyph {
+  color: #fffefb;
+}
+
+.recipes-thumb-glyph svg {
+  width: 44%;
+  height: 44%;
+  opacity: 0.92;
+}
+
+/* Monogram, for a recipe with no tag that maps to a glyph. The colour comes from
+   a hand-checked list rather than a hash into raw RGB, so the letter always
+   clears 4.5:1 — see MONOGRAM_COLORS in lib/glyphs.jsx. */
+.recipes-thumb-mono {
+  font-family: 'Clash Display', 'Satoshi', sans-serif;
+  font-weight: 600;
+  font-size: 2.25rem;
   line-height: 1;
+  letter-spacing: -0.02em;
+  color: #fffefb;
+}
+
+/* Favourite lives in the open recipe now, not on every row. None of the apps
+   surveyed marks favourites on the card face; they all rely on a saved filter,
+   which the Favorites chip already is. This frees the title's full width. */
+.recipes-fav {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  min-height: 44px;
+  padding: 0 12px 0 10px;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--txt-2);
+  font: inherit;
+  font-size: var(--fs-sm);
   cursor: pointer;
 }
 
+.recipes-fav-star {
+  color: var(--star-off);
+  font-size: 1.15rem;
+  line-height: 1;
+}
+
 .recipes-fav-on {
-  color: #e0a300;
+  border-color: var(--star);
+  background: #fdf8e8;
+  color: #6b5100;
+}
+
+.recipes-fav-on .recipes-fav-star {
+  color: var(--star);
 }
 
 .recipes-card-tags {
@@ -670,10 +930,11 @@ body {
   align-items: center;
   gap: 4px;
   padding: 2px 8px;
-  border-radius: 999px;
-  background: #eef3f0;
-  color: #2c5c47;
-  font-size: 0.75rem;
+  border-radius: var(--r-pill);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+  font-size: var(--fs-xs);
+  font-weight: 500;
 }
 
 .recipes-tag-edit {

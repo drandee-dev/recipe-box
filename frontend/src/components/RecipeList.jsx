@@ -1,10 +1,43 @@
-import { useMemo, useState } from 'react'
+import { Fragment, useMemo, useState } from 'react'
 import { TAG_VOCABULARY, filterRecipes, normalizeTag, tagCounts } from '../lib/tags.js'
+import RecipeThumb from './RecipeThumb.jsx'
 
 // How many tag chips to show before the "more" toggle. Enough to cover a normal
 // box; the toggle exists so a heavily-tagged collection doesn't push the list
 // itself off the screen.
 const CHIP_LIMIT = 8
+
+// The first cards load their photos eagerly at high priority. Everything below
+// stays lazy: lazy-loading the largest image in the viewport delays it rather
+// than saving anything.
+const EAGER_CARDS = 2
+
+function hostOf(url) {
+  if (!url) return ''
+  try {
+    return new URL(url).hostname.replace('www.', '')
+  } catch {
+    // A stored URL that no longer parses shouldn't break the card.
+    return ''
+  }
+}
+
+// Time first, then servings. That's the order every comparable app uses, and it
+// matches what you're deciding at six o'clock. Ingredient count moved out: it
+// answers "how much shopping", which belongs on the planner.
+function metaParts(recipe) {
+  const parts = []
+  if (recipe.total_min) parts.push(`${recipe.total_min} min`)
+  if (recipe.servings) {
+    const raw = String(recipe.servings).trim()
+    parts.push(/serv|portion|makes/i.test(raw) ? raw : `Serves ${raw}`)
+  }
+  // A link card has neither, and an empty meta line reads as a rendering bug.
+  if (parts.length === 0) {
+    parts.push(recipe.ingredients?.length > 0 ? `${recipe.ingredients.length} ingredients` : 'Saved link')
+  }
+  return parts
+}
 
 export default function RecipeList({
   recipes,
@@ -128,52 +161,66 @@ export default function RecipeList({
       )}
 
       <ul className="recipes-list">
-        {visible.map((r) => {
+        {visible.map((r, i) => {
           const open = openId === r.id
           const tags = r.tags || []
+          const detailId = `recipe-detail-${r.id}`
+          const host = hostOf(r.source_url)
           return (
             <li key={r.id} className="recipes-card">
-              <div className="recipes-card-row">
-                <button className="recipes-card-head" onClick={() => onOpen(open ? null : r.id)}>
-                  {r.image_url && <img src={r.image_url} alt="" loading="lazy" />}
-                  <div>
-                    <h2>{r.title}</h2>
-                    <p className="recipes-meta">
-                      {r.ingredients.length > 0
-                        ? `${r.ingredients.length} ingredient${r.ingredients.length === 1 ? '' : 's'}`
-                        : 'Saved link'}
-                      {r.total_min ? ` · ${r.total_min} min` : ''}
-                      {r.source_url
-                        ? ` · ${new URL(r.source_url).hostname.replace('www.', '')}`
-                        : ''}
+              {/* The head is a plain container with an overlay button stretched
+                  across it, rather than a button wrapping everything. A button may
+                  only contain phrasing content, so the old markup — a div holding
+                  an h2 and two paragraphs — was invalid, and screen readers lost
+                  the heading and read the whole card as one label. This keeps the
+                  real h2, keeps the whole row tappable, and puts aria-expanded
+                  where it belongs. */}
+              <div className="recipes-card-head">
+                <RecipeThumb recipe={r} priority={i < EAGER_CARDS} />
+                <div className="recipes-card-text">
+                  <h2 className="recipes-card-title">{r.title}</h2>
+                  <p className="recipes-meta">
+                    {/* Fragment, not a wrapping span: the separator dot is sized
+                        as a flex item, so it has to be a direct child of the flex
+                        container or its width and height are ignored. */}
+                    {metaParts(r).map((part, n) => (
+                      <Fragment key={part}>
+                        {n > 0 && <span className="recipes-meta-dot" />}
+                        <span>{part}</span>
+                      </Fragment>
+                    ))}
+                  </p>
+                  {host && <span className="recipes-card-src">{host}</span>}
+                  {/* Only when there's no photo. With one, the picture says what
+                      the dish is; without one the row needs something to say. */}
+                  {!r.image_url && r.description && (
+                    <p className="recipes-card-desc">{r.description}</p>
+                  )}
+                  {tags.length > 0 && (
+                    <p className="recipes-card-tags">
+                      {tags.map((tag) => (
+                        <span key={tag} className="recipes-tag">
+                          {tag}
+                        </span>
+                      ))}
                     </p>
-                    {tags.length > 0 && (
-                      <p className="recipes-card-tags">
-                        {tags.map((tag) => (
-                          <span key={tag} className="recipes-tag">
-                            {tag}
-                          </span>
-                        ))}
-                      </p>
-                    )}
-                  </div>
-                </button>
-                {/* A sibling of the open button, not a child: nesting buttons is
-                    invalid, and on touch the two targets need their own hit
-                    areas anyway. */}
+                  )}
+                </div>
                 <button
                   type="button"
-                  className={r.favorite ? 'recipes-fav recipes-fav-on' : 'recipes-fav'}
-                  aria-pressed={Boolean(r.favorite)}
-                  aria-label={r.favorite ? `Unfavorite ${r.title}` : `Favorite ${r.title}`}
-                  onClick={() => onToggleFavorite(r)}
+                  className="recipes-card-toggle"
+                  aria-expanded={open}
+                  aria-controls={detailId}
+                  onClick={() => onOpen(open ? null : r.id)}
                 >
-                  {r.favorite ? '★' : '☆'}
+                  <span className="rb-offscreen">
+                    {open ? `Hide ${r.title}` : `Show ${r.title}`}
+                  </span>
                 </button>
               </div>
 
               {open && (
-                <div className="recipes-detail">
+                <div className="recipes-detail" id={detailId}>
                   {r.ingredients.length === 0 && r.instructions.length === 0 ? (
                     <>
                       {r.description && <p className="recipes-caption">{r.description}</p>}
@@ -186,14 +233,14 @@ export default function RecipeList({
                     <>
                       <h3>Ingredients</h3>
                       <ul>
-                        {r.ingredients.map((ing, i) => (
-                          <li key={i}>{ing.raw}</li>
+                        {r.ingredients.map((ing, n) => (
+                          <li key={n}>{ing.raw}</li>
                         ))}
                       </ul>
                       <h3>Steps</h3>
                       <ol>
-                        {r.instructions.map((step, i) => (
-                          <li key={i}>{step}</li>
+                        {r.instructions.map((step, n) => (
+                          <li key={n}>{step}</li>
                         ))}
                       </ol>
                     </>
@@ -236,6 +283,21 @@ export default function RecipeList({
                   </div>
 
                   <div className="recipes-actions">
+                    {/* Favouriting moved off the card face and in here. It's a
+                        once-per-recipe action, and none of the comparable apps
+                        spends a control on every row for it — they all rely on a
+                        saved filter, which the Favorites chip already is. */}
+                    <button
+                      type="button"
+                      className={r.favorite ? 'recipes-fav recipes-fav-on' : 'recipes-fav'}
+                      aria-pressed={Boolean(r.favorite)}
+                      onClick={() => onToggleFavorite(r)}
+                    >
+                      <span className="recipes-fav-star" aria-hidden="true">
+                        {r.favorite ? '★' : '☆'}
+                      </span>
+                      {r.favorite ? 'Favorited' : 'Favorite'}
+                    </button>
                     {r.source_url && (
                       <a href={r.source_url} target="_blank" rel="noreferrer">
                         View source

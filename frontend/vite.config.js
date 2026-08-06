@@ -13,7 +13,14 @@ export default defineConfig({
       injectRegister: null,
       // The plugin precaches the manifest's icons on its own; these are the
       // ones only index.html references, so they need naming.
-      includeAssets: ['favicon.svg', 'favicon-96.png', 'apple-touch-icon.png'],
+      // Fonts are precached too: an offline launch that falls back to system-ui
+      // reflows the whole list, which is worse than the 91 KB.
+      includeAssets: [
+        'favicon.svg',
+        'favicon-96.png',
+        'apple-touch-icon.png',
+        'fonts/*.woff2',
+      ],
       workbox: {
         runtimeCaching: [
           {
