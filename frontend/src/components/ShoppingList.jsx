@@ -4,7 +4,7 @@
 //
 // Presentational, like Planner: App owns the rows and the store calls.
 
-import { useMemo, useState } from 'react'
+import { useEffect, useMemo, useState } from 'react'
 import { buildShoppingList, formatQuantity, formatSource, groupByAisle } from '../lib/ingredients.js'
 import { addDays, toISODate, weekRangeLabel } from '../lib/dates.js'
 
@@ -77,6 +77,35 @@ export default function ShoppingList({
     derived.filter((item) => checkedKeys.has(item.key)).length +
     manual.filter((row) => row.checked).length
 
+  // "Clear picked" (finding 22) never deletes or unchecks anything — a picked
+  // item is still picked next time this week's list is opened. It only hides
+  // already-checked rows from view, client-side, so the trip stays legible
+  // without reordering rows under a moving finger (which is what causes
+  // mistaps). A fresh week starts with nothing to hide anyway, but reset
+  // explicitly so a stale hide from last week's session can't carry over.
+  const [hideDone, setHideDone] = useState(false)
+  useEffect(() => setHideDone(false), [week])
+
+  const visibleGroups = useMemo(() => {
+    if (!hideDone) return groups
+    return groups
+      .map((g) => ({
+        aisle: g.aisle,
+        entries: g.entries
+          .map((entry) =>
+            entry.type === 'group'
+              ? { ...entry, items: entry.items.filter((item) => !checkedKeys.has(item.key)) }
+              : entry,
+          )
+          .filter((entry) =>
+            entry.type === 'group' ? entry.items.length > 0 : !checkedKeys.has(entry.item.key),
+          ),
+      }))
+      .filter((g) => g.entries.length > 0)
+  }, [groups, hideDone, checkedKeys])
+
+  const visibleManual = hideDone ? manual.filter((row) => !row.checked) : manual
+
   function submitManual(e) {
     e.preventDefault()
     const text = draft.trim()
@@ -87,31 +116,63 @@ export default function ShoppingList({
 
   return (
     <div className="shopping">
-      <div className="planner-weeknav">
-        <button
-          type="button"
-          className="btn btn-secondary btn-icon"
-          onClick={() => onWeekChange(-1)}
-          aria-label="Previous week"
-        >
-          ‹
-        </button>
-        <div className="planner-weeklabel">
-          <strong>{weekRangeLabel(weekStart)}</strong>
-          {totalCount > 0 && (
-            <span className="shopping-progress">
-              {doneCount} of {totalCount} picked up
-            </span>
-          )}
+      {/* Sticky (finding 23): pinned at the top of the scroll rather than
+          scrolling away with the list, the same treatment .recipes-filters
+          uses — the header above it isn't itself sticky, so this just takes
+          over the top edge once it scrolls past. */}
+      <div className="shopping-header">
+        <div className="planner-weeknav">
+          <button
+            type="button"
+            className="btn btn-quiet btn-icon"
+            onClick={() => onWeekChange(-1)}
+            aria-label="Previous week"
+          >
+            ‹
+          </button>
+          <div className="planner-weeklabel">
+            <strong>{weekRangeLabel(weekStart)}</strong>
+            {/* Riding beside the thin bar below would drag it up to .btn's
+                44px floor along with it (a real bug caught mid-pass: a fixed
+                --shopping-header-h undershot the actual content and the
+                overflow quietly hid under the next sticky aisle heading).
+                Nested here instead, same spot Planner's "This week" link
+                uses — the row's height already budgets for a second line. */}
+            {doneCount > 0 && (
+              <button
+                type="button"
+                className="btn btn-quiet"
+                onClick={() => setHideDone((v) => !v)}
+              >
+                {hideDone ? `Show ${doneCount} picked up` : 'Clear picked'}
+              </button>
+            )}
+          </div>
+          <button
+            type="button"
+            className="btn btn-quiet btn-icon"
+            onClick={() => onWeekChange(1)}
+            aria-label="Next week"
+          >
+            ›
+          </button>
         </div>
-        <button
-          type="button"
-          className="btn btn-secondary btn-icon"
-          onClick={() => onWeekChange(1)}
-          aria-label="Next week"
-        >
-          ›
-        </button>
+
+        {totalCount > 0 && (
+          <div
+            className="shopping-progress-bar"
+            role="progressbar"
+            aria-valuenow={doneCount}
+            aria-valuemin={0}
+            aria-valuemax={totalCount}
+            aria-label={`${doneCount} of ${totalCount} picked up`}
+          >
+            <div
+              className="shopping-progress-fill"
+              style={{ width: `${(doneCount / totalCount) * 100}%` }}
+            />
+          </div>
+        )}
       </div>
 
       <form className="shopping-add" onSubmit={submitManual}>
@@ -136,8 +197,21 @@ export default function ShoppingList({
         </p>
       )}
 
-      {groups.map(({ aisle, entries }) => (
+      {totalCount > 0 && hideDone && visibleGroups.length === 0 && visibleManual.length === 0 && (
+        <p className="rb-empty">
+          <strong>Everything's picked up</strong>
+          <button type="button" className="btn btn-quiet" onClick={() => setHideDone(false)}>
+            Show the {doneCount} you already checked
+          </button>
+        </p>
+      )}
+
+      {visibleGroups.map(({ aisle, entries }) => (
         <section key={aisle} className="shopping-aisle">
+          {/* Sticky (finding 23): the aisle you're standing in front of stays
+              named at the top instead of scrolling off, offset by
+              --shopping-header-h so it settles in below the week nav and
+              progress bar rather than under them. */}
           <h3>{aisle}</h3>
           <ul>
             {entries.map((entry) =>
@@ -170,11 +244,11 @@ export default function ShoppingList({
         </section>
       ))}
 
-      {manual.length > 0 && (
+      {visibleManual.length > 0 && (
         <section className="shopping-aisle">
           <h3>Added by you</h3>
           <ul>
-            {manual.map((row) => (
+            {visibleManual.map((row) => (
               <li
                 key={row.id}
                 className={row.checked ? 'shopping-item shopping-item-done' : 'shopping-item'}

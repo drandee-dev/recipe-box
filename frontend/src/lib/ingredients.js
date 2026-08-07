@@ -366,12 +366,13 @@ export function buildShoppingList(plan, recipes) {
   )
 }
 
-// A source line: "Pasta 2 cups", or "Pasta ×2 4 cups" when the recipe is
-// planned twice that week, or just "Pasta" when nothing parsed.
+// A source line names the recipe, nothing else: "Pasta", or "Pasta ×2" when
+// it's planned twice that week. The merged line above it already carries the
+// amount (finding 21) — repeating it here was the noisiest text on the
+// screen and half of it was a repeat of the bold line above.
 export function formatSource(source) {
   const times = source.times > 1 ? ` ×${source.times}` : ''
-  const amount = source.qty !== null ? ` ${formatQuantity(source.qty, source.unit)}` : ''
-  return `${source.title}${times}${amount}`
+  return `${source.title}${times}`
 }
 
 // Aisle sections, each holding a mix of standalone items and variant groups.

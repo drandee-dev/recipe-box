@@ -136,6 +136,15 @@
      taller bar can never end up covering the last thing on the page. */
   --tabbar-h: 56px;
 
+  /* The shopping tab's sticky week nav + progress bar, measured off the
+     rendered header rather than guessed — see .shopping-header. The sticky
+     aisle headings below it read this too, so the two layers stack. Sized
+     for the taller of two states (the "Clear picked" line adds a row when
+     something's checked, 82px -> 106px) rather than the shorter one — an
+     unclaimed gap under a short header reads as spacing; an aisle heading
+     sitting a few px into a tall one would overlap it. */
+  --shopping-header-h: 106px;
+
   /* Layering tiers, same ladder as mtg-web. */
   --z-sticky: 10;
   --z-nav: 50;
@@ -1987,16 +1996,49 @@ textarea.field {
 
 /* --- Shopping list ------------------------------------------------------ */
 
-.shopping-progress {
-  font-size: var(--fs-xs);
-  color: var(--txt-2);
-  font-variant-numeric: tabular-nums;
+/* Sticky (finding 23), the same treatment .recipes-filters uses: the header
+   above it isn't itself sticky, so this takes over the top edge once it
+   scrolls past. Height is intentionally NOT fixed here — a declared height
+   that undershoots the real content just overflows silently (no clipping
+   without overflow:hidden), and the next sticky aisle heading, painting on
+   top at equal z-index because it's later in the DOM, quietly covers the
+   overflow. --shopping-header-h is measured off this box at its natural
+   height and fed to the aisle headings' `top` below, the same way
+   --tabbar-h is a fixed number read off the real bar rather than guessed. */
+.shopping-header {
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background: var(--ground);
+  padding: var(--sp-3) 0 var(--sp-2);
+  border-bottom: 1px solid var(--line);
+}
+
+/* A caption ("0 of 20 picked up") became a bar: the number was accurate but
+   took reading, where a fill length is read at a glance. Saffron, not the
+   accent — this is something simply TRUE about the list, not a button. Its
+   own row, no button riding along in it: a .btn's 44px floor would drag a
+   "thin bar" up to button height, which is exactly the bug that shipped
+   first and got caught mid-pass (see the comment on .shopping-header). */
+.shopping-progress-bar {
+  height: 5px;
+  margin-top: var(--sp-2);
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  overflow: hidden;
+}
+
+.shopping-progress-fill {
+  height: 100%;
+  background: var(--saffron);
+  border-radius: var(--r-pill);
+  transition: width 0.25s ease;
 }
 
 .shopping-add {
   display: flex;
   gap: var(--sp-2);
-  margin-bottom: var(--sp-4);
+  margin: var(--sp-3) 0 var(--sp-4);
 }
 
 .shopping-add .field {
@@ -2011,10 +2053,20 @@ textarea.field {
 /* The aisle name is a label for the card below it, so it sits outside the card
    rather than inside a rule. It also loses the accent: a heading is not an
    action, and green section heads all the way down a shopping list is exactly
-   the coloured chrome 6a moved away from. */
+   the coloured chrome 6a moved away from.
+
+   Sticky (finding 23), offset by --shopping-header-h so it settles in below
+   the week nav and progress bar rather than under them — the aisle you're
+   standing in front of stays named at the top instead of scrolling off with
+   the rest of its card. Opaque background for the same reason
+   .recipes-filters needs one: cards pass under it, not through it. */
 .shopping-aisle h3 {
+  position: sticky;
+  top: var(--shopping-header-h);
+  z-index: var(--z-sticky);
   margin: 0 0 var(--sp-2);
-  padding: 0 var(--sp-1);
+  padding: var(--sp-2) var(--sp-1);
+  background: var(--ground);
   font-family: 'Satoshi', sans-serif;
   font-size: var(--fs-2xs);
   font-weight: 700;
@@ -2103,15 +2155,23 @@ textarea.field {
   color: var(--txt-2);
 }
 
-/* Ticked lines stay legible. #aaa was 2.32:1: the strike-through already says
-   "done", so dropping the text below readable earned nothing. */
+/* Ticked rows recede as a whole (finding 22), not just their text — opacity
+   fades the checkbox along with everything else, which is what makes a
+   half-done list scannable as a group instead of needing every checkbox
+   state read individually. This reads under the 4.5:1 text floor on its own
+   (previous versions of this rule kept a readable grey for exactly that
+   reason), but the *state* isn't carried by the text colour here — the
+   still-checked checkbox is, at full contrast, so the fade is reinforcement
+   rather than the only signal. */
+.shopping-item-done {
+  opacity: 0.55;
+}
+
 .shopping-item-done .shopping-item-text {
-  color: var(--txt-3);
   text-decoration: line-through;
 }
 
 .shopping-item-done .shopping-item-from {
-  color: var(--txt-3);
   text-decoration: none;
 }
 

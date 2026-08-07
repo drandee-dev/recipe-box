@@ -307,8 +307,8 @@ test('grouping never reaches across an aisle', () => {
 // formatSource
 // ---------------------------------------------------------------------------
 
-test('a source reads as the recipe and what it wanted', () => {
-  assert.equal(formatSource({ title: 'Pasta', qty: 2, unit: 'cup', times: 1 }), 'Pasta 2 cups')
-  assert.equal(formatSource({ title: 'Pasta', qty: 4, unit: 'cup', times: 2 }), 'Pasta ×2 4 cups')
+test('a source names the recipe only, not the amount the merged line already shows', () => {
+  assert.equal(formatSource({ title: 'Pasta', qty: 2, unit: 'cup', times: 1 }), 'Pasta')
+  assert.equal(formatSource({ title: 'Pasta', qty: 4, unit: 'cup', times: 2 }), 'Pasta ×2')
   assert.equal(formatSource({ title: 'Pasta', qty: null, unit: null, times: 1 }), 'Pasta')
 })
