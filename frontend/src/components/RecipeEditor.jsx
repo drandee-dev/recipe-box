@@ -42,7 +42,12 @@ function toMinutes(value) {
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
-function isImageLink(value) {
+// Both link fields, not just the photo one. The source link is rendered as a real
+// href on the open recipe, so a `javascript:` URL typed in here would be stored
+// and then presented as something to tap. React is increasingly unwilling to
+// render those, but the field beside this one has been validated since it was
+// written and there is no reason for the two to disagree.
+function isHttpLink(value) {
   if (!value) return true
   try {
     const { protocol } = new URL(value)
@@ -98,8 +103,9 @@ export default function RecipeEditor({ recipe, onSave, onClose }) {
   const dirty = snapshot(form, ingredients, steps, tags) !== initial.current
 
   const title = form.title.trim()
-  const imageOk = isImageLink(form.image_url.trim())
-  const canSave = title.length > 0 && imageOk && !saving
+  const imageOk = isHttpLink(form.image_url.trim())
+  const sourceOk = isHttpLink(form.source_url.trim())
+  const canSave = title.length > 0 && imageOk && sourceOk && !saving
 
   // Only for the thumbnail beside the link field, so a pasted URL can be seen to
   // be the right photo before it is saved. RecipeThumb takes a recipe, and its
@@ -231,6 +237,16 @@ export default function RecipeEditor({ recipe, onSave, onClose }) {
         </div>
       ) : (
         <form className="editor" id={formId.current} onSubmit={handleSubmit}>
+          {/* At the top, not the bottom. Save lives in the sticky head and the
+              form is about 1300px tall, so a failure reported at the end of it
+              is a failure reported off-screen: the sheet looks unchanged and
+              nothing says why. role="alert" is what makes it announced rather
+              than merely present. */}
+          {error && (
+            <p className="rb-error" role="alert">
+              {error}
+            </p>
+          )}
           <label className="editor-field">
             <span className="editor-label">Title</span>
             <input
@@ -392,10 +408,12 @@ export default function RecipeEditor({ recipe, onSave, onClose }) {
               value={form.source_url}
               onChange={(e) => set('source_url', e.target.value)}
               placeholder="https://…"
+              aria-invalid={!sourceOk}
             />
+            {!sourceOk && (
+              <span className="editor-hint">That needs to be a full link starting with http.</span>
+            )}
           </label>
-
-          {error && <p className="rb-error">{error}</p>}
         </form>
       )}
     </Sheet>

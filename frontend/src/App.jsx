@@ -21,19 +21,31 @@ const SHARE_PARAMS = ['url', 'text', 'title']
 
 const canPaste = Boolean(navigator.clipboard?.readText)
 
+// Postgres speaks to the client through PostgREST, so a constraint rejection
+// arrives as its own SQL wording — `insert or update on table "meal_plan"
+// violates foreign key constraint …`. That is a sentence about our schema, not
+// about anything the reader did or can act on.
+const DB_JARGON = /violates .* constraint|duplicate key|relation ".*" does not exist/i
+
+function humanMessage(err, fallback) {
+  const message = err?.message || ''
+  if (DB_JARGON.test(message)) return fallback
+  return message || fallback
+}
+
 // A write that fails with no network surfaces the fetch layer's own wording
 // ("Failed to fetch", "Load failed" on Safari), which explains nothing. Real
 // errors pass through untouched.
 function writeError(err) {
   if (!navigator.onLine) return "You're offline. That change didn't save."
-  return err.message
+  return humanMessage(err, "That change didn't save. Try again.")
 }
 
 // Only reached when the offline mirror had nothing to fall back on, which for a
 // signed-in account means this device has never loaded the list.
 function readError(err) {
   if (!navigator.onLine) return "You're offline, and nothing is saved on this device yet."
-  return err.message
+  return humanMessage(err, 'That could not be loaded. Pull down to try again.')
 }
 
 // Pull-to-refresh tuning.
@@ -227,15 +239,29 @@ export default function App() {
   // Checks and hand-added items. The list itself is derived from the plan.
   const [overlay, setOverlay] = useState([])
 
+  // The recipe migration, published for the plan effect to wait on. Both load
+  // effects fire in the same tick, so the ordering the foreign key needs cannot
+  // come from which effect is written first — meal_plan.recipe_id references
+  // recipes, and a plan upsert that reaches Postgres before the recipes it
+  // points at is rejected outright.
+  const recipesMigratedRef = useRef(null)
+
   // Load recipes once auth settles. On sign-in, local captures upload first —
   // one-time, since the local key is cleared after a successful upload.
   useEffect(() => {
     if (!authReady) return
     let cancelled = false
     setLoading(true)
+
+    // Started here, synchronously, before this effect's first await: the plan
+    // effect runs immediately after this one in the same commit and reads the
+    // ref, so it has to be set by the time control leaves this line.
+    const recipesMigrated = userId ? migrateLocalRecipes(userId) : Promise.resolve()
+    recipesMigratedRef.current = recipesMigrated
+
     ;(async () => {
       try {
-        if (userId) await migrateLocalRecipes(userId)
+        await recipesMigrated
         const { rows, stale } = await withMirror(userId && cacheKeys.recipes(userId), () =>
           store.list(),
         )
@@ -263,7 +289,8 @@ export default function App() {
   // The plan is fetched a week at a time, so this re-runs on navigation as
   // well as on sign-in. Recipes migrate before plan rows do: meal_plan.recipe_id
   // is a foreign key, and migrateLocalRecipes keeps the local ids, so the
-  // references still resolve after the move.
+  // references still resolve after the move. That ordering is enforced by
+  // recipesMigratedRef above, not by the order these effects are declared in.
   //
   // Both return { rows, stale } from the offline mirror rather than a bare
   // array, so the mount effect and the resume refetch below share one code path
@@ -286,7 +313,14 @@ export default function App() {
     let cancelled = false
     ;(async () => {
       try {
+        // Wait for the recipes to be in the cloud before uploading rows that
+        // reference them. Already resolved on a week change; this only really
+        // waits on the first pass after a sign-in.
+        if (recipesMigratedRef.current) await recipesMigratedRef.current
         if (userId) {
+          // Left here rather than chained onto the promise above so that a
+          // failure still retries: the local key survives a failed upload, and
+          // both of these are a no-op once it has been cleared.
           await migrateLocalPlan(userId)
           await migrateLocalShopping(userId)
         }
@@ -966,7 +1000,11 @@ export default function App() {
               </button>
             </p>
           )}
-          {error && <p className="rb-error">{error}</p>}
+          {error && (
+            <p className="rb-error" role="alert">
+              {error}
+            </p>
+          )}
 
           <RecipeList
             recipes={recipes}
@@ -1000,7 +1038,11 @@ export default function App() {
             onAssign={handleAssign}
             onUnassign={handleUnassign}
           />
-          {error && <p className="rb-error">{error}</p>}
+          {error && (
+            <p className="rb-error" role="alert">
+              {error}
+            </p>
+          )}
         </main>
       )}
 
@@ -1017,7 +1059,11 @@ export default function App() {
             onAddManual={handleAddManual}
             onRemoveManual={handleRemoveManual}
           />
-          {error && <p className="rb-error">{error}</p>}
+          {error && (
+            <p className="rb-error" role="alert">
+              {error}
+            </p>
+          )}
         </main>
       )}
 

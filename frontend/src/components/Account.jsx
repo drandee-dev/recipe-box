@@ -108,6 +108,14 @@ export default function Account({ session }) {
     e.preventDefault()
     const addr = email.trim()
     if (!addr || !password || busy) return
+    // The placeholder has always said 8, and Set password enforces 8, but
+    // sign-up used to send whatever was typed and let Supabase's own weaker
+    // default decide. Sign-in is deliberately not checked: an existing password
+    // shorter than this is still that account's password.
+    if (mode === 'signup' && password.length < MIN_PASSWORD) {
+      setStatus(`Choose a password of at least ${MIN_PASSWORD} characters.`)
+      return
+    }
     setBusy(true)
     setStatus('')
     try {
@@ -312,7 +320,11 @@ export default function Account({ session }) {
               </div>
             )}
 
-            {status && <p className={statusClass}>{status}</p>}
+            {status && (
+              <p className={statusClass} role="status">
+                {status}
+              </p>
+            )}
           </Sheet>
         )}
       </>
@@ -412,7 +424,12 @@ export default function Account({ session }) {
             <button
               type="submit"
               className="btn btn-primary btn-block"
-              disabled={busy || !email.trim() || (!emailOnly && !password)}
+              disabled={
+                busy ||
+                !email.trim() ||
+                (!emailOnly && !password) ||
+                (mode === 'signup' && password.length < MIN_PASSWORD)
+              }
             >
               {busy
                 ? 'Working…'
@@ -425,7 +442,11 @@ export default function Account({ session }) {
                       : 'Sign in'}
             </button>
 
-            {status && <p className={statusClass}>{status}</p>}
+            {status && (
+              <p className={statusClass} role="status">
+                {status}
+              </p>
+            )}
 
             {/* Alternate routes, below the action they are alternatives to.
                 Cancel is gone: the sheet's own Cancel and its backdrop both do

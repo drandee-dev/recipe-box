@@ -12,6 +12,7 @@ anthropic>=0.52
 # Image mirroring (phase 7: resize a saved photo before it goes in the bucket)
 pillow>=10.4
 
-# Auth + storage (phase 2: Supabase JWT verification, sync)
-pyjwt>=2.8
-supabase>=2.9
+# Supabase is reached over plain HTTP with the httpx above, not through a client
+# library: auth verifies by asking GoTrue (app/auth.py), usage and storage are
+# two REST calls. pyjwt and supabase were both installed and never imported —
+# cold-start weight on a function that already carries Pillow.

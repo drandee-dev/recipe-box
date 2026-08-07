@@ -28,7 +28,14 @@ def _headers(key: str) -> dict:
 
 
 def month_spend_cents() -> float | None:
-    """Cents spent since the first of the month, or None when untracked."""
+    """Cents spent since the first of the month, or None when untracked.
+
+    Asks PostgREST for the sum rather than downloading the rows and adding them
+    up here. The old shape did the latter, which grew with usage on a check that
+    runs before every single model call, and — worse — silently under-reported
+    the moment a row cap applied: past the cap the total plateaus, the budget
+    never trips, and the failure looks exactly like nothing being wrong.
+    """
     conf = _config()
     if not conf:
         return None
@@ -40,13 +47,34 @@ def month_spend_cents() -> float | None:
         with httpx.Client(timeout=TIMEOUT) as client:
             resp = client.get(
                 f"{url}/rest/v1/{TABLE}",
-                params={"select": "cents", "created_at": f"gte.{start.isoformat()}"},
+                params={"select": "cents.sum()", "created_at": f"gte.{start.isoformat()}"},
                 headers=_headers(key),
             )
-            resp.raise_for_status()
-            return sum(float(row.get("cents") or 0) for row in resp.json())
+            if resp.status_code >= 400:
+                # Most likely cause if this ever fires: aggregate functions are
+                # disabled on the project, which PostgREST reports as a 400 on
+                # the select rather than as anything about aggregates. Logged
+                # with the body because the alternative is a generic traceback
+                # for a call that fails open and is therefore invisible.
+                log.warning(
+                    "usage lookup rejected (%s): %s — budget not enforced",
+                    resp.status_code,
+                    resp.text[:200],
+                )
+                return None
+            rows = resp.json()
     except Exception:
         log.exception("usage lookup failed; not enforcing budget")
+        return None
+
+    # One row back, `{"sum": n}` — or `{"sum": null}` for a month with no events,
+    # which is 0 spent and not the same answer as "untracked".
+    if not isinstance(rows, list) or not rows:
+        return 0.0
+    try:
+        return float(rows[0].get("sum") or 0)
+    except (AttributeError, TypeError, ValueError):
+        log.warning("usage sum came back in an unexpected shape: %r", rows[0])
         return None
 
 
