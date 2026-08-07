@@ -15,7 +15,7 @@ from urllib.parse import quote, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from .ai import infer_tags, merge_tags
+from .ai import hashtags_in, infer_tags, merge_tags, strip_hashtags
 from .extract import TIMEOUT, UA, ExtractError, _assert_public_host, fetch_html
 
 log = logging.getLogger("recipe.social")
@@ -77,19 +77,6 @@ def unwrap_caption(text: str) -> str:
         return ""
     match = _SOCIAL_WRAPPER.match(body)
     return match.group(1).strip() if match else body
-
-
-# Hashtags are excellent evidence for tagging and terrible prose, so they are
-# kept for the tagger and taken out of anything a person reads.
-_HASHTAGS = re.compile(r"(?:(?<=\s)|^)#[\w][\w'’-]*", re.UNICODE)
-
-
-def hashtags_in(text: str) -> str:
-    return " ".join(_HASHTAGS.findall(text or ""))
-
-
-def strip_hashtags(text: str) -> str:
-    return " ".join(_HASHTAGS.sub(" ", text or "").split())
 
 
 def caption_title(caption: str) -> str:
@@ -177,7 +164,7 @@ def link_card(url: str, source_type: str, post: dict) -> dict:
     tags = infer_tags(
         title=title,
         description=caption,
-        hashtags=hashtags_in(caption),
+        labels=hashtags_in(caption),
     )
     return {
         "title": title[:200],
@@ -234,7 +221,7 @@ def to_recipe(structured: dict, url: str, source_type: str, post: dict) -> dict:
                 title=structured.get("title") or "",
                 description=structured.get("description") or "",
                 ingredients=ingredients,
-                hashtags=hashtags_in(caption),
+                labels=hashtags_in(caption),
                 total_min=total_min,
             ),
         ),

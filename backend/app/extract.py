@@ -193,7 +193,8 @@ def parse_jsonld_recipe(html: str, source_url: str) -> dict | None:
         )
         tags = infer_tags(
             title=_first_str(node.get("name")) or "",
-            description=f"{_first_str(node.get('description')) or ''} {marked_up}",
+            description=_first_str(node.get("description")) or "",
+            labels=marked_up,
             ingredients=parsed,
             total_min=total_min,
         )

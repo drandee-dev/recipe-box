@@ -16,6 +16,7 @@ lands in the shopping list unmerged.
 import json
 import logging
 import os
+import re
 
 log = logging.getLogger("recipe.ai")
 
@@ -28,6 +29,25 @@ _CENTS_PER_INPUT_TOKEN = 100 / 1_000_000
 _CENTS_PER_OUTPUT_TOKEN = 500 / 1_000_000
 
 MONTHLY_BUDGET_CENTS = int(os.environ.get("AI_MONTHLY_BUDGET_CENTS", "500"))
+
+# Hashtags are stripped from anything the model reads and kept only for the
+# keyword tagger. This is not tidiness, it is reliability: measured on one real
+# caption, the same text parsed 5/5 times with the hashtag block removed and
+# 3/5 with it. A wall of #food #yummy #easyrecipes reads as social-post furniture
+# and pushes the model toward "this is a post, not a recipe", which lands the
+# import in the link-card fallback as a blob of text. They also produced worse
+# tags when they did parse — #friedchicken once came back as `air-fryer`.
+_HASHTAGS = re.compile(r"(?:(?<=\s)|^)#[\w][\w'’-]*", re.UNICODE)
+
+
+def hashtags_in(text: str) -> str:
+    """Just the hashtags, for the tagger."""
+    return " ".join(_HASHTAGS.findall(text or ""))
+
+
+def strip_hashtags(text: str) -> str:
+    """Everything but the hashtags, for the model and for anything a person reads."""
+    return " ".join(_HASHTAGS.sub(" ", text or "").split())
 
 
 class AIError(Exception):
@@ -223,16 +243,22 @@ def infer_tags(
     title: str = "",
     description: str = "",
     ingredients=(),
-    hashtags: str = "",
+    labels: str = "",
     total_min=None,
 ) -> list:
     """Tags derivable without a model, from what the text plainly says.
 
     Used three ways: to fill in the JSON-LD path, which never calls a model at
     all; to tag a link card, which is all we have when a caption held no recipe;
-    and to top up a model answer that came back thin. Hashtags are weighted the
-    same as anything else but tend to be the best signal present — a creator
-    writing #chicken #airfryer has categorised the post themselves.
+    and to top up a model answer that came back thin.
+
+    `labels` is explicit categorisation by whoever published the recipe — a
+    caption's hashtags, or schema.org's recipeCategory and recipeCuisine. It
+    counts as naming the dish, because that is what it is: a creator writing
+    #chicken #airfryer has filed the post themselves. `description` does not,
+    since on a link card the description *is* the whole caption, ingredient
+    lines and all, and that is how "2 tbsp soy sauce" once tagged a chicken
+    recipe as a sauce.
     """
     def flatten(*parts):
         # Hashes and hyphens go, so "#air-fryer" and "airfryer" both land.
@@ -247,12 +273,12 @@ def infer_tags(
             lines.append(item)
 
     # What the dish is called, and everything including what goes in it.
-    name_blob = flatten(title, description, hashtags)
+    name_blob = flatten(title, labels)
     ingredient_blob = flatten(*lines)
     for phrase in INCIDENTAL:
         ingredient_blob = ingredient_blob.replace(phrase, " ")
     ingredient_blob = " ".join(ingredient_blob.split())
-    full_blob = f"{name_blob} {ingredient_blob}"
+    full_blob = f"{name_blob} {flatten(description)} {ingredient_blob}"
 
     found = []
     for keyword, tag in _KEYWORD_ORDER:
@@ -353,7 +379,10 @@ def structure_recipe(text: str, *, context: str = "") -> dict:
     if spent is not None and spent >= MONTHLY_BUDGET_CENTS:
         raise AIBudgetError("monthly AI budget reached")
 
-    snippet = text.strip()[:MAX_INPUT_CHARS]
+    # Stripped here rather than at each call site so every route through the
+    # model gets it, including the paste box — pasting a caption is the most
+    # common way text arrives with a hashtag block on the end.
+    snippet = strip_hashtags(text)[:MAX_INPUT_CHARS]
     if not snippet:
         raise AIError("nothing to structure")
 
