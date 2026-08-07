@@ -203,12 +203,15 @@ export default function RecipeDetail({
         <RecipeThumb recipe={recipe} size="hero" priority />
       </div>
 
-      {/* Same dotted run the card uses, with the source host on the end rather
+      {/* Same dotted run the cell uses, with the source host on the end rather
           than on its own line — there is one of each fact and they are all the
           same kind of fact. The dot is a direct child of the flex row, not
-          wrapped: it is sized as a flex item, so nesting it drops its width. */}
+          wrapped: it is sized as a flex item, so nesting it drops its width.
+          `exact` is what keeps the real duration here: a grid cell replaces
+          "12 hr" with "Overnight" because it has one line and that word is the
+          answer, but by the time you have opened a recipe you want the number. */}
       <p className="detail-meta">
-        {[...metaParts(recipe), ...(host ? [host] : [])].map((part, n) => (
+        {[...metaParts(recipe, { exact: true }), ...(host ? [host] : [])].map((part, n) => (
           <Fragment key={part}>
             {n > 0 && <span className="recipes-meta-dot" />}
             <span>{part}</span>

@@ -163,16 +163,26 @@ const PATHS = {
   ),
 }
 
-// Every one of these clears 4.5:1 against #fffefb, the monogram colour. Hashing
-// into raw RGB would put a letter on a pale yellow eventually; six hand-checked
-// values cannot.
-export const MONOGRAM_COLORS = [
-  '#2f6b4f',
-  '#7a4a2b',
-  '#4a5b7a',
-  '#6b4a6b',
-  '#7a3f45',
-  '#4f5a2f',
+// These used to be saturated: a 128px block of solid colour with a white letter
+// on it, which pulled the eye harder than any of the real photographs beside it
+// (finding 8). The recipe carrying the least information looked like the most
+// important thing in the list, and a two-column grid only makes that louder,
+// since the tile now holds a whole cell rather than a thumbnail.
+//
+// So the treatment is inverted rather than dropped. Same six hues, same
+// title-derived pick, but as tints of the page ground with the ink dark on top,
+// and the tile's edge carried by a hairline instead of by the fill. Measured
+// against the tokens they sit between: each tint clears 13.6:1 against --txt
+// (the glyph and monogram now), sits 1.06–1.12 off --ground so it reads as a
+// tile at all, and leaves --line 1.10–1.16 darker than the fill so the hairline
+// is visible from inside as well as against the page.
+export const TILE_TINTS = [
+  '#e3ece2',
+  '#f2e6d6',
+  '#e2e9f0',
+  '#ece2ec',
+  '#f2e3e3',
+  '#e8edd9',
 ]
 
 export function glyphNameFor(tags) {
@@ -183,13 +193,13 @@ export function glyphNameFor(tags) {
 }
 
 // Stable across reloads and devices because it only reads the title: the same
-// recipe keeps its colour, and two recipes next to each other rarely share one.
-export function monogramColor(title) {
+// recipe keeps its tint, and two recipes next to each other rarely share one.
+export function tileTint(title) {
   let hash = 0
   for (let i = 0; i < (title || '').length; i += 1) {
     hash = (hash * 31 + title.charCodeAt(i)) % 100000
   }
-  return MONOGRAM_COLORS[hash % MONOGRAM_COLORS.length]
+  return TILE_TINTS[hash % TILE_TINTS.length]
 }
 
 export function monogramLetter(title) {

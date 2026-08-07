@@ -945,41 +945,78 @@ textarea.field {
   color: var(--txt);
 }
 
-.recipes-list {
+/* ---------------------------------------------------------------------------
+   The grid (finding 6, Direction B).
+
+   This was a single column of rows, each a bordered card holding a 128px
+   thumbnail beside a 195px text column. That is the position that costs on both
+   counts: the photo is too small to be worth looking at and the title still
+   wraps to two lines, so six of eight titles ran long and cards averaged 148px.
+   The two exits were shrink the photo or move it on top; this is the second.
+   Two columns is denser *and* the photo is four times the area — about 100px of
+   scroll per recipe against 157px before.
+
+   The card chrome went with it. A surface, a border and a shadow around a
+   photograph is three edges drawn for one object, and on a screen whose colour
+   is supposed to come from the food it was the loudest thing present. The photo
+   has its own rounded edge and that is the cell's boundary.
+   ------------------------------------------------------------------------- */
+.recipes-grid {
   list-style: none;
   padding: 0;
   margin: var(--sp-4) 0 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  /* Row gap larger than the column gap on purpose: a title sits directly under
+     its own photo, so the vertical space has to say "this text belongs to that
+     picture, not the one below it" while the horizontal only separates. */
+  gap: 18px 13px;
+}
+
+/* A ruled label, not a heading — see the comment in RecipeList.jsx. The rule is
+   a flex item rather than a border on the label so it fills whatever the text
+   leaves, which is what stops a long band name and a short one from drawing two
+   different-looking sections. */
+.recipes-rule {
   display: flex;
-  flex-direction: column;
-  gap: 10px;
+  align-items: center;
+  gap: 11px;
+  margin: var(--sp-6) 0 0;
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.14em;
+  text-transform: uppercase;
+  color: var(--txt-2);
 }
 
-.recipes-card {
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: var(--r-lg);
-  box-shadow: var(--shadow-card);
-  overflow: hidden;
+.recipes-rule + .recipes-grid {
+  margin-top: 8px;
 }
 
-/* The whole row is the disclosure control. It holds only phrasing content now —
-   the old version wrapped a div, an h2 and two p tags in a button, which is an
-   invalid content model and cost screen readers the heading. */
-.recipes-card-head {
+/* The first rule replaces the grid's own top margin rather than adding to it.
+   Measured: at 24px + 8px it put the first photo at y=258, which is 57px of new
+   label above the fold on the one screen this pass exists to make denser. At
+   16px it is y=247 and the later rules keep the wider separation, which is
+   where the separation is actually doing work. */
+.recipes-rule:first-of-type {
+  margin-top: var(--sp-4);
+}
+
+.recipes-rule::after {
+  content: '';
+  flex: 1;
+  height: 1px;
+  background: var(--line);
+}
+
+.recipes-cell {
   position: relative;
-  display: flex;
-  gap: 13px;
-  /* flex-start, not stretch: stretching the thumb to match the text column would
-     let the crop ratio drift with title length, and an inconsistent crop across
-     rows is exactly what makes an image list hard to scan. */
-  align-items: flex-start;
-  width: 100%;
-  padding: 11px;
+  min-width: 0;
 }
 
-/* Stretched across the whole head. Keeps the row one big tap target while the
-   markup underneath stays valid — a button cannot legally contain an h2. */
-.recipes-card-toggle {
+/* Stretched across the whole cell. Keeps it one big tap target while the markup
+   underneath stays valid — a button cannot legally contain an h2. */
+.recipes-cell-toggle {
   position: absolute;
   inset: 0;
   z-index: 1;
@@ -990,26 +1027,49 @@ textarea.field {
   cursor: pointer;
 }
 
-.recipes-card-toggle:focus-visible {
+.recipes-cell-toggle:focus-visible {
   outline: 2px solid var(--accent);
-  outline-offset: -2px;
+  outline-offset: 3px;
 }
 
-.recipes-card-text {
-  flex: 1;
-  min-width: 0;
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-1);
-  justify-content: center;
+/* Two lines and then it clips. This is the acknowledged cost of two columns —
+   a 172px cell holds about 34 characters a line — and it is why the search
+   field stays and why the detail sheet has to be good. Clipping beats a cell
+   that grows to five lines and drags its neighbour's baseline with it. */
+.recipes-cell-title {
+  margin: 8px 0 0;
+  font-family: 'Clash Display', 'Satoshi', sans-serif;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  line-height: 1.24;
+  letter-spacing: -0.012em;
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
 }
 
-.recipes-card-title {
-  font-size: var(--fs-md);
-  font-weight: 700;
-  line-height: 1.25;
-  letter-spacing: -0.006em;
-  margin: 0;
+/* The favourite, read at a glance across a grid. Saffron, not the accent: pass
+   1a's rule is that saffron marks what is simply *true* about a thing and the
+   accent marks what you act on, and this is a state you cannot change from
+   here. The white disc is what keeps it legible over an arbitrary photograph —
+   saffron clears 3.49:1 on the ground and 3.77:1 inside the disc, which is the
+   non-text floor; it is never asked to carry text. */
+.recipes-cell-star {
+  position: absolute;
+  top: 7px;
+  right: 7px;
+  z-index: 1;
+  display: grid;
+  place-items: center;
+  width: 25px;
+  height: 25px;
+  border-radius: 50%;
+  background: rgb(255 253 247 / 92%);
+  color: var(--star);
+  font-size: 13px;
+  line-height: 1;
+  pointer-events: none;
 }
 
 /* Time first, then servings, then where it came from. Every app surveyed leads
@@ -1039,23 +1099,11 @@ textarea.field {
   flex-shrink: 0;
 }
 
-.recipes-card-src {
-  font-size: var(--fs-xs);
-  color: var(--txt-3);
-}
-
-/* Two clamped lines of the description, and only on cards with no photo. A
-   picture does this job better; without one the row needs something to say. */
-.recipes-card-desc {
-  margin: 1px 0 0;
-  font-size: var(--fs-xs);
-  line-height: 1.38;
-  color: var(--txt-2);
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  -webkit-box-orient: vertical;
-  overflow: hidden;
-}
+/* The source host and the description excerpt both came off the cell face in
+   pass 3. A 172px cell has room for the title and one line under it, and time
+   and servings are what you are deciding on at six o'clock — the host is a
+   provenance question you ask after opening, where the detail sheet's meta run
+   still carries it. */
 
 /* --- The open recipe (findings 10, 11, 14, 15, 16) --------------------------
    A sheet, not an expanding card. The card version grew to about 1,100px and
@@ -1407,7 +1455,10 @@ textarea.field {
   position: relative;
   flex-shrink: 0;
   align-self: flex-start;
-  width: 128px;
+  /* A whole grid cell since pass 3, not a 128px block beside a text column. The
+     `sm` and `hero` variants below still set their own width; this is the one
+     the cell uses and it takes the column. */
+  width: 100%;
   aspect-ratio: 4 / 3;
   overflow: hidden;
   border-radius: 11px;
@@ -1448,50 +1499,76 @@ textarea.field {
   font-size: 4rem;
 }
 
+/* And no hairline on it. The hero is full-bleed, so its left and right edges are
+   the screen's — a line drawn there reads as a stray rule across the sheet
+   rather than as the edge of a tile. In a grid cell the edge is the whole point. */
+.recipes-thumb-hero .recipes-thumb-fallback {
+  box-shadow: none;
+}
+
 /* Fallback tile. Never a gap and never a broken-image icon: an origin that
-   expires its URLs or blocks hotlinking is not an edge case here. */
+   expires its URLs or blocks hotlinking is not an edge case here.
+
+   Inverted in pass 3 (finding 8). It used to be a saturated block of colour with
+   a white mark on it, which out-pulled every real photograph beside it — the
+   recipe with the least information looked like the most important thing in the
+   list, and a two-column grid would have made that four times louder. Now it is
+   a tint of the page ground with dark ink on top and a hairline for its edge.
+
+   The hairline is an inset shadow rather than a border because the tile fills
+   its parent's box exactly: a real border would draw inside that box and square
+   off against the parent's 11px radius, while the shadow is clipped by it. */
 .recipes-thumb-fallback {
   width: 100%;
   height: 100%;
   display: grid;
   place-items: center;
+  box-shadow: inset 0 0 0 1px var(--line);
 }
 
-/* Same solid tile as the monogram, so the two fallbacks read as one system. The
-   background comes from the title via monogramColor; every colour in that list
-   clears 4.5:1 against this mark. */
+/* Same tinted tile as the monogram, so the two fallbacks read as one system. The
+   tint comes from the title via tileTint; every value in that list clears
+   13.6:1 against this mark and leaves --line visible against the fill. */
 .recipes-thumb-glyph {
-  color: #fffefb;
+  color: var(--txt);
 }
 
 .recipes-thumb-glyph svg {
-  width: 44%;
-  height: 44%;
-  opacity: 0.92;
+  width: 38%;
+  height: 38%;
+  /* Down from 0.92. At full strength a dark glyph on a pale tint is a much
+     higher-contrast mark than the old light-on-saturated one was, and the point
+     of the inversion is that this tile recedes. Measured across the six tints
+     this lands at 4.45–4.54:1, so a thin 2.6px stroke still clears the 3:1
+     non-text floor with room rather than sitting on it. */
+  opacity: 0.62;
 }
 
-/* Monogram, for a recipe with no tag that maps to a glyph. The colour comes from
-   a hand-checked list rather than a hash into raw RGB, so the letter always
-   clears 4.5:1 — see MONOGRAM_COLORS in lib/glyphs.jsx. */
+/* Monogram, for a recipe with no tag that maps to a glyph. The tint comes from a
+   hand-checked list rather than a hash into raw RGB — see TILE_TINTS in
+   lib/glyphs.jsx. */
 .recipes-thumb-mono {
   font-family: 'Clash Display', 'Satoshi', sans-serif;
   font-weight: 600;
-  font-size: 2.25rem;
+  font-size: 3rem;
   line-height: 1;
   letter-spacing: -0.02em;
-  color: #fffefb;
+  color: var(--txt);
+  /* 3.60–3.67:1 across the six tints. Quieter than the glyph on purpose — a
+     solid letterform carries at lower contrast than a thin stroke — but still
+     over the 3:1 non-text floor, which 0.42 (2.53:1) was not. */
+  opacity: 0.55;
 }
 
 /* The favourite button that used to sit in the expanded card is gone: it is a
    star in the detail sheet's head now (finding 14, `.detail-star`), because it
-   is a state and it was reading as a fourth verb in a row of three. */
+   is a state and it was reading as a fourth verb in a row of three. The cell
+   shows the same state read-only (`.recipes-cell-star`) — the tap still opens
+   the recipe, so there is one control and two places it is reported.
 
-.recipes-card-tags {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 4px;
-  margin: 6px 0 0;
-}
+   Tags came off the cell face in pass 3 (finding 7). They ran to a second row on
+   three of eight cards and duplicated the chip rail directly above them, which
+   is where filtering actually happens; the full set is in the open recipe. */
 
 .recipes-tag {
   display: inline-flex;

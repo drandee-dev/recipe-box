@@ -1,5 +1,5 @@
 import { useState } from 'react'
-import { TagGlyph, glyphNameFor, monogramColor, monogramLetter } from '../lib/glyphs.jsx'
+import { TagGlyph, glyphNameFor, monogramLetter, tileTint } from '../lib/glyphs.jsx'
 import { thumbSources } from '../lib/images.js'
 
 // The image box for a recipe card.
@@ -21,11 +21,16 @@ import { thumbSources } from '../lib/images.js'
 // `size="sm"` is the row-sized variant used by the planner's picker, and
 // `size="hero"` is the full-bleed one at the top of the detail sheet. Same three
 // states in all of them, since a picker row and a hero have exactly the same
-// problem a card does. The hero carries a `sizes` string rather than a width
-// because its box is the sheet's width, not a fixed number of pixels; `w`/`h`
-// are still there to give the <img> its intrinsic ratio.
+// problem a card does.
+//
+// `md` stopped being a fixed 128px box in pass 3: it is a grid cell now, one of
+// two across the content column, so like the hero it carries a `sizes` string
+// rather than a width. The column is `.rb-app` — 640px capped, 16px of padding
+// each side — and the grid's gap is 13px, so a cell is (608 − 13) / 2 = 298px at
+// full width and (100vw − 45) / 2 below that. `w`/`h` stay to give the <img> its
+// intrinsic 4:3 ratio.
 const SIZES = {
-  md: { w: 128, h: 96 },
+  md: { w: 320, h: 240, sizes: '(min-width: 640px) 298px, calc(50vw - 22px)' },
   sm: { w: 56, h: 42 },
   hero: { w: 640, h: 360, sizes: 'min(100vw, 640px)' },
 }
@@ -67,10 +72,13 @@ export default function RecipeThumb({ recipe, priority = false, size = 'md' }) {
     )
   }
 
-  // Both fallbacks share one treatment: a solid tile in a colour derived from the
-  // title, with a light mark on top. Seen side by side in a list, a pale glyph
+  // Both fallbacks share one treatment: a tinted tile in a colour derived from
+  // the title, with a dark mark on top. Seen side by side in a list, a pale glyph
   // next to a saturated monogram reads as two unrelated systems, and the glyph is
   // meant to be extra information on the same tile rather than a different tile.
+  // The tint is a tint of the page ground rather than a saturated block since
+  // finding 8 — a photo-less recipe should recede beside the photographed ones,
+  // not outshout them.
   const glyph = glyphNameFor(recipe.tags)
   return (
     <div className={cls}>
@@ -80,7 +88,7 @@ export default function RecipeThumb({ recipe, priority = false, size = 'md' }) {
             ? 'recipes-thumb-fallback recipes-thumb-glyph'
             : 'recipes-thumb-fallback recipes-thumb-mono'
         }
-        style={{ background: monogramColor(recipe.title) }}
+        style={{ background: tileTint(recipe.title) }}
         aria-hidden="true"
       >
         {glyph ? <TagGlyph name={glyph} /> : monogramLetter(recipe.title)}

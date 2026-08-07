@@ -1,13 +1,14 @@
 import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import { filterRecipes, tagCounts } from '../lib/tags.js'
-import { hostOf, metaParts } from '../lib/recipes.js'
+import { groupByRecency, metaParts } from '../lib/recipes.js'
 import RecipeDetail from './RecipeDetail.jsx'
 import RecipeThumb from './RecipeThumb.jsx'
 
 // The first cards load their photos eagerly at high priority. Everything below
 // stays lazy: lazy-loading the largest image in the viewport delays it rather
-// than saving anything.
-const EAGER_CARDS = 2
+// than saving anything. Two columns put two cells per row, so this covers the
+// first two rows — all of which are above the fold on a 390×844 phone.
+const EAGER_CARDS = 4
 
 // Same window the planner's meal removal uses, and for the same reason: long
 // enough to notice the toast, short enough that you aren't left wondering
@@ -99,6 +100,22 @@ export default function RecipeList({
   const filtering = query.trim().length > 0 || activeTags.length > 0 || favoritesOnly
   const open = shown.find((r) => r.id === openId) || null
 
+  // Ruled section labels over the grid, and only when they earn their place.
+  // Filtering drops them because three headings over a result of four recipes
+  // is worse than none, and "when did I save this" is not what a search is
+  // asking. A single band drops them too: one label over the entire list is a
+  // title for the screen, which the wordmark already is.
+  const sections = useMemo(() => {
+    if (filtering) return [{ label: null, recipes: visible }]
+    const groups = groupByRecency(visible)
+    return groups.length > 1 ? groups : [{ label: null, recipes: visible }]
+  }, [visible, filtering])
+
+  // Eagerness counts down the whole grid, not each section: the first two rows
+  // are above the fold whichever band they fall in, and a per-section index
+  // would make every band's first cells eager however far down the page it sat.
+  const order = useMemo(() => new Map(visible.map((r, i) => [r.id, i])), [visible])
+
   return (
     <>
       {shown.length > 0 && (
@@ -167,65 +184,70 @@ export default function RecipeList({
         </p>
       )}
 
-      <ul className="recipes-list">
-        {visible.map((r, i) => {
-          const host = hostOf(r.source_url)
-          const tags = r.tags || []
-          return (
-            <li key={r.id} className="recipes-card">
-              {/* The head is a plain container with an overlay button stretched
-                  across it, rather than a button wrapping everything. A button may
-                  only contain phrasing content, so the old markup — a div holding
-                  an h2 and two paragraphs — was invalid, and screen readers lost
-                  the heading and read the whole card as one label. This keeps the
-                  real h2 and keeps the whole row tappable. */}
-              <div className="recipes-card-head">
-                <RecipeThumb recipe={r} priority={i < EAGER_CARDS} />
-                <div className="recipes-card-text">
-                  <h2 className="recipes-card-title">{r.title}</h2>
-                  <p className="recipes-meta">
-                    {/* Fragment, not a wrapping span: the separator dot is sized
-                        as a flex item, so it has to be a direct child of the flex
-                        container or its width and height are ignored. */}
-                    {metaParts(r).map((part, n) => (
-                      <Fragment key={part}>
-                        {n > 0 && <span className="recipes-meta-dot" />}
-                        <span>{part}</span>
-                      </Fragment>
-                    ))}
-                  </p>
-                  {host && <span className="recipes-card-src">{host}</span>}
-                  {/* Only when there's no photo. With one, the picture says what
-                      the dish is; without one the row needs something to say. */}
-                  {!r.image_url && r.description && (
-                    <p className="recipes-card-desc">{r.description}</p>
-                  )}
-                  {tags.length > 0 && (
-                    <p className="recipes-card-tags">
-                      {tags.map((tag) => (
-                        <span key={tag} className="recipes-tag">
-                          {tag}
-                        </span>
-                      ))}
-                    </p>
-                  )}
-                </div>
+      {sections.map(({ label, recipes: inSection }) => (
+        <Fragment key={label || 'all'}>
+          {/* Decorative, and deliberately not a heading. A heading here would
+              have to sit between the wordmark's h1 and each cell's h2, which
+              means either demoting every title to h3 or skipping a level on the
+              filtered view that has no rules at all. The list carries the name
+              instead: a screen reader reads "Recently saved, list, 4 items",
+              which is what the rule is saying visually, said once. */}
+          {label && (
+            <p className="recipes-rule" aria-hidden="true">
+              <span>{label}</span>
+            </p>
+          )}
+          <ul className="recipes-grid" aria-label={label || undefined}>
+            {inSection.map((r) => (
+              /* The cell is a plain container with an overlay button stretched
+                 across it, rather than a button wrapping everything. A button may
+                 only contain phrasing content, so wrapping an h2 in one is
+                 invalid and screen readers lose the heading and read the whole
+                 cell as one label. This keeps the real h2 and keeps the whole
+                 cell tappable. */
+              <li key={r.id} className="recipes-cell">
+                <RecipeThumb recipe={r} priority={(order.get(r.id) ?? 99) < EAGER_CARDS} />
+                {/* A state, not a control — tapping a favourite here should open
+                    the recipe like any other cell, and un-favouriting lives in
+                    the sheet's head where it did before. So it is marked
+                    aria-hidden and the fact is folded into the overlay button's
+                    label instead, which is the thing a screen reader announces. */}
+                {r.favorite && (
+                  <span className="recipes-cell-star" aria-hidden="true">
+                    ★
+                  </span>
+                )}
+                <h2 className="recipes-cell-title">{r.title}</h2>
+                <p className="recipes-meta">
+                  {/* Fragment, not a wrapping span: the separator dot is sized
+                      as a flex item, so it has to be a direct child of the flex
+                      container or its width and height are ignored. */}
+                  {metaParts(r).map((part, n) => (
+                    <Fragment key={part}>
+                      {n > 0 && <span className="recipes-meta-dot" />}
+                      <span>{part}</span>
+                    </Fragment>
+                  ))}
+                </p>
                 {/* aria-haspopup, not aria-expanded: this opens a dialog over the
-                    page now rather than expanding a region inside the card, and
+                    page now rather than expanding a region inside the cell, and
                     aria-expanded would promise content that appears in place. */}
                 <button
                   type="button"
-                  className="recipes-card-toggle"
+                  className="recipes-cell-toggle"
                   aria-haspopup="dialog"
                   onClick={() => onOpen(r.id)}
                 >
-                  <span className="rb-offscreen">Open {r.title}</span>
+                  <span className="rb-offscreen">
+                    Open {r.title}
+                    {r.favorite ? ', favourite' : ''}
+                  </span>
                 </button>
-              </div>
-            </li>
-          )
-        })}
-      </ul>
+              </li>
+            ))}
+          </ul>
+        </Fragment>
+      ))}
 
       {open && (
         <RecipeDetail
