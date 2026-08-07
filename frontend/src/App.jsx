@@ -9,6 +9,7 @@ import { MIRROR_CONCURRENCY, needsMirror } from './lib/images.js'
 import { addDays, startOfWeek, toISODate } from './lib/dates.js'
 import { setBusy } from './lib/pwa.js'
 import Account from './components/Account.jsx'
+import CaptureSheet from './components/CaptureSheet.jsx'
 import InstallPrompt from './components/InstallPrompt.jsx'
 import Planner from './components/Planner.jsx'
 import RecipeEditor from './components/RecipeEditor.jsx'
@@ -98,6 +99,7 @@ export default function App() {
   const autoImported = useRef(false)
   const [savedTitle, setSavedTitle] = useState('')
   const [importing, setImporting] = useState(false)
+  const [captureOpen, setCaptureOpen] = useState(false)
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
   const inputRef = useRef(null)
@@ -563,6 +565,7 @@ export default function App() {
       })
       setRecipes((prev) => [saved, ...prev])
       setImportUrl('')
+      setCaptureOpen(false)
       setOpenId(saved.id)
       setSavedTitle(saved.title)
       // Now, while the URL the origin just gave us is at its freshest. Not
@@ -578,6 +581,35 @@ export default function App() {
   function handleImport(e) {
     e.preventDefault()
     importFromUrl(importUrl.trim())
+  }
+
+  function handleImportPaste(e) {
+    // Share sheets copy the link with prose around it, which a type="url"
+    // field would reject on submit.
+    const text = e.clipboardData?.getData('text') || ''
+    const match = text.match(/https?:\/\/\S+/)
+    if (match && match[0] !== text.trim()) {
+      e.preventDefault()
+      setImportUrl(match[0])
+    }
+  }
+
+  function closeCaptureSheet() {
+    setCaptureOpen(false)
+  }
+
+  // The explicit "never mind" inside the paste-text view, as opposed to
+  // dismissing the whole sheet — that one leaves the draft in place in case the
+  // dismissal was a stray tap on the backdrop, since this box can hold a whole
+  // pasted recipe.
+  function closePasteText() {
+    setPasteOpen(false)
+    setPasteText('')
+  }
+
+  function writeFromCapture() {
+    setCaptureOpen(false)
+    setEditing({ recipe: null })
   }
 
   // A share opens this tab for one job, so run the import without waiting for a
@@ -608,6 +640,7 @@ export default function App() {
       setRecipes((prev) => [saved, ...prev])
       setPasteText('')
       setPasteOpen(false)
+      setCaptureOpen(false)
       setOpenId(saved.id)
       mirrorImages([saved])
     } catch (err) {
@@ -886,82 +919,6 @@ export default function App() {
 
       {tab === 'recipes' && (
         <main className="rb-main">
-          <form className="rb-import" onSubmit={handleImport}>
-            {/* Placeholder kept short enough to survive the field's real width
-                on a phone: the old one ended mid-word at "…TikTok, In", and the
-                social routes are already named by the button below it and by
-                the empty state. */}
-            <input
-              ref={inputRef}
-              className="field"
-              type="url"
-              placeholder="Paste a recipe link"
-              value={importUrl}
-              onChange={(e) => setImportUrl(e.target.value)}
-              onPaste={(e) => {
-                // Share sheets copy the link with prose around it, which a
-                // type="url" field would reject on submit.
-                const text = e.clipboardData?.getData('text') || ''
-                const match = text.match(/https?:\/\/\S+/)
-                if (match && match[0] !== text.trim()) {
-                  e.preventDefault()
-                  setImportUrl(match[0])
-                }
-              }}
-            />
-            <button type="submit" className="btn btn-primary btn-lg" disabled={importing}>
-              {importing ? 'Importing…' : 'Import'}
-            </button>
-          </form>
-          {/* Alternatives to the bar above, so secondary. One filled accent per
-              region is what keeps the accent meaning "the thing to press". */}
-          <div className="rb-paste-routes">
-            {canPaste && (
-              <button type="button" className="btn btn-secondary btn-block" onClick={pasteLink}>
-                Paste copied link
-              </button>
-            )}
-            {!pasteOpen && (
-              <button
-                type="button"
-                className="btn btn-secondary btn-block"
-                onClick={() => setPasteOpen(true)}
-              >
-                Paste recipe text
-              </button>
-            )}
-            <button
-              type="button"
-              className="btn btn-secondary btn-block"
-              onClick={() => setEditing({ recipe: null })}
-            >
-              Write a recipe
-            </button>
-          </div>
-          {pasteOpen && (
-            <form className="rb-paste-text" onSubmit={handlePasteText}>
-              <textarea
-                className="field"
-                rows={6}
-                placeholder="Paste a recipe here — ingredients, steps, a caption, anything."
-                value={pasteText}
-                onChange={(e) => setPasteText(e.target.value)}
-                autoFocus
-              />
-              <div className="rb-paste-text-actions">
-                <button type="button" className="btn btn-quiet" onClick={() => setPasteOpen(false)}>
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  className="btn btn-primary"
-                  disabled={importing || pasteText.trim().length < 20}
-                >
-                  {importing ? 'Reading…' : 'Save recipe'}
-                </button>
-              </div>
-            </form>
-          )}
           {fromShare && importing && (
             <p className="rb-notice">Saving the shared link…</p>
           )}
@@ -979,13 +936,13 @@ export default function App() {
           )}
           {shareNotice && (
             <p className="rb-notice">
-              A share arrived without a link in it. Copy the post link and paste it above.
+              A share arrived without a link in it. Copy the post link, then tap + to add it.
               <button type="button" className="btn btn-quiet rb-notice-close" onClick={() => setShareNotice(false)}>
                 Dismiss
               </button>
             </p>
           )}
-          {error && (
+          {error && !captureOpen && (
             <p className="rb-error" role="alert">
               {error}
             </p>
@@ -1050,6 +1007,46 @@ export default function App() {
             </p>
           )}
         </main>
+      )}
+
+      {/* Floating above the tab bar rather than in the header: the tabs moved
+          down here in pass 1b for the same reason — it's where a thumb already
+          is. Recipes-only, since capture is what this tab is for. */}
+      {tab === 'recipes' && !editing && (
+        <div className="rb-fab-wrap">
+          <button
+            type="button"
+            className="btn btn-primary rb-fab"
+            aria-label="Add a recipe"
+            onClick={() => setCaptureOpen(true)}
+          >
+            <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" aria-hidden="true" focusable="false">
+              <path d="M12 5v14M5 12h14" />
+            </svg>
+          </button>
+        </div>
+      )}
+
+      {captureOpen && (
+        <CaptureSheet
+          importUrl={importUrl}
+          onImportUrlChange={setImportUrl}
+          onImportPaste={handleImportPaste}
+          onImportSubmit={handleImport}
+          importing={importing}
+          canPaste={canPaste}
+          onPasteLink={pasteLink}
+          pasteOpen={pasteOpen}
+          onOpenPasteText={() => setPasteOpen(true)}
+          onClosePasteText={closePasteText}
+          pasteText={pasteText}
+          onPasteTextChange={setPasteText}
+          onPasteTextSubmit={handlePasteText}
+          onWrite={writeFromCapture}
+          onClose={closeCaptureSheet}
+          error={error}
+          inputRef={inputRef}
+        />
       )}
 
       {editing && (

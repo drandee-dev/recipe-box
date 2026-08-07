@@ -159,8 +159,7 @@ export default function RecipeList({
       {recipes.length === 0 && !loading && (
         <p className="rb-empty">
           <strong>The box is empty</strong>
-          Paste a recipe link above, or copy a post link in Instagram or TikTok and tap
-          Paste copied link.
+          Tap the + button to paste a link, paste recipe text, or write one in.
           <button type="button" className="btn btn-secondary btn-sm" onClick={onWrite}>
             Write one yourself
           </button>

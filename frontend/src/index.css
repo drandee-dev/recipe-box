@@ -650,9 +650,9 @@ textarea.field {
   font-weight: 700;
 }
 
-/* The import bar is the first thing on the first tab, so it gets the field
-   treatment the search box already had: --line-strong outline, --r radius, a
-   real surface fill rather than the transparent default. */
+/* The import bar, now living inside the "Add a recipe" sheet (finding 1) rather
+   than sitting above the list on every visit. Same field treatment the search
+   box already had: --line-strong outline, --r radius, a real surface fill. */
 .rb-import {
   display: flex;
   gap: var(--sp-2);
@@ -663,15 +663,8 @@ textarea.field {
   min-width: 0;
 }
 
-.rb-paste-routes {
-  display: flex;
-  flex-direction: column;
-  gap: var(--sp-2);
-  margin-top: var(--sp-2);
-}
-
 .rb-paste-text {
-  margin-top: var(--sp-2);
+  margin-top: var(--sp-4);
 }
 
 .rb-paste-text-actions {
@@ -679,6 +672,102 @@ textarea.field {
   justify-content: flex-end;
   gap: var(--sp-2);
   margin-top: var(--sp-2);
+}
+
+/* --- The FAB that opens the capture sheet ----------------------------------
+   Floating above the tab bar rather than in the header, for the same reason
+   the tabs moved down there in pass 1b: it's where a thumb already is. The
+   outer wrap is fixed edge-to-edge and inert so it never blocks a tap outside
+   its own column; the inner button sits at the content column's right edge,
+   the same way .rb-tabbar-row centers inside the full-bleed .rb-tabbar.
+   ------------------------------------------------------------------------- */
+.rb-fab-wrap {
+  position: fixed;
+  right: 0;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--sp-4));
+  left: 0;
+  z-index: var(--z-nav);
+  display: flex;
+  justify-content: flex-end;
+  max-width: 640px;
+  margin: 0 auto;
+  padding: 0 var(--sp-4);
+  pointer-events: none;
+}
+
+/* Only the shape and position are new here — colour and border still come
+   from .btn-primary, per the "component CSS may only adjust layout" rule. */
+.rb-fab {
+  pointer-events: auto;
+  width: 56px;
+  height: 56px;
+  padding: 0;
+  border-radius: var(--r-pill);
+  box-shadow: var(--shadow-card);
+}
+
+.rb-fab svg {
+  width: 26px;
+  height: 26px;
+}
+
+/* --- Capture routes, inside the sheet the FAB opens ------------------------
+   Each row carries an icon, a title and a subtitle the four stacked buttons
+   this replaced never had room for. Hairlines divide the list, including
+   above the first row, which does the job the old layout needed an "OR" for:
+   separating the routes from the link field above them. --- */
+.capture-routes {
+  display: flex;
+  flex-direction: column;
+  margin-top: var(--sp-4);
+}
+
+.capture-route {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  width: 100%;
+  padding: var(--sp-3) 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.capture-route-icon {
+  display: grid;
+  place-items: center;
+  flex-shrink: 0;
+  width: 38px;
+  height: 38px;
+  border-radius: var(--r-sm);
+  background: var(--accent-soft);
+  color: var(--accent-ink);
+}
+
+.capture-route-icon svg {
+  width: 19px;
+  height: 19px;
+}
+
+.capture-route-text {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+
+.capture-route-title {
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--txt);
+}
+
+.capture-route-subtitle {
+  font-size: var(--fs-sm);
+  color: var(--txt-2);
 }
 
 .recipes-caption {
@@ -822,10 +911,13 @@ textarea.field {
 
 /* The lead line names the situation, the rest says what to do about it. */
 /* An empty state can offer a way out of being empty. Its own line, because a
-   button sitting inline in centred prose reads as a link that wrapped oddly. */
+   button sitting inline in centred prose reads as a link that wrapped oddly.
+   `flex` rather than `inline-flex`: inline-flex only drops to a new line when
+   the preceding text happens to fill the row, which is a coincidence of
+   wording rather than something the rule can promise. */
 .rb-empty .btn {
-  display: inline-flex;
-  margin-top: var(--sp-3);
+  display: flex;
+  margin: var(--sp-3) auto 0;
 }
 
 .rb-empty strong {
