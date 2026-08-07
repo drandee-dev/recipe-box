@@ -54,6 +54,8 @@ export default function RecipeList({
   onDelete,
   onToggleFavorite,
   onSetTags,
+  onEdit,
+  onWrite,
 }) {
   const [allChips, setAllChips] = useState(false)
   const [tagDraft, setTagDraft] = useState('')
@@ -159,6 +161,9 @@ export default function RecipeList({
           <strong>The box is empty</strong>
           Paste a recipe link above, or copy a post link in Instagram or TikTok and tap
           Paste copied link.
+          <button type="button" className="btn btn-secondary btn-sm" onClick={onWrite}>
+            Write one yourself
+          </button>
         </p>
       )}
 
@@ -227,8 +232,8 @@ export default function RecipeList({
                     <>
                       {r.description && <p className="recipes-caption">{r.description}</p>}
                       <p className="recipes-meta">
-                        No recipe was readable from this post. Open the source and paste the text
-                        into Paste recipe text to fill it in.
+                        No recipe was readable from this post. Fill it in by hand with Edit below,
+                        or open the source and paste the text into Paste recipe text.
                       </p>
                     </>
                   ) : (
@@ -304,6 +309,9 @@ export default function RecipeList({
                         {r.favorite ? '★' : '☆'}
                       </span>
                       {r.favorite ? 'Favorited' : 'Favorite'}
+                    </button>
+                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => onEdit(r)}>
+                      Edit
                     </button>
                     {r.source_url && (
                       <a

@@ -11,6 +11,7 @@ import { setBusy } from './lib/pwa.js'
 import Account from './components/Account.jsx'
 import InstallPrompt from './components/InstallPrompt.jsx'
 import Planner from './components/Planner.jsx'
+import RecipeEditor from './components/RecipeEditor.jsx'
 import RecipeList from './components/RecipeList.jsx'
 import ShoppingList from './components/ShoppingList.jsx'
 
@@ -89,6 +90,10 @@ export default function App() {
   const inputRef = useRef(null)
   const [error, setError] = useState('')
   const [openId, setOpenId] = useState(null)
+  // null when closed, { recipe } when open — with recipe null for a new one.
+  // An object rather than two booleans so "editing this recipe" can't drift out
+  // of step with "the editor is open".
+  const [editing, setEditing] = useState(null)
   // Search and filters are view state only — never persisted. A saved filter
   // that outlives the session is a recipe list that looks empty for no reason.
   const [query, setQuery] = useState('')
@@ -597,6 +602,40 @@ export default function App() {
     return updateRecipe(recipe, { favorite: !recipe.favorite })
   }
 
+  // The editor's save, which is deliberately not updateRecipe: that one is
+  // optimistic and swallows its failure into the error strip, which is right for
+  // a star and wrong for a form. Here the sheet stays open and shows what went
+  // wrong, so the typing isn't lost — hence the throw rather than a catch.
+  async function handleEditorSave(values) {
+    const target = editing?.recipe
+    const previousImage = target?.image_url || null
+
+    const saved = await store.save(
+      target
+        ? { ...target, ...values }
+        : {
+            ...values,
+            source_type: 'manual',
+            favorite: false,
+            id: crypto.randomUUID(),
+            created_at: new Date().toISOString(),
+          },
+    )
+
+    setRecipes((prev) =>
+      target ? prev.map((r) => (r.id === saved.id ? saved : r)) : [saved, ...prev],
+    )
+    setOpenId(saved.id)
+
+    // A pasted photo link is mirrored on exactly the same terms as an imported
+    // one. The per-session set is keyed by recipe id, so a recipe whose earlier
+    // photo failed to mirror would be skipped forever with its new one — drop
+    // the claim when the link actually changed.
+    if ((saved.image_url || null) !== previousImage) mirrored.current.delete(saved.id)
+    mirrorImages([saved])
+    return saved
+  }
+
   function handleSetTags(recipe, tags) {
     return updateRecipe(recipe, { tags })
   }
@@ -872,6 +911,13 @@ export default function App() {
                 Paste recipe text
               </button>
             )}
+            <button
+              type="button"
+              className="btn btn-secondary btn-block"
+              onClick={() => setEditing({ recipe: null })}
+            >
+              Write a recipe
+            </button>
           </div>
           {pasteOpen && (
             <form className="rb-paste-text" onSubmit={handlePasteText}>
@@ -937,6 +983,8 @@ export default function App() {
             onDelete={handleDelete}
             onToggleFavorite={handleToggleFavorite}
             onSetTags={handleSetTags}
+            onEdit={(recipe) => setEditing({ recipe })}
+            onWrite={() => setEditing({ recipe: null })}
           />
         </main>
       )}
@@ -971,6 +1019,17 @@ export default function App() {
           />
           {error && <p className="rb-error">{error}</p>}
         </main>
+      )}
+
+      {editing && (
+        <RecipeEditor
+          // Keyed so switching from one recipe to another rebuilds the form
+          // rather than leaving the previous recipe's rows in state.
+          key={editing.recipe?.id || 'new'}
+          recipe={editing.recipe}
+          onSave={handleEditorSave}
+          onClose={() => setEditing(null)}
+        />
       )}
 
       <InstallPrompt ready={recipes.length > 0} />

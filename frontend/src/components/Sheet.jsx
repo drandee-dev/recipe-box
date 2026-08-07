@@ -21,7 +21,12 @@ const FOCUSABLE =
 
 let sheetCount = 0
 
-export default function Sheet({ title, onClose, children, closeLabel = 'Cancel' }) {
+// `action` is an optional confirming control for the head — the editor's Save.
+// It lives up here rather than at the end of the form because a form long enough
+// to scroll needs its save reachable from anywhere, and the alternative, a
+// sticky bar across the foot, spends a full-width accent slab covering the
+// fields being filled in.
+export default function Sheet({ title, onClose, children, closeLabel = 'Cancel', action = null }) {
   const sheetRef = useRef(null)
   const headingId = useRef(`sheet-title-${Math.random().toString(36).slice(2, 9)}`)
 
@@ -103,9 +108,12 @@ export default function Sheet({ title, onClose, children, closeLabel = 'Cancel' 
           <h2 id={headingId.current} className="sheet-title">
             {title}
           </h2>
-          <button type="button" className="btn btn-quiet" onClick={onClose}>
-            {closeLabel}
-          </button>
+          <span className="sheet-head-actions">
+            <button type="button" className="btn btn-quiet" onClick={onClose}>
+              {closeLabel}
+            </button>
+            {action}
+          </span>
         </div>
         {children}
       </div>

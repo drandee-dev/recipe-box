@@ -704,6 +704,13 @@ textarea.field {
 }
 
 /* The lead line names the situation, the rest says what to do about it. */
+/* An empty state can offer a way out of being empty. Its own line, because a
+   button sitting inline in centred prose reads as a link that wrapped oddly. */
+.rb-empty .btn {
+  display: inline-flex;
+  margin-top: var(--sp-3);
+}
+
 .rb-empty strong {
   display: block;
   margin-bottom: var(--sp-1);
@@ -1252,7 +1259,10 @@ textarea.field {
   overscroll-behavior: contain;
   background: var(--surface);
   border-radius: var(--r-lg) var(--r-lg) 0 0;
-  padding: var(--sp-4) var(--sp-4) calc(var(--sp-6) + env(safe-area-inset-bottom));
+  /* No padding at the top: the head is sticky, and any padding above it is a
+     strip the content scrolls through in full view before it reaches the head's
+     opaque background. The handle below carries that space instead. */
+  padding: 0 var(--sp-4) calc(var(--sp-6) + env(safe-area-inset-bottom));
   animation: sheet-rise 0.22s cubic-bezier(0.22, 1, 0.36, 1);
 }
 
@@ -1267,17 +1277,31 @@ textarea.field {
   display: block;
   width: 36px;
   height: 4px;
-  margin: 0 auto var(--sp-3);
+  margin: var(--sp-4) auto var(--sp-3);
   border-radius: var(--r-pill);
   background: var(--line);
 }
 
+/* Sticky, because the sheet is the scroll container and a head that scrolls away
+   takes the title and the confirming action with it. The background is opaque so
+   the fields pass under it rather than through it. */
 .sheet-head {
+  position: sticky;
+  top: 0;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: var(--sp-2);
-  margin-bottom: var(--sp-4);
+  padding-bottom: var(--sp-3);
+  margin-bottom: var(--sp-3);
+  background: var(--surface);
+}
+
+.sheet-head-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
 }
 
 .sheet-title {
@@ -1305,6 +1329,162 @@ textarea.field {
   .sheet {
     animation: none;
   }
+}
+
+/* --- The recipe editor. Lives in a sheet, so it inherits the scroll container,
+   the focus trap and the safe-area padding and only has to lay out its own
+   fields. --- */
+.editor {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.editor-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  /* Fields sit in a flex row that would otherwise refuse to shrink below the
+     input's intrinsic width and push the sheet sideways. */
+  min-width: 0;
+}
+
+.editor-label {
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  color: var(--txt-2);
+}
+
+.editor-hint {
+  margin: 0;
+  font-size: var(--fs-xs);
+  color: var(--txt-3);
+}
+
+/* aria-invalid rather than a class: the attribute is what assistive tech reads,
+   so styling off it keeps the two from drifting apart. */
+.editor .field[aria-invalid='true'] {
+  border-color: var(--danger);
+}
+
+.editor .field[aria-invalid='true'] ~ .editor-hint {
+  color: var(--danger);
+}
+
+.editor-photo {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+}
+
+.editor-photo-field {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Serves, prep, cook, total. Four short numeric fields that read as one line of
+   facts; they wrap to two rows on a narrow phone rather than shrinking below a
+   thumb's width. */
+.editor-row {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-3);
+}
+
+.editor-row > .editor-field {
+  flex: 1 1 96px;
+}
+
+.editor-block {
+  margin: 0;
+  padding: 0;
+  border: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+.editor-rows {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  width: 100%;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-2);
+}
+
+.editor-row-item {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-2);
+}
+
+/* The number is the list's own order, so it is decoration for sighted users and
+   hidden from assistive tech, which already announces "Ingredients 3" from the
+   field's label. Fixed width so the fields line up down the column. */
+.editor-row-num {
+  flex: 0 0 18px;
+  padding-top: 11px;
+  font-size: var(--fs-xs);
+  color: var(--txt-3);
+  text-align: right;
+}
+
+.editor-row-input {
+  flex: 1;
+  min-width: 0;
+}
+
+/* Three 44px targets plus the number still leave ~190px of field at 390px wide,
+   which is enough to read an ingredient line. Shrinking them was the other
+   option and it would put the app's most-tapped small controls under the touch
+   floor everything else was raised to. */
+.editor-row-controls {
+  display: flex;
+  gap: 0;
+}
+
+.editor-row-remove {
+  color: var(--danger);
+}
+
+/* Disabled at the ends of the list. The UA's own disabled colour is a flat 30%
+   black, which on the accent-free arrows reads as "greyed out" correctly but
+   doesn't match the rest of the app's disabled treatment. */
+.editor-row-controls .btn:disabled {
+  color: var(--txt-3);
+  opacity: 0.4;
+}
+
+.editor-confirm {
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-4);
+}
+
+.editor-confirm p {
+  margin: 0;
+  display: flex;
+  flex-direction: column;
+  gap: var(--sp-1);
+  font-size: var(--fs-base);
+  color: var(--txt-2);
+}
+
+.editor-confirm strong {
+  font-size: var(--fs-md);
+  color: var(--txt);
+}
+
+.editor-confirm-actions {
+  display: flex;
+  gap: var(--sp-2);
+}
+
+.editor-confirm-actions .btn {
+  flex: 1;
 }
 
 .planner-slot-chips {
