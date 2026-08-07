@@ -27,14 +27,40 @@ def _headers(key: str) -> dict:
     return {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
 
 
+# Belt and braces on the row read below. PostgREST returns everything unless the
+# project sets a max-rows cap, and a personal box produces a few hundred events a
+# month, so this is not expected to be reached. Asking for it explicitly is what
+# makes reaching it detectable instead of silent.
+ROW_LIMIT = 10000
+
+
+def sum_cents(rows) -> float | None:
+    """Add up a page of usage rows. None when the shape is not what we expect."""
+    if not isinstance(rows, list):
+        return None
+    total = 0.0
+    for row in rows:
+        try:
+            total += float(row.get("cents") or 0)
+        except (AttributeError, TypeError, ValueError):
+            log.warning("usage row in an unexpected shape: %r", row)
+            return None
+    return total
+
+
 def month_spend_cents() -> float | None:
     """Cents spent since the first of the month, or None when untracked.
 
-    Asks PostgREST for the sum rather than downloading the rows and adding them
-    up here. The old shape did the latter, which grew with usage on a check that
-    runs before every single model call, and — worse — silently under-reported
-    the moment a row cap applied: past the cap the total plateaus, the budget
-    never trips, and the failure looks exactly like nothing being wrong.
+    Reads the rows and adds them up here. This was briefly a `cents.sum()`
+    aggregate instead, which is the better query and does not work: Supabase
+    disables aggregate functions on the data API by default, PostgREST answers
+    PGRST123, and because this whole path fails open the only visible effect was
+    that the monthly ceiling quietly stopped being enforced. A correct query that
+    the deployment refuses is worse than a plain one that runs.
+
+    If exactness at volume ever matters, the fix is a Postgres function called
+    over `/rpc/`, not the aggregate API. At a few hundred rows a month it does
+    not matter yet.
     """
     conf = _config()
     if not conf:
@@ -47,17 +73,18 @@ def month_spend_cents() -> float | None:
         with httpx.Client(timeout=TIMEOUT) as client:
             resp = client.get(
                 f"{url}/rest/v1/{TABLE}",
-                params={"select": "cents.sum()", "created_at": f"gte.{start.isoformat()}"},
+                params={
+                    "select": "cents",
+                    "created_at": f"gte.{start.isoformat()}",
+                    "limit": ROW_LIMIT,
+                },
                 headers=_headers(key),
             )
             if resp.status_code >= 400:
-                # Most likely cause if this ever fires: aggregate functions are
-                # disabled on the project, which PostgREST reports as a 400 on
-                # the select rather than as anything about aggregates. Logged
-                # with the body because the alternative is a generic traceback
-                # for a call that fails open and is therefore invisible.
+                # Logged with the body because this call fails open, so without
+                # this line a rejection is indistinguishable from a quiet month.
                 log.warning(
-                    "usage lookup rejected (%s): %s — budget not enforced",
+                    "usage lookup rejected (%s): %s. Budget not enforced.",
                     resp.status_code,
                     resp.text[:200],
                 )
@@ -67,15 +94,13 @@ def month_spend_cents() -> float | None:
         log.exception("usage lookup failed; not enforcing budget")
         return None
 
-    # One row back, `{"sum": n}` — or `{"sum": null}` for a month with no events,
-    # which is 0 spent and not the same answer as "untracked".
-    if not isinstance(rows, list) or not rows:
-        return 0.0
-    try:
-        return float(rows[0].get("sum") or 0)
-    except (AttributeError, TypeError, ValueError):
-        log.warning("usage sum came back in an unexpected shape: %r", rows[0])
-        return None
+    if isinstance(rows, list) and len(rows) >= ROW_LIMIT:
+        # Past this point the total is a floor rather than the answer, which
+        # means the ceiling is being enforced against an undercount.
+        log.warning(
+            "usage lookup hit the %s row limit; spend is being under-counted", ROW_LIMIT
+        )
+    return sum_cents(rows)
 
 
 def record_usage(cents: float, model: str) -> None:

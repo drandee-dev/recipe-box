@@ -23,7 +23,7 @@ spend. Cheapest fix that keeps the current UX: a per-IP counter in the same
 with a 429. Requiring a session on `/structure` is the stricter option but it
 breaks signed-out paste, which is a real path today.
 
-## 2. Monthly spend is summed by downloading every event row — FIXED 2026-08-07
+## 2. Monthly spend is summed by downloading every event row — WITHDRAWN 2026-08-07
 
 `month_spend_cents` (`app/usage.py:30`) selects `cents` for every row since the
 first of the month and sums it in Python. Two problems: it grows linearly with
@@ -33,6 +33,29 @@ and the budget stops tripping.
 
 Replace with the aggregate: `select=cents.sum()` on the same filter. One row
 back, exact, no cap to reason about.
+
+**This was wrong, and shipping it broke the thing it was meant to improve.**
+Supabase disables aggregate functions on the data API by default. PostgREST
+answered `PGRST123`, and because this path fails open by design the only symptom
+was that the monthly ceiling stopped being enforced. Nothing threw, imports kept
+working, and it was found by reading function logs inside the one hour Hobby
+retains them.
+
+Reverted to summing the rows, which demonstrably works, now with an explicit
+`limit` so that hitting a cap is logged rather than silent. The original concern
+was theoretical: a personal box produces a few hundred events a month, and
+Supabase does not set a row cap by default. If exactness at volume ever matters,
+the answer is a Postgres function called over `/rpc/`, not the aggregate API.
+
+**The real fix was making it observable.** `/api/health` now reports
+`budget: {tracked, spent_cents, limit_cents}`, so "not enforcing" is a curl away
+instead of a log hunt. `tracked: false` means the ceiling is not being applied,
+whatever the cause. This is the same reasoning that already put `images` in that
+endpoint, and the lesson is that a fail-open path needs a readout by default:
+this class of bug is undetectable from the outside without one.
+
+`backend/tests/test_usage.py` covers the arithmetic and, more importantly, that a
+failed lookup reports as untracked rather than as zero spent.
 
 ## 3. First sign-in races the plan migration against the recipe migration — FIXED 2026-08-07
 

@@ -57,6 +57,12 @@ def health():
     otherwise invisible from outside: mirroring fails silently by design, so a
     dependency missing from the bundle looks exactly like a photo that wouldn't
     download. `storage` is the two env vars the uploads need.
+
+    `budget` is here for exactly the same reason, and it was added the hard way.
+    The spend lookup also fails open, so when a query change made Supabase reject
+    it the only symptom was that the monthly ceiling stopped being enforced —
+    invisible from outside, and found only by reading function logs within the
+    hour they are retained. `tracked: false` now says it out loud.
     """
     try:
         from .images import storage_configured
@@ -65,7 +71,24 @@ def health():
     except ImportError:
         log.exception("image pipeline is not importable")
         images, storage = False, False
-    return {"status": "ok", "ai": ai_available(), "storage": storage, "images": images}
+
+    from .ai import MONTHLY_BUDGET_CENTS
+    from .usage import month_spend_cents
+
+    spent = month_spend_cents()
+    return {
+        "status": "ok",
+        "ai": ai_available(),
+        "storage": storage,
+        "images": images,
+        "budget": {
+            # False means the ceiling is not being applied, whatever the reason:
+            # Supabase unconfigured, unreachable, or refusing the query.
+            "tracked": spent is not None,
+            "spent_cents": None if spent is None else round(spent, 2),
+            "limit_cents": MONTHLY_BUDGET_CENTS,
+        },
+    }
 
 
 @app.post("/api/recipes/extract")
