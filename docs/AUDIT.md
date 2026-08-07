@@ -7,7 +7,22 @@ work that was always going to come after the features.
 
 Ordered by what it costs to leave alone. Item numbers are stable — quote them.
 
-## 1. The two AI endpoints are anonymous and unmetered per caller
+## 1. The two AI endpoints are anonymous and unmetered per caller — FIXED 2026-08-07
+
+Fixed with the per-IP cap, not the session requirement. Twenty model calls per
+address per hour, counted off `ai_usage_events` (which grew a nullable `ip_hash`
+column, so the schema needs a re-run), rejected with a 429 and a `Retry-After`.
+The check runs in `meter_caller` at the top of both handlers, before any fetch or
+model call, so a blocked caller costs a Supabase read and nothing else.
+
+The address is a salted SHA-256 rather than the address itself, read from
+`x-real-ip` in preference to `x-forwarded-for` — the latter is client-settable,
+and trusting it first would let a caller hand themselves a fresh empty bucket on
+every request. `RATE_LIMIT_SALT` is a new optional environment variable.
+
+Endpoints stay anonymous, so signed-out paste and the iOS Safari capture path are
+untouched.
+
 
 `POST /api/recipes/extract` and `POST /api/recipes/structure` (`app/main.py:65`,
 `app/main.py:79`) take a body and call Haiku with no session, no origin check
@@ -539,7 +554,13 @@ an oversight.
 
 Worth revisiting only if a public landing page is ever added.
 
-## 26. The image endpoint checks who is calling, never what they are touching
+## 26. The image endpoint checks who is calling, never what they are touching — FIXED 2026-08-07
+
+`recipe_is_owned` in `images.py` runs the suggested query before the mirror and
+the endpoint answers 422 when it comes back empty. It fails closed: a lookup that
+could not complete returns False and the mirror is skipped, which is cheap on a
+path the client already retries on a later load.
+
 
 From **Authorization & IDOR**. `POST /api/recipes/image` verifies the caller's
 session properly and derives `user_id` from the token rather than the body
@@ -565,7 +586,17 @@ already holds: `recipes?id=eq.{recipe_id}&user_id=eq.{user_id}&select=id`, and a
 422 when it comes back empty. That is the same shape and roughly the same cost as
 the GoTrue round trip already on this path.
 
-## 27. A shared secret cannot fix item 1, and the budget makes it worse
+## 27. A shared secret cannot fix item 1, and the budget makes it worse — RESOLVED 2026-08-07
+
+The sub-decision this item asks for was taken: the budget check **keeps failing
+open**, and so does the new rate lookup. The reasoning that made failing open
+uncomfortable was that it left a public endpoint with no ceiling at all during a
+Supabase outage. With item 1 fixed there are two ceilings and they cover each
+other — an outage that removes the monthly one still leaves an endpoint no single
+caller can loop on, and `/api/health` reports `budget.tracked: false` so the
+untracked state is visible from outside. Failing closed was rejected because it
+means a Supabase blip stops the owner importing recipes.
+
 
 From **Securing Endpoints**. That guide's headline pattern for an endpoint with
 side effects is a shared secret, constant-time compared, failing closed. Written
@@ -591,7 +622,13 @@ Passes worth recording from the same guide: identity is never read from a reques
 body, no endpoint constructs email headers (Supabase sends all mail), and every
 handler returns an opaque message while logging the traceback server-side.
 
-## 28. Secrets hygiene is in good shape, with two small gaps
+## 28. Secrets hygiene is in good shape, with two small gaps — FIXED 2026-08-07
+
+Both done. `.gitignore` is now `.env*` plus `!.env.example`, verified with
+`git check-ignore` against `.env.production` and friends, and both example files
+are still tracked. `SUPABASE_JWT_SECRET` is gone from `backend/.env.example`,
+replaced by a comment saying why there isn't one.
+
 
 From **Environment Variables & API Keys**. Checked and clean: no secret wears a
 `VITE_` prefix (the three that exist are the API base URL, the Supabase URL and

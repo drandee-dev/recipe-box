@@ -1,10 +1,12 @@
 node_modules/
 dist/
+# Every .env variant, including the ones nobody thought of. Enumerating them left
+# .env.production and .env.development tracked.
+.env*
+!.env.example
 .venv/
 __pycache__/
 *.pyc
-.env
-.env.local
 .vercel/
 .ruff_cache/
 test-results/

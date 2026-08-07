@@ -165,6 +165,57 @@ def _upload(path: str, data: bytes) -> str:
     return f"{url}/storage/v1/object/public/{BUCKET}/{path}"
 
 
+def recipe_is_owned(user_id: str, recipe_id: str) -> bool:
+    """Does this recipe exist, and belong to this caller?
+
+    The endpoint above already derives `user_id` from the verified token rather
+    than the body, so there is no cross-user write to prevent: the storage path
+    is `{verified_user_id}/{recipe_id}` and a caller can only ever write into
+    their own folder. What was missing is the second gate. `recipe_id` arrives in
+    the body and nothing tied it to a row, so an authenticated caller could post
+    invented UUIDs with arbitrary image URLs and have us fetch and keep each one,
+    indefinitely, on the free tier's storage. Sign-up is open, so the price of an
+    account is an email address.
+
+    Worse, those objects would be unreachable afterwards: `store.remove` deletes
+    `{user_id}/{recipe_id}` for recipes the app knows about, and a recipe that
+    never existed is never in that list.
+
+    Fails closed. This runs on a best-effort path whose failure is already
+    handled — the client keeps the origin URL and tries again on a later load —
+    so a lookup we couldn't complete is a mirror worth skipping, not one worth
+    guessing at.
+    """
+    # Parsed rather than interpolated raw: both halves go into a PostgREST filter
+    # and then into an object path. ValueError here is the endpoint's 422.
+    user_id = str(uuid.UUID(user_id))
+    recipe_id = str(uuid.UUID(recipe_id))
+
+    url, key = _storage()
+    try:
+        with httpx.Client(timeout=TIMEOUT) as client:
+            resp = client.get(
+                f"{url}/rest/v1/recipes",
+                params={
+                    "select": "id",
+                    "id": f"eq.{recipe_id}",
+                    "user_id": f"eq.{user_id}",
+                    "limit": 1,
+                },
+                headers={"apikey": key, "Authorization": f"Bearer {key}"},
+            )
+    except httpx.HTTPError:
+        log.exception("ownership lookup failed for %s", recipe_id)
+        return False
+
+    if resp.status_code >= 400:
+        log.warning("ownership lookup rejected: %s %s", resp.status_code, resp.text[:200])
+        return False
+
+    rows = resp.json()
+    return isinstance(rows, list) and len(rows) > 0
+
+
 def mirror_image(user_id: str, recipe_id: str, source_url: str) -> dict:
     """Fetch, resize and store one recipe photo. Returns the columns to save."""
     # Both go straight into an object path. They are already validated upstream,

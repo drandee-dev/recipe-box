@@ -93,12 +93,21 @@ create table if not exists ai_usage_events (
   id uuid primary key default gen_random_uuid(),
   cents numeric not null default 0,
   model text not null,
+  ip_hash text,
   created_at timestamptz not null default now()
 );
 
 alter table ai_usage_events enable row level security;
 
+-- One row per model call serves two jobs: the monthly spend ledger, and the
+-- per-caller hourly cap on the two anonymous AI endpoints. `ip_hash` is a salted
+-- SHA-256 of the connecting address (app/usage.py), never the address itself,
+-- and is null for any call that did not arrive over HTTP. Added by `alter` as
+-- well as in the create above, since the table predates the column.
+alter table ai_usage_events add column if not exists ip_hash text;
+
 create index if not exists ai_usage_created_idx on ai_usage_events (created_at desc);
+create index if not exists ai_usage_ip_idx on ai_usage_events (ip_hash, created_at desc);
 
 alter table recipes enable row level security;
 alter table meal_plan enable row level security;

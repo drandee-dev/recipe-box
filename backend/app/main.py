@@ -1,6 +1,6 @@
 import logging
 
-from fastapi import FastAPI, Header, HTTPException
+from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
@@ -73,7 +73,7 @@ def health():
         images, storage = False, False
 
     from .ai import MONTHLY_BUDGET_CENTS
-    from .usage import month_spend_cents
+    from .usage import RATE_LIMIT_CALLS, RATE_WINDOW_MINUTES, month_spend_cents, rate_tracked
 
     spent = month_spend_cents()
     return {
@@ -88,11 +88,47 @@ def health():
             "spent_cents": None if spent is None else round(spent, 2),
             "limit_cents": MONTHLY_BUDGET_CENTS,
         },
+        "rate": {
+            # Same contract, same reason. The likeliest cause of false here is a
+            # missing `ip_hash` column, i.e. the schema re-run hasn't happened,
+            # and without this line that looks exactly like a healthy deployment.
+            "tracked": rate_tracked(),
+            "limit": RATE_LIMIT_CALLS,
+            "window_minutes": RATE_WINDOW_MINUTES,
+        },
     }
 
 
+def meter_caller(request: Request) -> None:
+    """Gate on the per-caller cap, and tag whatever this request spends.
+
+    Both AI endpoints are anonymous on purpose: extraction fetches a public URL
+    and keeps nothing, and paste has to work before anyone signs in because the
+    iOS capture path lands in Safari, where the app may well be signed out. What
+    anonymity does not cover is spend, and the monthly ceiling is shared — one
+    caller in a loop empties it for everyone, and books a Vercel invocation each
+    time. So the cap is per caller instead of per account.
+
+    A shared secret is not an option here and it is worth writing down why: the
+    only caller is a public SPA, so any secret it presented would ship in the
+    bundle every visitor downloads.
+    """
+    from .usage import caller_hash, client_ip, over_rate_limit, set_caller
+
+    ip_hash = caller_hash(client_ip(request.headers))
+    set_caller(ip_hash)
+    if over_rate_limit(ip_hash):
+        log.info("rate limit reached for %s", ip_hash[:8])
+        raise HTTPException(
+            status_code=429,
+            detail="Too many imports from this connection. Try again in a little while.",
+            headers={"Retry-After": "900"},
+        )
+
+
 @app.post("/api/recipes/extract")
-def extract(body: ExtractRequest):
+def extract(body: ExtractRequest, request: Request):
+    meter_caller(request)
     try:
         return extract_recipe(body.url)
     except AIBudgetError:
@@ -106,8 +142,9 @@ def extract(body: ExtractRequest):
 
 
 @app.post("/api/recipes/structure")
-def structure(body: StructureRequest):
+def structure(body: StructureRequest, request: Request):
     """Paste-anything box: raw text in, recipe out."""
+    meter_caller(request)
     try:
         result = structure_recipe(body.text, context="This text was pasted by the user.")
     except AIBudgetError:
@@ -142,7 +179,7 @@ def recipe_image(body: ImageRequest, authorization: str | None = Header(default=
     """
     try:
         from .auth import AuthError, bearer_token, verify_token
-        from .images import ImageError, mirror_image
+        from .images import ImageError, mirror_image, recipe_is_owned
     except ImportError:
         # Only this endpoint is lost, and /api/health says so.
         log.exception("image mirroring is unavailable: a dependency is missing")
@@ -153,6 +190,20 @@ def recipe_image(body: ImageRequest, authorization: str | None = Header(default=
     except AuthError as exc:
         log.info("image mirror rejected: %s", exc)
         raise HTTPException(status_code=401, detail="Sign in to save recipe photos")
+
+    # Who is calling was never the gap; what they are touching was. Kept outside
+    # the block below because that one ends in `except Exception`, which would
+    # turn the 422 this raises into a 502.
+    try:
+        owned = recipe_is_owned(user_id, body.recipe_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Not a valid recipe id")
+    except ImageError:
+        log.exception("could not check recipe ownership")
+        raise HTTPException(status_code=503, detail="Photo storage is unavailable")
+    if not owned:
+        log.info("image mirror rejected: %s is not a recipe of the caller's", body.recipe_id)
+        raise HTTPException(status_code=422, detail="No recipe to attach that photo to")
 
     try:
         return mirror_image(user_id, body.recipe_id, body.url)
