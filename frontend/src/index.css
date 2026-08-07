@@ -279,6 +279,12 @@ select,
   line-height: 1;
 }
 
+/* A symbol carries its own aria-label; the underline .btn-quiet asks for is a
+   text-link cue that doesn't belong under a bare glyph. */
+.btn-quiet.btn-icon {
+  text-decoration: none;
+}
+
 /* Sizes. lg matches the 46px fields it sits beside in a row; sm is for dense
    inline spots like the tag editor. Nothing else gets a custom height. */
 .btn-lg {
@@ -1361,11 +1367,67 @@ textarea.field {
   text-align: center;
 }
 
-.planner-weeklabel strong {
+/* A real button now (finding 20): tapping the range itself jumps back to the
+   current week, same as the "This week" link beside it. Same face the old
+   <strong> had — becoming interactive shouldn't make it look like a link. */
+.planner-weeklabel-btn {
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--txt);
   font-family: 'Clash Display', 'Satoshi', sans-serif;
   font-size: var(--fs-md);
   font-weight: 600;
   letter-spacing: -0.01em;
+  cursor: pointer;
+}
+
+/* --- The week body ----------------------------------------------------
+   Swipeable as a whole (finding 20): dragging it sideways changes the week,
+   the same gesture a horizontal strip of days looks like it should support.
+   Keyed by weekStart in the JSX, so a week change remounts this element —
+   the slide-in classes below are its entrance animation, not a transition
+   between two live states. Nothing animates the outgoing week; "the content
+   slides in the direction of travel" only asks for the incoming side. --- */
+.planner-week-body.dragging {
+  transition: none;
+}
+
+@keyframes planner-week-in-right {
+  from {
+    transform: translateX(28px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+@keyframes planner-week-in-left {
+  from {
+    transform: translateX(-28px);
+    opacity: 0;
+  }
+  to {
+    transform: translateX(0);
+    opacity: 1;
+  }
+}
+
+.planner-week-in-right {
+  animation: planner-week-in-right 0.22s ease-out;
+}
+
+.planner-week-in-left {
+  animation: planner-week-in-left 0.22s ease-out;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .planner-week-in-right,
+  .planner-week-in-left {
+    animation: none;
+  }
 }
 
 .planner-day {
@@ -1424,9 +1486,63 @@ textarea.field {
   color: var(--txt-2);
 }
 
-.planner-day-empty {
-  margin: var(--sp-2) 0 0;
+/* Same reach as the old bordered Add (44px via .btn-icon), a third of the
+   weight: quiet colour, no border, no fill. Seven of these used to be the
+   loudest thing on the screen (finding 17). */
+.planner-day-add {
+  font-size: var(--fs-lg);
+  font-weight: 400;
+}
+
+/* An empty day (finding 18): one dashed line instead of a full card, the day
+   name/date/pill on the left and the add affordance on the right, and the
+   whole row is the tap target rather than a button living inside it. Same
+   dashed-border treatment .rb-empty uses for "this fills in". */
+.planner-day-collapsed {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+  width: 100%;
+  min-height: 44px;
+  margin-bottom: var(--sp-2);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px dashed var(--line-strong);
+  border-radius: var(--r);
+  background: none;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.planner-day-collapsed:disabled {
+  color: var(--txt-3);
+  cursor: default;
+}
+
+.planner-day-collapsed-today {
+  box-shadow: inset 3px 0 0 var(--accent);
+}
+
+.planner-day-collapsed-label {
+  display: flex;
+  align-items: baseline;
+  gap: var(--sp-2);
+  font-family: 'Clash Display', 'Satoshi', sans-serif;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--txt);
+}
+
+.planner-day-collapsed-cta {
+  flex-shrink: 0;
   font-size: var(--fs-sm);
+  font-weight: 500;
+  color: var(--accent-ink);
+}
+
+.planner-day-collapsed:disabled .planner-day-collapsed-cta {
   color: var(--txt-3);
 }
 
@@ -1449,18 +1565,102 @@ textarea.field {
   padding: 0;
 }
 
-.planner-entry {
+/* --- A planned meal row (finding 19) ---------------------------------------
+   .planner-entry-swipe is the clipped frame; .planner-entry-remove sits
+   underneath it at all times (real button, in tab order, never
+   display:none) and .planner-entry-row is the visible foreground that
+   drags. Revealing the button is what makes it reachable by keyboard —
+   focusing it (Tab, or a screen reader) opens the row the same way a drag
+   does, rather than leaving a control that's technically focusable but never
+   visible to a sighted keyboard user. --- */
+/* No rounding here — the plain row this replaces never had any either, only
+   the day card around it does, and a rounded clip on a permanently-
+   transformed (GPU-layered) child leaves a hairline compositing seam at the
+   corner where its layer and the button's meet. Square avoids the seam at
+   the source instead of fighting it. */
+.planner-entry-swipe {
+  position: relative;
+  overflow: hidden;
+  min-height: 44px;
+}
+
+.planner-entry-remove {
+  position: absolute;
+  top: 0;
+  right: 0;
+  bottom: 0;
+  display: grid;
+  place-items: center;
+  border: 0;
+  /* The one filled-red surface in the app — see the comment beside its JSX
+     for why this is a deliberate exception to .btn-danger's text-only rule. */
+  background: var(--danger);
+  color: #fff;
+  font-size: var(--fs-xs);
+  font-weight: 600;
+}
+
+.planner-entry-row {
+  position: relative;
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: var(--sp-2);
   min-height: 44px;
+  padding-right: 2px;
+  background: var(--surface);
   font-size: var(--fs-base);
+  /* touch-action, not preventDefault on every touchmove: a vertical drag on
+     this row is a page scroll and must stay one, so JS only calls
+     preventDefault once it has decided the gesture is horizontal. */
+  touch-action: pan-y;
+  transition: transform 0.18s ease;
+  cursor: grab;
+}
+
+.planner-entry-row.dragging {
+  transition: none;
+  cursor: grabbing;
 }
 
 .planner-entry-missing {
   color: var(--txt-3);
   font-style: italic;
+}
+
+/* --- The undo toast (finding 19) -------------------------------------------
+   Fixed above the tab bar like the FAB, since either can be on screen at
+   once, on a dark inverse surface — the one place in the app that isn't the
+   warm ground, because a toast is a transient confirmation, not a status
+   notice, and none of the warn/ok/info triplet fits that. --- */
+.planner-toast {
+  position: fixed;
+  right: var(--sp-4);
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--sp-4));
+  left: var(--sp-4);
+  z-index: var(--z-toast);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  max-width: 592px;
+  margin: 0 auto;
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r);
+  background: var(--txt);
+  color: var(--ground);
+  font-size: var(--fs-sm);
+  box-shadow: var(--shadow-card);
+}
+
+.planner-toast-undo {
+  flex-shrink: 0;
+  border: 0;
+  background: none;
+  padding: 0;
+  color: var(--accent-lit);
+  font: inherit;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 
