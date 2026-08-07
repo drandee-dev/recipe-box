@@ -197,10 +197,20 @@ function takeUnit(text) {
 }
 
 // Merge keys only. Display always uses what the recipe actually said.
+//
+// The `o` in that character class is what handles tomatoes and potatoes, and it
+// was missing: without it the rule falls through to "drop the trailing s", which
+// turns "tomatoes" into "tomatoe" and leaves it as a different key from
+// "tomato". A recipe calling for 3 tomatoes and one calling for 1 tomato then
+// produced two lines, neither of them the amount to buy — the exact failure this
+// function exists to prevent, on two of the most commonly bought things in the
+// shop. It is deliberately not conditioned on anything cleverer: `o` also
+// over-collapses words like "shoes", which are not ingredients, and this string
+// is never shown to anyone.
 function singular(word) {
   if (word.length <= 3) return word
   if (word.endsWith('ies')) return `${word.slice(0, -3)}y`
-  if (/(ch|sh|s|x|z)es$/.test(word)) return word.slice(0, -2)
+  if (/(ch|sh|s|x|z|o)es$/.test(word)) return word.slice(0, -2)
   if (word.endsWith('ss') || word.endsWith('us')) return word
   if (word.endsWith('s')) return word.slice(0, -1)
   return word

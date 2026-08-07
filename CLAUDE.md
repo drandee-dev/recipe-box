@@ -11,7 +11,20 @@ cd backend && uvicorn app.main:app --port 8002
 
 # Frontend (React/Vite)
 cd frontend && npm run dev   # http://localhost:5173 — .env VITE_API_BASE must point at 8002
+
+# Tests — node's built-in runner, no dependency, no build step
+cd frontend && npm test
 ```
+
+**Tests cover the pure libs, which is where a silent wrong answer lives.**
+`src/lib/*.test.js` runs under `node --test` because everything in `lib/` is
+plain ESM with no DOM: no vitest, no jsdom, nothing in `devDependencies`, and the
+files never enter the bundle since nothing imports them. `ingredients.test.js` is
+the important one — parsing, merging and aisle grouping fail by producing a
+plausible list that is quietly short an ingredient, and the place that gets
+noticed is a shop. `tags.test.js` ends by parsing `ALLOWED_TAGS` out of
+`backend/app/ai.py` and comparing it to `TAG_VOCABULARY`, which is the only thing
+actually enforcing the "keep the two lists in step" rule below.
 
 CORS defaults to `localhost:5173`/`4173`; set `RECIPE_CORS_ORIGINS` (comma-separated) if Vite picks another port. Config in `backend/app/config.py`.
 
