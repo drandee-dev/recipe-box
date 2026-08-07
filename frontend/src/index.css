@@ -1073,8 +1073,23 @@ textarea.field {
 
 /* --- Search, filters, tags ---------------------------------------------- */
 
+/* --- Search + chips, sticky (finding 5) -------------------------------------
+   Used to scroll away with the list — twelve recipes down, narrowing meant
+   scrolling back to the top to reach it. Stuck at the top of the viewport
+   instead: the header above it is not sticky, so once it scrolls past, this
+   block takes over the top edge and stays there. Opaque background so cards
+   pass under it rather than through it, the same treatment `.sheet-head` uses
+   for a scrolling sheet; the hairline stands in for a shadow so the boundary
+   still reads at rest, not only once something has scrolled under it.
+   ------------------------------------------------------------------------- */
 .recipes-filters {
-  margin-top: 16px;
+  position: sticky;
+  top: 0;
+  z-index: var(--z-sticky);
+  background: var(--ground);
+  padding: var(--sp-4) 0 var(--sp-3);
+  margin-bottom: var(--sp-2);
+  border-bottom: 1px solid var(--line);
 }
 
 .recipes-search input {
@@ -1097,17 +1112,31 @@ textarea.field {
   outline-offset: 1px;
 }
 
+/* One row, scrolling horizontally rather than wrapping (finding 4) — nine
+   chips used to run to three rows and grew taller with the collection. The
+   native scrollbar is hidden because the row itself, cut off mid-chip at the
+   edge, is what signals there's more; a visible track beneath it would just be
+   a second, redundant cue for the same fact. The "+N more" toggle this used to
+   need is gone with it — everything is one scroll away now, nothing to expand. */
 .recipes-chips {
   display: flex;
-  flex-wrap: wrap;
+  flex-wrap: nowrap;
   gap: 6px;
   margin-top: 10px;
+  overflow-x: auto;
+  scrollbar-width: none;
+  -webkit-overflow-scrolling: touch;
+}
+
+.recipes-chips::-webkit-scrollbar {
+  display: none;
 }
 
 .recipes-chip {
   display: inline-flex;
   align-items: center;
   gap: 5px;
+  flex-shrink: 0;
   /* Chips are a dense row, so they sit below the 44px target used elsewhere.
      The generous horizontal padding keeps each one comfortably tappable. */
   min-height: 34px;
@@ -1137,10 +1166,6 @@ textarea.field {
 
 .recipes-chip-on .recipes-chip-count {
   color: #cfe6da;
-}
-
-.recipes-chip-more {
-  color: var(--accent);
 }
 
 .recipes-count {

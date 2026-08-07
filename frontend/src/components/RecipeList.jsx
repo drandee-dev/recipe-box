@@ -2,11 +2,6 @@ import { Fragment, useMemo, useState } from 'react'
 import { TAG_VOCABULARY, filterRecipes, normalizeTag, tagCounts } from '../lib/tags.js'
 import RecipeThumb from './RecipeThumb.jsx'
 
-// How many tag chips to show before the "more" toggle. Enough to cover a normal
-// box; the toggle exists so a heavily-tagged collection doesn't push the list
-// itself off the screen.
-const CHIP_LIMIT = 8
-
 // The first cards load their photos eagerly at high priority. Everything below
 // stays lazy: lazy-loading the largest image in the viewport delays it rather
 // than saving anything.
@@ -57,11 +52,9 @@ export default function RecipeList({
   onEdit,
   onWrite,
 }) {
-  const [allChips, setAllChips] = useState(false)
   const [tagDraft, setTagDraft] = useState('')
 
   const chips = useMemo(() => tagCounts(recipes), [recipes])
-  const shown = allChips ? chips : chips.slice(0, CHIP_LIMIT)
   const favoriteCount = useMemo(() => recipes.filter((r) => r.favorite).length, [recipes])
 
   const visible = useMemo(
@@ -69,9 +62,6 @@ export default function RecipeList({
     [recipes, query, activeTags, favoritesOnly],
   )
 
-  // An active tag stays visible even once it falls outside the chip limit —
-  // otherwise a filter could be on with no way to see or clear it.
-  const hiddenActive = activeTags.filter((tag) => !shown.some((c) => c.tag === tag))
   const filtering = query.trim().length > 0 || activeTags.length > 0 || favoritesOnly
 
   function addTag(recipe, raw) {
@@ -111,32 +101,21 @@ export default function RecipeList({
                 ★ Favorites <span className="recipes-chip-count">{favoriteCount}</span>
               </button>
             )}
-            {[...shown, ...hiddenActive.map((tag) => ({ tag, count: null }))].map(
-              ({ tag, count }) => {
-                const on = activeTags.includes(tag)
-                return (
-                  <button
-                    key={tag}
-                    type="button"
-                    className={on ? 'recipes-chip recipes-chip-on' : 'recipes-chip'}
-                    aria-pressed={on}
-                    onClick={() => onToggleTag(tag)}
-                  >
-                    {tag}
-                    {count !== null && <span className="recipes-chip-count">{count}</span>}
-                  </button>
-                )
-              },
-            )}
-            {chips.length > CHIP_LIMIT && (
-              <button
-                type="button"
-                className="recipes-chip recipes-chip-more"
-                onClick={() => setAllChips((v) => !v)}
-              >
-                {allChips ? 'Fewer tags' : `+${chips.length - CHIP_LIMIT} more`}
-              </button>
-            )}
+            {chips.map(({ tag, count }) => {
+              const on = activeTags.includes(tag)
+              return (
+                <button
+                  key={tag}
+                  type="button"
+                  className={on ? 'recipes-chip recipes-chip-on' : 'recipes-chip'}
+                  aria-pressed={on}
+                  onClick={() => onToggleTag(tag)}
+                >
+                  {tag}
+                  <span className="recipes-chip-count">{count}</span>
+                </button>
+              )
+            })}
           </div>
           {filtering && (
             <p className="recipes-count">
