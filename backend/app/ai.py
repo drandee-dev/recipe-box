@@ -83,13 +83,21 @@ screenshot, a recipe card, a text overlay on a photo. Read what is legibly
 written there and treat it as part of the source, alongside any text provided.
 Where the two disagree, the writing on the image wins, since it is the version
 the creator laid out. Transcribe only what you can actually read: a blurred,
-cropped or half-covered line is a line you do not have, and a plated dish with
-no writing on it is not a recipe — set has_recipe to false rather than guessing
-a recipe from how the food looks.
+cropped or half-covered line is a line you do not have, and a photograph of a
+finished plate with nothing written on it carries no recipe to read, so do not
+infer one from how the food looks.
 
 Extract only what the text actually states. Do not invent ingredients, quantities,
-or steps that are not there. If the text does not contain an actual recipe, set
-has_recipe to false and leave the other fields empty.
+or steps that are not there.
+
+A list of ingredients with no method is still a recipe. Creators routinely write
+the ingredients into the caption and leave the method to the video, so a post
+that names a dish and lists what goes into it comes back with has_recipe true,
+the ingredients filled in, and instructions empty. Judge has_recipe on whether
+there is anything here worth saving as a recipe, never on whether the recipe is
+complete. Set it to false only when the input holds no recipe at all: commentary
+about a meal, a restaurant review, a photograph of a finished plate with nothing
+written on it.
 
 Write the recipe in English no matter what language the input is in: the title, the
 description, every instruction and every ingredient line. A caption a viewer read
