@@ -433,7 +433,7 @@ list, sit in localStorage, and go through `buildShoppingList`. Truncate on the w
 out of the parser: title and description to a few hundred chars, ingredients and
 instructions to a sane count.
 
-## 24. CORS always allows localhost, in production
+## 24. CORS always allows localhost, in production — FIXED 2026-08-07
 
 `cors_origins()` (`app/config.py:6`) returns `DEFAULT_ORIGINS + extra`, and
 `DEFAULT_ORIGINS` is the two localhost ports. They are unconditionally present in
@@ -450,6 +450,23 @@ Gate the defaults on an env flag so production ships only what
 (`main.py:27`) is doing nothing, since auth travels as a bearer token and not a
 cookie, and `allow_methods=["*"]`/`allow_headers=["*"]` are wider than the three
 POSTs and two headers actually used.
+
+**This turned out to cost more than "slightly worse".** Every Vercel preview gets
+a hostname of its own, so a static allow-list meant *no preview deployment could
+ever call the API*: the browser's preflight came back 400 with no
+`Access-Control-Allow-Origin`, `fetch` rejected, and every import, paste and
+photo mirror failed as "Failed to fetch". The audit branch could not be tested
+against its own backend, which is how this was found.
+
+**Done:** localhost is added only when `VERCEL_ENV` is unset, so it is gone from
+deployments; preview hostnames are matched by an anchored, account-qualified
+regex (`DEFAULT_PREVIEW_ORIGIN_REGEX`, overridable via
+`RECIPE_CORS_ORIGIN_REGEX`); credentials are no longer granted; methods and
+headers are narrowed to what is used. An empty `RECIPE_CORS_ORIGINS` on a
+deployment now logs a warning, since that variable is the only thing letting the
+production site through. `backend/tests/test_cors.py` pins the allows and the
+refusals, including a foreign Vercel account and the `…vercel.app.evil.com`
+suffix that an unanchored pattern would have let through.
 
 ## 25. Cross-reference: the password minimum
 

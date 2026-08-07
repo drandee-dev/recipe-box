@@ -12,8 +12,9 @@ cd backend && uvicorn app.main:app --port 8002
 # Frontend (React/Vite)
 cd frontend && npm run dev   # http://localhost:5173 — .env VITE_API_BASE must point at 8002
 
-# Tests — node's built-in runner, no dependency, no build step
+# Tests — stdlib runners on both sides, no dependency, no build step
 cd frontend && npm test
+cd backend && python -m unittest discover -s tests
 ```
 
 **Tests cover the pure libs, which is where a silent wrong answer lives.**
@@ -26,7 +27,7 @@ noticed is a shop. `tags.test.js` ends by parsing `ALLOWED_TAGS` out of
 `backend/app/ai.py` and comparing it to `TAG_VOCABULARY`, which is the only thing
 actually enforcing the "keep the two lists in step" rule below.
 
-CORS defaults to `localhost:5173`/`4173`; set `RECIPE_CORS_ORIGINS` (comma-separated) if Vite picks another port. Config in `backend/app/config.py`.
+**CORS has three layers and they are not interchangeable** (`backend/app/config.py`). Named origins come from `RECIPE_CORS_ORIGINS`, comma-separated, and that variable is the *only* thing letting the production frontend call the API — empty it and the live site starts failing every request. The localhost pair is added only when `VERCEL_ENV` is unset, so a deployment no longer ships an allow-list trusting a laptop. Preview hostnames change per branch and so are matched by `DEFAULT_PREVIEW_ORIGIN_REGEX`, which is deliberately qualified by the Vercel account slug and anchored: unanchored, `…vercel.app.evil.com` matches. Without that regex no preview deployment can reach the API at all, and every import fails as "Failed to fetch". `backend/tests/test_cors.py` pins all of it, including what must stay refused.
 
 ## Architecture
 

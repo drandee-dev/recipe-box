@@ -5,7 +5,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel, Field
 
 from .ai import AIBudgetError, AIError, ai_available, structure_recipe
-from .config import cors_origins
+from .config import cors_origin_regex, cors_origins
 from .extract import ExtractError, extract_recipe
 
 # auth.py and images.py are imported inside the handlers that use them, not here.
@@ -22,10 +22,16 @@ app = FastAPI(title="Recipe Box API", docs_url=None, redoc_url=None)
 
 app.add_middleware(
     CORSMiddleware,
+    # Named origins for production and local dev; the regex is what lets a Vercel
+    # preview, whose hostname changes with every branch, reach this API at all.
     allow_origins=cors_origins(),
-    allow_credentials=True,
-    allow_methods=["*"],
-    allow_headers=["*"],
+    allow_origin_regex=cors_origin_regex(),
+    # Nothing here reads a cookie. Auth is a bearer token on one endpoint, which
+    # is an ordinary header and not a credential in the CORS sense, so switching
+    # this off removes a permission the app never used.
+    allow_credentials=False,
+    allow_methods=["GET", "POST", "OPTIONS"],
+    allow_headers=["Content-Type", "Authorization"],
 )
 
 
