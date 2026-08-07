@@ -862,7 +862,7 @@ export default function App() {
       </div>
       <header className="rb-header">
         <div className="rb-header-row">
-          <h1>Recipe Box</h1>
+          <h1 className="rb-wordmark">Recipe Box</h1>
           <Account session={session} />
         </div>
         <nav className="rb-tabs">

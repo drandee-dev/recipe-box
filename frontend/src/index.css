@@ -44,8 +44,15 @@
   /* --- Neutrals, warmed. The old #fafaf7 page sat 1.02:1 against a white card,
      so the card was a hairline rather than an object. A step darker and warmer
      gives it something to sit on, and food photographs read appetising on warm
-     ground and clinical on grey. --- */
-  --ground: #f0ede6;
+     ground and clinical on grey.
+
+     Lifted one step for the photo-led list (#f0ede6 → #f4f1e9): the recipe grid
+     has no card surface at all now, so the ground's job there is to stay out of
+     the photographs rather than to hold a card up. It still clears the 1.02:1
+     failure the note above describes — a card on it is 1.12:1 — and the planner
+     and shopping cards, which do still exist, keep their --line border, which is
+     what actually bounds them at any ratio this close. --- */
+  --ground: #f4f1e9;
   --surface: #fffefb;
   --surface-2: #f6f4ee;
   --line: #e0dbcd;
@@ -64,9 +71,36 @@
   --accent-ink: #14563a;
   --accent-soft: #e3efe8;
   --danger: #b3261e;
-  /* Both star states clear 3:1 on --surface; the old #bbb was 1.92:1. */
-  --star: #b8860b;
+
+  /* --- Saffron. The second accent, and the palette's only other hue.
+     It sits at 35° against the accent's 155°, which is 120° round the wheel:
+     the two are a triad pair, not an arbitrary pairing. An espresso brown was
+     tried in that slot first and failed, because a third warm neutral between a
+     warm ground and a warm accent leaves the green nowhere to live.
+
+     They are kept apart by ROLE, never by prominence. The accent is anything
+     you act on: buttons, the on-state of a chip, focus. Saffron is anything
+     that is simply true about a recipe: the favourite star, shopping progress,
+     a cook-mode timer. Nothing may take both.
+
+     --saffron is 3.49:1 on --ground and 3.77:1 inside its white circle on a
+     photo, so it clears the 3:1 that WCAG 1.4.11 asks of a meaningful graphic.
+     It is NOT rated for body text. --saffron-lit is the same hue lifted for the
+     cook surface, where it is 9.3:1. --- */
+  --saffron: #b1731b;
+  --saffron-lit: #e6aa56;
+  --star: var(--saffron);
+  /* The off state is a neutral, not a faded saffron: a dimmed accent reads as
+     disabled rather than as unset. 3.6:1 on --surface; the old #bbb was 1.92:1. */
   --star-off: #7d827b;
+
+  /* Cook mode is a deliberately separate surface, not a dark theme: a bright
+     screen at arm's length in a kitchen at night is unpleasant. The accent has
+     to lift here too — #1c7c54 filled with cream text is 4.4:1, just under the
+     floor, so the dark surface uses --accent-lit filled with --cook-ground. */
+  --cook-ground: #101208;
+  --cook-ink: #f3f0e4;
+  --accent-lit: #2e996c;
 
   /* Notice surfaces. Each ink is checked against its own tint rather than
      against --surface, which is where the old hand-mixed pairs drifted: the
@@ -292,12 +326,31 @@ textarea.field {
   padding-bottom: env(safe-area-inset-bottom);
 }
 
-.rb-header h1 {
+/* --- The wordmark ----------------------------------------------------------
+   A hairline over, a slab under, and the word sitting on the slab rather than
+   floating between two even lines. The asymmetry is the whole idea: it reads as
+   something resting inside a container, so the two rules are the box and the
+   word is the card filed in it.
+
+   Everything scales off --wm-size, so the lockup is one number to change and
+   the proportions hold at any size. Two details are load-bearing:
+   `width: fit-content` keeps the rules the width of the WORD (a block h1 would
+   run them the width of the header, which reads as a heading with lines drawn
+   round it rather than as a mark); and the top rule takes a max() floor because
+   0.055em of 24px is 1.32px, which a phone renders as a grey smear.
+   ------------------------------------------------------------------------- */
+.rb-wordmark {
+  --wm-size: var(--fs-xl);
+  width: fit-content;
+  margin: var(--sp-2) 0 var(--sp-3);
+  padding: calc(var(--wm-size) * 0.4) 0 calc(var(--wm-size) * 0.17);
+  border-top: max(1.5px, calc(var(--wm-size) * 0.055)) solid currentColor;
+  border-bottom: calc(var(--wm-size) * 0.2) solid currentColor;
   font-family: 'Clash Display', 'Satoshi', sans-serif;
   font-weight: 600;
-  font-size: var(--fs-xl);
-  letter-spacing: -0.015em;
-  margin: var(--sp-2) 0 var(--sp-3);
+  font-size: var(--wm-size);
+  line-height: 1;
+  letter-spacing: calc(var(--wm-size) * -0.018);
 }
 
 .rb-header-row {
