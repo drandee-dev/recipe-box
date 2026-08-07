@@ -785,6 +785,94 @@ textarea.field {
   color: var(--txt-2);
 }
 
+/* --- Shortcut setup, the iOS capture path ----------------------------------
+   A view swap inside the capture sheet rather than a sheet of its own. Almost
+   all prose, because the thing being explained is a platform limitation and
+   nothing on this screen makes sense without the sentence above it.
+   ------------------------------------------------------------------------- */
+.shortcut-lead {
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-base);
+  line-height: 1.5;
+  color: var(--txt-2);
+}
+
+.shortcut-steps {
+  margin: var(--sp-4) 0 0;
+  padding-left: var(--sp-6);
+  font-size: var(--fs-base);
+  line-height: 1.5;
+}
+
+.shortcut-steps li + li {
+  margin-top: var(--sp-3);
+}
+
+.shortcut-manual {
+  margin-top: var(--sp-4);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+  font-size: var(--fs-sm);
+  line-height: 1.5;
+  color: var(--txt-2);
+}
+
+/* 44px of reach on the disclosure, since it is the only control in this region
+   and a bare summary line is about 20px tall. */
+.shortcut-manual summary {
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  color: var(--txt);
+  cursor: pointer;
+}
+
+/* `display: flex` on a summary removes the native disclosure triangle, and
+   without a marker the line reads as a heading rather than as something that
+   opens — it looked inert on screen while every assertion passed. This draws the
+   affordance back, on the right where the row ends. */
+.shortcut-manual summary::after {
+  content: '';
+  width: 8px;
+  height: 8px;
+  margin-left: auto;
+  border-right: 2px solid var(--txt-3);
+  border-bottom: 2px solid var(--txt-3);
+  transform: translateY(-2px) rotate(45deg);
+}
+
+.shortcut-manual[open] summary::after {
+  transform: translateY(2px) rotate(-135deg);
+}
+
+.shortcut-manual ol {
+  padding-left: var(--sp-6);
+}
+
+.shortcut-manual li + li {
+  margin-top: var(--sp-2);
+}
+
+/* Selectable text, not just a copy button: clipboard access is refusable and a
+   URL you cannot read is a dead end when it is. */
+.shortcut-url {
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  color: var(--txt);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  font-size: var(--fs-xs);
+  word-break: break-all;
+  user-select: all;
+}
+
+.shortcut-actions {
+  margin-top: var(--sp-4);
+}
+
 .recipes-caption {
   margin: 16px 0 8px;
   white-space: pre-wrap;
@@ -1144,10 +1232,83 @@ textarea.field {
   margin: var(--sp-3) 0 0;
 }
 
+/* The serving stepper (finding 12). It sits on a quiet surface rather than
+   floating in the text column because it is a control, and the two glyphs beside
+   a number need something to say where the control ends. */
+.detail-servings {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: var(--sp-4) 0 0;
+  padding: 4px 4px 4px var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface-2);
+}
+
+/* Centred between the two glyphs rather than left-aligned against the minus.
+   Left-aligned, the count hugs one button and the plus floats alone at the far
+   end of a 300px row, which reads as two unrelated controls rather than one
+   stepper. */
+.detail-serving-count {
+  flex: 1;
+  text-align: center;
+  font-size: var(--fs-base);
+  font-weight: 600;
+  /* Tabular, or the whole row twitches sideways as the count crosses 9. */
+  font-variant-numeric: tabular-nums;
+}
+
+/* 40px rather than the 44px floor `.btn` carries: these are a matched pair
+   inside a bordered control and a 44px box each would make the row taller than
+   the buttons under it. The pair is `.btn`-free on purpose — a stepper is not
+   one of the five button roles and giving it one would have meant a sixth. */
+.detail-serving-step {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--txt);
+  font-size: 19px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Flat and greyed, never faded: the disabled-outline rule. At 40% opacity the
+   glyph drops under the contrast floor while still looking pressable. */
+.detail-serving-step:disabled {
+  border-color: var(--line);
+  background: var(--surface-2);
+  color: var(--txt-3);
+  cursor: default;
+}
+
+.detail-serving-reset {
+  flex-shrink: 0;
+  padding: 0 var(--sp-2);
+  border: 0;
+  background: none;
+  color: var(--accent-ink);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.detail-cook {
+  margin-top: var(--sp-4);
+}
+
 .detail-actions {
   display: flex;
   gap: var(--sp-3);
-  margin: var(--sp-4) 0 0;
+  margin: var(--sp-3) 0 0;
 }
 
 /* Both stretch, so neither reads as the leftover half of the row. */
@@ -2046,6 +2207,347 @@ textarea.field {
 @media (prefers-reduced-motion: reduce) {
   .sheet-backdrop,
   .sheet {
+    animation: none;
+  }
+}
+
+/* Cook mode (finding 13). Same reason `.sheet-tall` lives down here rather than
+   in its own block: these override `.sheet`'s own height, radius and padding at
+   equal specificity, so above it they would silently lose on source order and
+   the screen would open as an 85vh cream panel.
+
+   It is a whole surface rather than a size, which stretches the "className is
+   for size only" rule further than anything else does. The alternative was a
+   second modal component reimplementing Escape, the focus trap, the scroll lock
+   and the stacking depth in order to change a background colour, and two copies
+   of modal focus handling is the exact thing that rule exists to prevent. */
+.sheet-cook {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;
+  height: 100dvh;
+  max-height: none;
+  /* The body inside it scrolls; the panel itself does not, or the footer buttons
+     would scroll away with the step. */
+  overflow: hidden;
+  border-radius: 0;
+  padding: 0 0 env(safe-area-inset-bottom);
+  background: var(--cook-ground);
+  color: var(--cook-ink);
+}
+
+/* No grab handle: this is a screen, not a panel you push back down, and the
+   handle would be an invitation to a gesture that does nothing here. */
+.sheet-cook::before {
+  display: none;
+}
+
+.sheet-cook .sheet-head {
+  position: static;
+  padding: var(--sp-3) var(--sp-4);
+  margin: 0;
+  background: none;
+}
+
+/* The recipe name is context here, not the heading of a decision, so it gives up
+   the display face and most of its size to the step. One line, clipped: at this
+   point you know what you are cooking. */
+.sheet-cook .sheet-title {
+  min-width: 0;
+  overflow: hidden;
+  font-family: 'Satoshi', sans-serif;
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+  text-overflow: ellipsis;
+  opacity: 0.72;
+}
+
+.sheet-cook .btn-quiet {
+  color: var(--cook-ink);
+  opacity: 0.8;
+}
+
+.cook-count {
+  flex-shrink: 0;
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  opacity: 0.72;
+}
+
+.cook-rail {
+  flex: none;
+  height: 3px;
+  margin: 0 var(--sp-4);
+  border-radius: var(--r-pill);
+  background: rgb(243 240 228 / 16%);
+}
+
+/* Saffron, not the accent: progress through a recipe is something that is simply
+   true, the same slot the shopping bar and the favourite star sit in. --saffron
+   itself is mixed for a light ground and drops to 2.2:1 here, so the cook
+   surface uses --saffron-lit throughout. */
+.cook-rail-fill {
+  height: 100%;
+  border-radius: var(--r-pill);
+  background: var(--saffron-lit);
+  transition: width 0.2s ease-out;
+}
+
+/* A flex column, so the "next" block can be pushed to the foot of the screen
+   rather than trailing the step. Most steps are one or two lines, and following
+   them immediately left the preview stranded in the middle with 700px of empty
+   ground under it — measured on step one of a four-step recipe. */
+.cook-body {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: var(--sp-8) var(--sp-6) var(--sp-4);
+  /* Reserves the vertical axis for the browser, which is what lets the swipe
+     handler call preventDefault only after it has decided the gesture is
+     horizontal. Same arrangement as the planner's week swipe. */
+  touch-action: pan-y;
+}
+
+.cook-eyebrow {
+  margin: 0 0 var(--sp-4);
+  color: var(--saffron-lit);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+}
+
+/* The one thing on the screen that has to be readable from two feet away with
+   wet hands, so it is the only place in the app that sets type this large. */
+.cook-step {
+  margin: 0;
+  font-family: 'Clash Display', 'Satoshi', sans-serif;
+  font-size: max(1.6rem, 25px);
+  font-weight: 600;
+  line-height: 1.32;
+  letter-spacing: -0.015em;
+}
+
+.cook-timer {
+  margin-top: var(--sp-6);
+}
+
+/* Outlined rather than filled, because a filled saffron slab at this size would
+   out-shout the step it belongs to. It is 44px tall by its padding, not by a
+   floor, since it is not one of the five button roles. */
+.cook-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 46px;
+  padding: 0 var(--sp-4);
+  border: 1.5px solid var(--saffron-lit);
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--saffron-lit);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  cursor: pointer;
+}
+
+.cook-chip svg {
+  width: 20px;
+  height: 20px;
+  flex: none;
+}
+
+.cook-chip-verb {
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0.7;
+}
+
+/* Filled once it is actually ringing, and only then. On iOS the vibrate call is
+   a no-op and the sound may be muted by the hardware switch, so the visual state
+   is the alert that is guaranteed to arrive. */
+.cook-chip-ringing {
+  border-color: var(--saffron-lit);
+  background: var(--saffron-lit);
+  color: var(--cook-ground);
+  animation: cook-pulse 1s ease-in-out infinite;
+}
+
+.cook-chip-ringing .cook-chip-verb {
+  opacity: 0.75;
+}
+
+@keyframes cook-pulse {
+  50% {
+    opacity: 0.55;
+  }
+}
+
+.cook-peek {
+  margin-top: var(--sp-6);
+}
+
+.cook-peek-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--cook-ink);
+  font-size: var(--fs-base);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* The underline lives here, not on the button. A decoration is painted by the
+   element that declares it and every descendant carries it, so `text-decoration:
+   none` on the serving count could not take it back off — it read as though the
+   count were part of what you were pressing. */
+.cook-peek-label {
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
+
+.cook-peek-servings {
+  font-weight: 500;
+  opacity: 0.6;
+}
+
+.cook-peek-list {
+  margin: var(--sp-2) 0 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-md);
+  line-height: 1.55;
+}
+
+.cook-peek-list li {
+  padding: var(--sp-2) 0;
+  border-top: 1px solid rgb(243 240 228 / 12%);
+  opacity: 0.85;
+}
+
+/* Under a rule at the foot of the screen, because "what am I about to be asked
+   to do" is the question you ask while something is already in the pan. `auto`
+   rather than a margin: it belongs to the bottom edge, not to the step, and a
+   fixed margin puts it halfway up on a short step and off the bottom on a long
+   one. Quiet enough that it never competes with the step itself. */
+.cook-next {
+  margin-top: auto;
+  padding-top: var(--sp-4);
+  border-top: 1px solid rgb(243 240 228 / 12%);
+}
+
+.cook-next-label {
+  margin: 0 0 var(--sp-1);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  letter-spacing: 0.16em;
+  text-transform: uppercase;
+  opacity: 0.4;
+}
+
+.cook-next-text {
+  margin: 0;
+  font-size: var(--fs-base);
+  line-height: 1.4;
+  opacity: 0.55;
+}
+
+/* A timer still running on a step you have walked away from. Tapping it goes
+   back to that step, which is the only thing you would want from it. */
+.cook-away {
+  display: flex;
+  flex: none;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  min-height: 44px;
+  margin: 0 var(--sp-4);
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--saffron-lit);
+  border-radius: var(--r);
+  background: none;
+  color: var(--saffron-lit);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+.cook-away-ringing {
+  background: var(--saffron-lit);
+  color: var(--cook-ground);
+  animation: cook-pulse 1s ease-in-out infinite;
+}
+
+.cook-away-clock {
+  font-variant-numeric: tabular-nums;
+}
+
+.cook-actions {
+  display: flex;
+  flex: none;
+  gap: var(--sp-3);
+  padding: var(--sp-3) var(--sp-4) var(--sp-4);
+}
+
+/* 58px, well over the 44px floor: this is pressed with the back of a knuckle as
+   often as a fingertip. The two are not `.btn` roles — the roles are mixed for
+   the light ground, and a `.btn-primary` here would be the unlit accent at
+   4.4:1 on cream. */
+.cook-back,
+.cook-next-btn {
+  min-height: 58px;
+  border-radius: var(--r-lg);
+  font-size: var(--fs-md);
+  font-weight: 700;
+  cursor: pointer;
+}
+
+.cook-back {
+  width: 96px;
+  flex: none;
+  border: 1.5px solid rgb(243 240 228 / 30%);
+  background: none;
+  color: var(--cook-ink);
+}
+
+.cook-back:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+
+/* The accent, lifted. --accent on cream is 4.4:1 and just misses; --accent-lit
+   carrying --cook-ground as its label clears it comfortably. */
+.cook-next-btn {
+  flex: 1;
+  border: 0;
+  background: var(--accent-lit);
+  color: var(--cook-ground);
+}
+
+/* The global focus ring is a light-ground colour and vanishes here. */
+.sheet-cook :focus-visible {
+  outline: 2px solid var(--cook-ink);
+  outline-offset: 2px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .cook-rail-fill {
+    transition: none;
+  }
+
+  .cook-chip-ringing,
+  .cook-away-ringing {
     animation: none;
   }
 }

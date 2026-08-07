@@ -1,4 +1,5 @@
 import { useEffect, useState } from 'react'
+import { isIos, isStandalone } from '../lib/platform.js'
 
 // Install prompt, in the two shapes the platforms allow.
 //
@@ -13,22 +14,6 @@ import { useEffect, useState } from 'react'
 // the installed app is a separate surface with its own storage.
 
 const DISMISS_KEY = 'recipebox:installDismissed'
-
-function isStandalone() {
-  return (
-    window.matchMedia?.('(display-mode: standalone)').matches ||
-    // Safari's own flag, which predates the media query and is still the only
-    // one iOS sets for a home-screen app.
-    window.navigator.standalone === true
-  )
-}
-
-function isIos() {
-  const ua = navigator.userAgent
-  // An iPad on iPadOS 13+ reports a Mac user agent, so touch points are the
-  // only way to tell it apart from a desktop.
-  return /iphone|ipad|ipod/i.test(ua) || (/macintosh/i.test(ua) && navigator.maxTouchPoints > 1)
-}
 
 export default function InstallPrompt({ ready }) {
   const [event, setEvent] = useState(null)

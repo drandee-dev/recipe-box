@@ -5,7 +5,10 @@
 // one "+" trigger, whose sheet is where the three routes finally get the
 // explanatory subtitle a stacked button never had room for.
 
+import { useState } from 'react'
 import Sheet from './Sheet.jsx'
+import ShortcutSetup from './ShortcutSetup.jsx'
+import { isIos } from '../lib/platform.js'
 
 const ICONS = {
   link: (
@@ -22,7 +25,19 @@ const ICONS = {
       <path d="M14.5 5.5 18.5 9.5" />
     </>
   ),
+  // The share glyph, because that is the thing this route is about joining.
+  share: (
+    <>
+      <path d="M12 3.5v11" />
+      <path d="M8.5 7 12 3.5 15.5 7" />
+      <path d="M6.5 11.5H5.5v9h13v-9h-1" />
+    </>
+  ),
 }
+
+// Sniffed once per mount rather than per render: a user agent does not change
+// while a sheet is open, and this decides whether a whole route exists.
+const IOS = isIos()
 
 // Same 24-viewBox / stroke-only convention as TabBar's icons, so a route glyph
 // and a tab glyph read as the same family of mark.
@@ -76,6 +91,23 @@ export default function CaptureSheet({
   error,
   inputRef,
 }) {
+  const [shortcutOpen, setShortcutOpen] = useState(false)
+
+  // A view swap inside the sheet, the same shape the paste-text form uses,
+  // rather than a second sheet on top. Setup is a detour off the capture
+  // question, not a new question, and the app stays at one modal.
+  //
+  // `closeLabel` is Close rather than the default Cancel: nothing here is in
+  // progress to abandon, and it has to read differently from the Back at the
+  // foot, which returns to the routes rather than leaving the sheet.
+  if (shortcutOpen) {
+    return (
+      <Sheet title="iPhone sharing" closeLabel="Close" onClose={onClose}>
+        <ShortcutSetup onBack={() => setShortcutOpen(false)} />
+      </Sheet>
+    )
+  }
+
   return (
     <Sheet title="Add a recipe" onClose={onClose}>
       {error && (
@@ -123,6 +155,18 @@ export default function CaptureSheet({
           subtitle="For the ones that only exist in a notebook"
           onClick={onWrite}
         />
+        {/* iOS only, because there is nothing here for anyone else to do: every
+            other platform either has a real share target or has no share sheet
+            to join. It sits last as the only route that is setup rather than
+            capture — done once, then never again. */}
+        {IOS && (
+          <Route
+            icon="share"
+            title="Add to iPhone share sheet"
+            subtitle="One-time setup, then share straight from Instagram"
+            onClick={() => setShortcutOpen(true)}
+          />
+        )}
       </div>
 
       {pasteOpen && (

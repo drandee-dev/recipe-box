@@ -285,6 +285,59 @@ export function formatQuantity(qty, unit) {
   return `${number} ${plural}`
 }
 
+// --- Scaling (finding 12) --------------------------------------------------
+//
+// The rule here is the same one the rest of this file follows: never invent a
+// number. A line is scaled only when a quantity can be found at the head of the
+// text that is actually on screen, and everything else about the line is left
+// exactly as written — the unit's own spelling, the parenthetical can size, the
+// "finely chopped" on the end.
+//
+// That is why this rewrites `raw` rather than rebuilding the line out of
+// `readIngredient`'s qty/unit/name. Rebuilding would drop every word the parser
+// throws away to make a merge key, and for an AI-structured recipe the stored
+// `qty` need not even be the string on the page ("0.5" against "½"). Scaling a
+// number that is not the number being displayed is the one failure mode that
+// would be invisible until something came out of the oven wrong.
+
+// One quantity token, in the same forms takeQuantity accepts and in the same
+// order, longest first: "1 1/2", "1½", "1/2", "½", "1.5".
+const AMOUNT = '(?:\\d+\\s+\\d+\\s*/\\s*\\d+|\\d+\\s*[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|\\d+\\s*/\\s*\\d+|[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|\\d+(?:\\.\\d+)?)'
+
+// Group 1 is any bullet the line was written with, group 2 the amount, group 3
+// the separator of a range and group 4 its high end. A range is matched whole so
+// that "2-3 cloves" doubles to "4-6 cloves" rather than collapsing to its low
+// end — takeQuantity drops the high end because a shopping list has to commit to
+// one number, but a recipe on screen has no reason to.
+const LEADING_AMOUNT = new RegExp(`^([-*•\\s]*)(${AMOUNT})(?:(\\s*(?:-|–|—|to)\\s*)(${AMOUNT}))?`)
+
+function amountValue(token) {
+  const [value] = takeQuantity(token.trim())
+  return value
+}
+
+export function scaleIngredientText(raw, factor) {
+  const text = String(raw ?? '')
+  if (!Number.isFinite(factor) || factor <= 0 || factor === 1) return text
+
+  const match = text.match(LEADING_AMOUNT)
+  if (!match) return text
+
+  const low = amountValue(match[2])
+  if (low === null) return text
+
+  let amount = formatQuantity(low * factor, null)
+  if (match[4]) {
+    const high = amountValue(match[4])
+    // A range whose high end won't parse is left alone entirely. Scaling half of
+    // "2 to a few" would read as a fact.
+    if (high === null) return text
+    amount += `${match[3]}${formatQuantity(high * factor, null)}`
+  }
+
+  return `${match[1]}${amount}${text.slice(match[0].length)}`
+}
+
 // Recipes that came through the AI structurer already carry item/qty/unit, so
 // use those and skip the parser. qty arrives as a string there.
 function fromStructured(ing) {

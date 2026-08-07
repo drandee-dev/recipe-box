@@ -13,9 +13,11 @@
 // from Tuesday's cook is worse than no tick at all.
 
 import { Fragment, useEffect, useRef, useState } from 'react'
+import CookMode from './CookMode.jsx'
 import RecipeThumb from './RecipeThumb.jsx'
 import Sheet from './Sheet.jsx'
-import { hostOf, metaParts } from '../lib/recipes.js'
+import { baseServings, hostOf, metaParts, servingsLabel } from '../lib/recipes.js'
+import { scaleIngredientText } from '../lib/ingredients.js'
 import { SLOTS, addDays, dayName, shortDate, toISODate } from '../lib/dates.js'
 
 const SLOT_LABELS = {
@@ -29,6 +31,12 @@ const SLOT_LABELS = {
 // is asked about the days ahead of you; a Sunday-anchored week would offer
 // yesterday on a Wednesday and hide next Monday all week.
 const PLAN_DAYS = 7
+
+// Four times what the recipe says is already past the point where the tin, the
+// pan and the oven stop cooperating, and halving is the only direction anyone
+// goes below one batch. The floor is one serving rather than zero, since zero
+// servings of anything is not a thing to cook.
+const SERVINGS_MAX_FACTOR = 4
 
 function planDayLabel(date, offset) {
   if (offset === 0) return 'Today'
@@ -122,6 +130,21 @@ export default function RecipeDetail({
   const [planSlot, setPlanSlot] = useState('dinner')
   const [planned, setPlanned] = useState(null)
 
+  const [cooking, setCooking] = useState(false)
+
+  // The scaler (finding 12). Like everything else in this sheet it is per
+  // opening and unstored: a recipe you cooked double for six people once is not
+  // a recipe for six, and the number the recipe itself claims is the one that
+  // should be there when you come back to it.
+  //
+  // No parsable serving count means no stepper at all. There is nothing
+  // dishonest about a recipe that says "serves a crowd", and a stepper anchored
+  // to a number nobody wrote would be inventing the thing this feature is
+  // careful not to invent.
+  const base = baseServings(recipe)
+  const [servings, setServings] = useState(base)
+  const factor = base && servings ? servings / base : 1
+
   const today = new Date()
   const planDays = Array.from({ length: PLAN_DAYS }, (_, i) => addDays(today, i))
 
@@ -142,6 +165,10 @@ export default function RecipeDetail({
   // confirmation after it, so the two can't describe the same choice differently.
   const chosenOffset = planDays.findIndex((d) => toISODate(d) === planDate)
   const chosenLabel = chosenOffset >= 0 ? planDayLabel(planDays[chosenOffset], chosenOffset) : planDate
+
+  function stepServings(by) {
+    setServings((n) => Math.max(1, Math.min(Math.round(base * SERVINGS_MAX_FACTOR), n + by)))
+  }
 
   function addToPlan() {
     onAssign(recipe.id, planDate, planSlot)
@@ -211,7 +238,7 @@ export default function RecipeDetail({
           "12 hr" with "Overnight" because it has one line and that word is the
           answer, but by the time you have opened a recipe you want the number. */}
       <p className="detail-meta">
-        {[...metaParts(recipe, { exact: true }), ...(host ? [host] : [])].map((part, n) => (
+        {[...metaParts(recipe, { exact: true, servings: !base }), ...(host ? [host] : [])].map((part, n) => (
           <Fragment key={part}>
             {n > 0 && <span className="recipes-meta-dot" />}
             <span>{part}</span>
@@ -232,6 +259,58 @@ export default function RecipeDetail({
         </p>
       )}
 
+      {/* The serving count moved out of the meta run and became this, which is
+          why `metaParts` is asked to drop it above: the stepper *is* the serving
+          count, and the two stated separately would disagree the moment you
+          press +. Only rendered when there was a number to step from. */}
+      {base !== null && (
+        <div className="detail-servings">
+          <button
+            type="button"
+            className="detail-serving-step"
+            onClick={() => stepServings(-1)}
+            disabled={servings <= 1}
+            aria-label="One fewer serving"
+          >
+            <span aria-hidden="true">−</span>
+          </button>
+          {/* aria-live, because the ingredient quantities below change with it
+              and nothing else announces that they have. */}
+          <span className="detail-serving-count" aria-live="polite">
+            {servingsLabel(recipe, servings)}
+          </span>
+          <button
+            type="button"
+            className="detail-serving-step"
+            onClick={() => stepServings(1)}
+            disabled={servings >= base * SERVINGS_MAX_FACTOR}
+            aria-label="One more serving"
+          >
+            <span aria-hidden="true">+</span>
+          </button>
+          {factor !== 1 && (
+            <button type="button" className="detail-serving-reset" onClick={() => setServings(base)}>
+              Reset
+            </button>
+          )}
+        </div>
+      )}
+
+      {/* The one verb this screen exists for, so it gets the width and the fill.
+          It drops to secondary while the plan panel is open for the same reason
+          Add to plan does — one filled accent per region. A recipe with no steps
+          (a link card, or one still being filled in by hand) has nothing to cook
+          from, and offering the button would open an empty screen. */}
+      {recipe.instructions.length > 0 && (
+        <button
+          type="button"
+          className={planOpen ? 'btn btn-secondary btn-block detail-cook' : 'btn btn-primary btn-block detail-cook'}
+          onClick={() => setCooking(true)}
+        >
+          Start cooking
+        </button>
+      )}
+
       <div className="detail-actions">
         {/* Secondary once the panel is open. It has become the disclosure that
             opened the thing, and the accent belongs on the one button that
@@ -239,7 +318,7 @@ export default function RecipeDetail({
             this" gets answered twice on the same screen. */}
         <button
           type="button"
-          className={planOpen ? 'btn btn-secondary' : 'btn btn-primary'}
+          className={planOpen || recipe.instructions.length > 0 ? 'btn btn-secondary' : 'btn btn-primary'}
           aria-expanded={planOpen}
           onClick={() => {
             setPlanned(null)
@@ -325,7 +404,12 @@ export default function RecipeDetail({
                     checked={gathered.has(n)}
                     onChange={() => toggle(setGathered, n)}
                   />
-                  <span>{ing.raw}</span>
+                  {/* Scaled, but only where a quantity was actually found at
+                      the head of this line. Anything else is the line as
+                      written — the same rule the shopping list follows, and the
+                      reason a scaled recipe can't produce a number the recipe
+                      never gave. */}
+                  <span>{scaleIngredientText(ing.raw, factor)}</span>
                 </label>
               </li>
             ))}
@@ -349,6 +433,18 @@ export default function RecipeDetail({
             ))}
           </ol>
         </>
+      )}
+
+      {/* Opens over this sheet rather than replacing it, so closing cook mode
+          puts you back on the recipe you were reading. That is the stacking case
+          `Sheet`'s depth counter exists for. */}
+      {cooking && (
+        <CookMode
+          recipe={recipe}
+          servings={base === null ? null : servingsLabel(recipe, servings)}
+          factor={factor}
+          onClose={() => setCooking(false)}
+        />
       )}
     </Sheet>
   )

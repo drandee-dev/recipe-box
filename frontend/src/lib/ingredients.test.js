@@ -19,6 +19,7 @@ import {
   groupByAisle,
   parseIngredient,
   readIngredient,
+  scaleIngredientText,
 } from './ingredients.js'
 
 // A recipe as the rest of the app hands it over: ingredients are objects whose
@@ -311,4 +312,60 @@ test('a source names the recipe only, not the amount the merged line already sho
   assert.equal(formatSource({ title: 'Pasta', qty: 2, unit: 'cup', times: 1 }), 'Pasta')
   assert.equal(formatSource({ title: 'Pasta', qty: 4, unit: 'cup', times: 2 }), 'Pasta ×2')
   assert.equal(formatSource({ title: 'Pasta', qty: null, unit: null, times: 1 }), 'Pasta')
+})
+
+// ---------------------------------------------------------------------------
+// scaleIngredientText (finding 12)
+//
+// The failure mode this guards is a scaled line that reads perfectly and is
+// wrong: a range collapsed to one end, a unit multiplied along with the number,
+// or a quantity rewritten on a line whose displayed text never held that number
+// in the first place.
+// ---------------------------------------------------------------------------
+
+test('scaling multiplies the number and leaves every other word alone', () => {
+  assert.equal(scaleIngredientText('2 cups all-purpose flour, sifted', 2), '4 cups all-purpose flour, sifted')
+  assert.equal(scaleIngredientText('1 lb chicken thighs (bone in)', 3), '3 lb chicken thighs (bone in)')
+})
+
+test('scaling reads fractions and writes them back as fractions', () => {
+  assert.equal(scaleIngredientText('1/2 cup milk', 3), '1 1/2 cup milk')
+  assert.equal(scaleIngredientText('½ tsp salt', 2), '1 tsp salt')
+  assert.equal(scaleIngredientText('1 1/2 cups rice', 2), '3 cups rice')
+  assert.equal(scaleIngredientText('1½ tbsp oil', 2), '3 tbsp oil')
+  assert.equal(scaleIngredientText('2 eggs', 0.5), '1 eggs')
+})
+
+test('scaling a range keeps it a range, and keeps its separator', () => {
+  // takeQuantity drops the high end because a shopping list has to commit to
+  // one number. A line being read has no such constraint.
+  assert.equal(scaleIngredientText('2-3 cloves garlic', 2), '4-6 cloves garlic')
+  assert.equal(scaleIngredientText('2 to 3 tbsp water', 2), '4 to 6 tbsp water')
+})
+
+test('a line with no quantity in it is returned exactly as written', () => {
+  // Finding 12's rule: a scaled recipe can never invent a number it does not
+  // have.
+  assert.equal(scaleIngredientText('Salt and pepper to taste', 4), 'Salt and pepper to taste')
+  assert.equal(scaleIngredientText('A handful of basil', 4), 'A handful of basil')
+  assert.equal(scaleIngredientText('Olive oil, for frying', 2), 'Olive oil, for frying')
+})
+
+test('a bullet stays on the front of the line', () => {
+  assert.equal(scaleIngredientText('- 2 cups flour', 2), '- 4 cups flour')
+  assert.equal(scaleIngredientText('• 1/2 tsp salt', 2), '• 1 tsp salt')
+})
+
+test('a factor of one, or a nonsense factor, changes nothing', () => {
+  assert.equal(scaleIngredientText('2 cups flour', 1), '2 cups flour')
+  assert.equal(scaleIngredientText('2 cups flour', 0), '2 cups flour')
+  assert.equal(scaleIngredientText('2 cups flour', -1), '2 cups flour')
+  assert.equal(scaleIngredientText('2 cups flour', NaN), '2 cups flour')
+  assert.equal(scaleIngredientText(null, 2), '')
+})
+
+test('only the leading quantity is scaled, never a number inside the line', () => {
+  // "1 (14 oz) can" — the can size is a fact about the tin, not an amount.
+  assert.equal(scaleIngredientText('1 (14 oz) can chickpeas', 2), '2 (14 oz) can chickpeas')
+  assert.equal(scaleIngredientText('2 tbsp soy sauce plus 1 tsp more', 2), '4 tbsp soy sauce plus 1 tsp more')
 })

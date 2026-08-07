@@ -91,6 +91,30 @@ export function isOvernight(recipe) {
   return total - active >= IDLE_FROM
 }
 
+// `servings` is a free string: "4", "Serves 4-6", "Makes 12 cookies". The scaler
+// (finding 12) needs a number to step from, so it takes the first one in the
+// string and nothing else — a recipe whose servings are "a crowd" simply has no
+// stepper, rather than one anchored to a number nobody wrote. The high end of a
+// range is deliberately ignored: stepping from the low end means the count on
+// screen is a promise the recipe already made.
+export function baseServings(recipe) {
+  const match = String(recipe?.servings ?? '').match(/\d+(?:\.\d+)?/)
+  if (!match) return null
+  const n = Number(match[0])
+  return Number.isFinite(n) && n > 0 ? n : null
+}
+
+// The stepper's own label, in the recipe's wording rather than ours. The count
+// is written back into the string it came out of, so "Makes 12 cookies" doubles
+// to "Makes 24 cookies" instead of becoming "Serves 24" — the recipe already
+// said what it makes and we have no business renaming it. A range collapses to
+// the single chosen number, which is correct: you picked one.
+export function servingsLabel(recipe, servings) {
+  const raw = String(recipe?.servings ?? '').trim()
+  const replaced = raw.replace(/\d+(?:\.\d+)?(?:\s*(?:-|–|—|to)\s*\d+(?:\.\d+)?)?/, String(servings))
+  return /serv|portion|makes/i.test(replaced) ? replaced : `Serves ${replaced}`
+}
+
 // Time first, then servings. That's the order every comparable app uses, and it
 // matches what you're deciding at six o'clock. Ingredient count moved out: it
 // answers "how much shopping", which belongs on the planner.
@@ -100,7 +124,12 @@ export function isOvernight(recipe) {
 // "Overnight" is the answer to the question the number was being read for. The
 // detail sheet has room for both, and someone who has already opened a recipe
 // wants to know how long twelve hours actually is.
-export function metaParts(recipe, { exact = false } = {}) {
+//
+// `servings` drops the serving count from the run. The detail sheet passes false
+// whenever it is showing the stepper, because the stepper *is* the serving count
+// and stating it twice on one screen invites the two to disagree the moment you
+// press +.
+export function metaParts(recipe, { exact = false, servings = true } = {}) {
   const parts = []
   const time = formatMinutes(recipe.total_min)
   const overnight = isOvernight(recipe)
@@ -111,7 +140,7 @@ export function metaParts(recipe, { exact = false } = {}) {
       if (overnight) parts.push('overnight')
     }
   }
-  if (recipe.servings) {
+  if (servings && recipe.servings) {
     const raw = String(recipe.servings).trim()
     parts.push(/serv|portion|makes/i.test(raw) ? raw : `Serves ${raw}`)
   }

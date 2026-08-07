@@ -1,6 +1,6 @@
 import { strict as assert } from 'node:assert'
 import test from 'node:test'
-import { formatMinutes, groupByRecency, hostOf, isOvernight, metaParts } from './recipes.js'
+import { baseServings, formatMinutes, groupByRecency, hostOf, isOvernight, metaParts } from './recipes.js'
 
 // Time formatting and the overnight marker fail the way every reader in lib/
 // fails: by producing a plausible answer. "720 min" was never wrong, it was
@@ -134,4 +134,44 @@ test('hostOf survives a stored URL that no longer parses', () => {
   assert.equal(hostOf('https://www.budgetbytes.com/crispy-gnocchi/'), 'budgetbytes.com')
   assert.equal(hostOf('not a url'), '')
   assert.equal(hostOf(null), '')
+})
+
+// ---------------------------------------------------------------------------
+// baseServings — the number the scaler steps from (finding 12)
+// ---------------------------------------------------------------------------
+
+test('baseServings takes the first number out of a free-text serving count', () => {
+  assert.equal(baseServings({ servings: '4' }), 4)
+  assert.equal(baseServings({ servings: 4 }), 4)
+  assert.equal(baseServings({ servings: 'Serves 4' }), 4)
+  assert.equal(baseServings({ servings: 'Makes 12 cookies' }), 12)
+})
+
+test('baseServings takes the low end of a range', () => {
+  // Stepping from the low end means the count on screen is a number the recipe
+  // actually claimed.
+  assert.equal(baseServings({ servings: 'Serves 4-6' }), 4)
+})
+
+test('baseServings gives nothing to step from when there is no number', () => {
+  // No number means no stepper at all, rather than one anchored to a guess.
+  assert.equal(baseServings({ servings: 'a crowd' }), null)
+  assert.equal(baseServings({ servings: '' }), null)
+  assert.equal(baseServings({ servings: null }), null)
+  assert.equal(baseServings({}), null)
+  assert.equal(baseServings(null), null)
+  assert.equal(baseServings({ servings: '0' }), null)
+})
+
+test('metaParts can drop servings, for the surface that shows the stepper', () => {
+  const recipe = { total_min: 30, servings: '4', ingredients: [] }
+  assert.deepEqual(metaParts(recipe), ['30 min', 'Serves 4'])
+  assert.deepEqual(metaParts(recipe, { servings: false }), ['30 min'])
+})
+
+test('dropping servings does not strand the meta line empty', () => {
+  // The link-card fallback still has to fire, or the run renders as nothing and
+  // reads as a bug.
+  const linkCard = { servings: '4', ingredients: [] }
+  assert.deepEqual(metaParts(linkCard, { servings: false }), ['Saved link'])
 })
