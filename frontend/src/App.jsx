@@ -14,6 +14,7 @@ import Planner from './components/Planner.jsx'
 import RecipeEditor from './components/RecipeEditor.jsx'
 import RecipeList from './components/RecipeList.jsx'
 import ShoppingList from './components/ShoppingList.jsx'
+import TabBar from './components/TabBar.jsx'
 
 // PWA share target (Android) and the iOS Shortcuts workaround both land here:
 // the post arrives as ?url=, or buried in ?text=/?title= prose.
@@ -865,22 +866,6 @@ export default function App() {
           <h1 className="rb-wordmark">Recipe Box</h1>
           <Account session={session} />
         </div>
-        <nav className="rb-tabs">
-          {/* aria-current is what tells a screen reader which of the three is
-              showing. Without it the active tab was a purely visual state and
-              the nav read as three identical buttons. */}
-          {['recipes', 'planner', 'shopping'].map((t) => (
-            <button
-              key={t}
-              type="button"
-              className={tab === t ? 'rb-tab rb-tab-active' : 'rb-tab'}
-              aria-current={tab === t ? 'page' : undefined}
-              onClick={() => setTab(t)}
-            >
-              {t[0].toUpperCase() + t.slice(1)}
-            </button>
-          ))}
-        </nav>
       </header>
 
       {/* Outside the tab switch: being offline affects the plan and the list
@@ -1079,6 +1064,8 @@ export default function App() {
       )}
 
       <InstallPrompt ready={recipes.length > 0} />
+
+      <TabBar tab={tab} onChange={setTab} />
     </div>
   )
 }

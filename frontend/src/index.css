@@ -130,6 +130,12 @@
 
   --shadow-card: 0 1px 2px rgb(25 28 24 / 5%), 0 6px 16px rgb(25 28 24 / 5%);
 
+  /* The bottom tab bar's own height, excluding the home indicator. Anything
+     that has to clear the bar reads this rather than repeating a number: the
+     app's bottom padding and the install prompt's sticky offset both do, so a
+     taller bar can never end up covering the last thing on the page. */
+  --tabbar-h: 56px;
+
   /* Layering tiers, same ladder as mtg-web. */
   --z-sticky: 10;
   --z-nav: 50;
@@ -323,7 +329,19 @@ textarea.field {
   max-width: 640px;
   margin: 0 auto;
   padding: 16px;
-  padding-bottom: env(safe-area-inset-bottom);
+  /* The tab bar is fixed, so it reserves no space of its own. Without this the
+     last recipe, the last day of the plan and the last shopping row all end up
+     underneath it — and the home indicator sits below the bar, not below the
+     content, which is why the inset is added rather than substituted. */
+  padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--sp-4));
+}
+
+/* One row: the wordmark and the account control. The tabs used to live here as
+   a second row, and moving them to the bottom bar gave the top of every screen
+   back about 60px — on a 390×844 phone that is the difference between the first
+   recipe starting below the fold and starting above it. */
+.rb-header {
+  margin-bottom: var(--sp-2);
 }
 
 /* --- The wordmark ----------------------------------------------------------
@@ -558,34 +576,78 @@ textarea.field {
   color: var(--warn-ink);
 }
 
-.rb-tabs {
-  display: flex;
-  gap: 8px;
-  margin-bottom: 16px;
+/* --- The bottom tab bar ----------------------------------------------------
+   Fixed rather than sticky, because it is chrome: it should be reachable at the
+   top of a long list as well as at the end of it. The page pays for that with
+   the bottom padding on .rb-app, both sides reading --tabbar-h.
+
+   It runs the full width of the window while its buttons stay inside the same
+   640px column as the content, so on a desktop the bar still spans the viewport
+   edge to edge (a fixed bar floating in the middle of a wide window reads as a
+   stray toolbar) but the tabs sit under the list they switch.
+
+   The ground colour, not the surface: the bar is the page's own bottom edge,
+   marked by one hairline. A raised white shelf under a photo grid is another
+   card, which is the shape this move was getting away from.
+   ------------------------------------------------------------------------- */
+.rb-tabbar {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: var(--z-nav);
+  border-top: 1px solid var(--line);
+  background: var(--ground);
+  /* The bar owns the home indicator strip. Its own colour continues down into
+     it, so the inset is padding on the bar rather than a gap under it. */
+  padding-bottom: env(safe-area-inset-bottom);
 }
 
+.rb-tabbar-row {
+  display: flex;
+  max-width: 640px;
+  height: var(--tabbar-h);
+  margin: 0 auto;
+}
+
+/* No fill, no outline, no surface — the tab is the mark and the word. Each one
+   is a third of the width and the full height of the bar, which is a target far
+   past 44px in both directions however short the label is. */
 .rb-tab {
+  display: flex;
   flex: 1;
-  min-height: 44px;
-  border: 1px solid var(--line);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--txt-2);
+  min-width: 0;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 3px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--txt-3);
   font: inherit;
-  font-size: var(--fs-base);
+  font-size: var(--fs-2xs);
   font-weight: 500;
   cursor: pointer;
 }
 
-/* Not a solid green slab. Full-bleed chrome colour is the thing that dates the
-   older recipe apps, and on a screen whose colour should come from the food it
-   was the loudest element present. The accent moves to the label and a 2px rule. */
+.rb-tab svg {
+  width: 23px;
+  height: 23px;
+}
+
+/* Inside, not outside: the global ring is offset 2px, which on a button flush
+   with the top of a fixed bar draws its upper edge off the screen. */
+.rb-tab:focus-visible {
+  outline-offset: -3px;
+}
+
+/* Colour and weight, still no slab. Full-bleed chrome colour is the thing that
+   dates the older recipe apps, and on a screen whose colour should come from
+   the food it was the loudest element present. */
 .rb-tab-active {
-  border-color: var(--line);
-  background: var(--surface);
   color: var(--accent-ink);
   font-weight: 700;
-  box-shadow: inset 0 -2px 0 var(--accent);
 }
 
 /* The import bar is the first thing on the first tab, so it gets the field
@@ -693,16 +755,18 @@ textarea.field {
 
 /* Sticky rather than fixed: in flow it reserves its own space, so it can never
    sit on top of the last recipe in the list, and it still pins to the bottom of
-   the screen while there is anything below it. */
+   the screen while there is anything below it. It pins above the tab bar rather
+   than at bottom: 0, which would park it underneath — and the home indicator is
+   the bar's to pad for now, not this. */
 .rb-install {
   position: sticky;
-  bottom: 0;
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom));
   z-index: var(--z-sticky);
   display: flex;
   align-items: center;
   gap: var(--sp-3);
   margin-top: var(--sp-6);
-  padding: var(--sp-3) var(--sp-4) calc(var(--sp-3) + env(safe-area-inset-bottom));
+  padding: var(--sp-3) var(--sp-4);
   border: 1px solid var(--ok-line);
   border-radius: var(--r);
   background: var(--ok-bg);
