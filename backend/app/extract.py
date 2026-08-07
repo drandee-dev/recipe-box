@@ -109,6 +109,22 @@ def _first_str(value) -> str | None:
     return None
 
 
+def _joined_str(value) -> str:
+    """Every string in a field, not just the first.
+
+    `keywords` is routinely a list of a dozen terms and `_first_str` would keep
+    one of them, which for tagging is the difference between reading the site's
+    own categorisation and reading a single word of it.
+    """
+    if isinstance(value, str):
+        return value
+    if isinstance(value, list):
+        return " ".join(_joined_str(v) for v in value)
+    if isinstance(value, dict):
+        return _joined_str(value.get("name") or value.get("url") or "")
+    return ""
+
+
 def _flatten_instructions(value) -> list[str]:
     steps: list[str] = []
     if isinstance(value, str):
@@ -157,23 +173,43 @@ def parse_jsonld_recipe(html: str, source_url: str) -> dict | None:
         ingredients = node.get("recipeIngredient") or node.get("ingredients") or []
         if isinstance(ingredients, str):
             ingredients = [ingredients]
+
+        parsed = [
+            {"raw": i.strip(), "item": None, "qty": None, "unit": None}
+            for i in ingredients
+            if isinstance(i, str) and i.strip()
+        ]
+        total_min = _iso_duration_to_min(node.get("totalTime"))
+
+        # This path never calls a model, so it used to hand back an untagged
+        # recipe every time — a recipe site with good markup ended up worse
+        # organised than a TikTok caption. schema.org has fields for exactly
+        # this, and where they are missing the keyword pass reads the text.
+        from .ai import infer_tags
+
+        marked_up = " ".join(
+            _joined_str(node.get(field))
+            for field in ("recipeCategory", "recipeCuisine", "keywords", "suitableForDiet")
+        )
+        tags = infer_tags(
+            title=_first_str(node.get("name")) or "",
+            description=f"{_first_str(node.get('description')) or ''} {marked_up}",
+            ingredients=parsed,
+            total_min=total_min,
+        )
         return {
             "title": _first_str(node.get("name")) or "Untitled recipe",
             "source_url": source_url,
             "source_type": "web",
             "image_url": _first_str(node.get("image")),
             "description": _first_str(node.get("description")),
-            "ingredients": [
-                {"raw": i.strip(), "item": None, "qty": None, "unit": None}
-                for i in ingredients
-                if isinstance(i, str) and i.strip()
-            ],
+            "ingredients": parsed,
             "instructions": _flatten_instructions(node.get("recipeInstructions")),
             "prep_min": _iso_duration_to_min(node.get("prepTime")),
             "cook_min": _iso_duration_to_min(node.get("cookTime")),
-            "total_min": _iso_duration_to_min(node.get("totalTime")),
+            "total_min": total_min,
             "servings": _first_str(node.get("recipeYield")),
-            "tags": [],
+            "tags": tags,
             "favorite": False,
         }
     return None
