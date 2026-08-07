@@ -225,8 +225,63 @@ def readable_text(html: str, limit: int = 12000) -> str:
     return "\n".join(line for line in lines if line)[:limit]
 
 
+def _read_post_image(url: str, source_type: str, post: dict) -> dict | None:
+    """Last resort: read the recipe off the post's own picture.
+
+    Plenty of creators put the whole recipe on the image — a card, a screenshot,
+    a text overlay — and write nothing but a sentence in the caption. This is
+    the only path that reaches for it, and only after the caption has produced
+    nothing, so an ordinary import never pays for a second model call.
+
+    Returns None for every failure. The caller's answer to "no recipe" is
+    already a link card, and that is the right answer whether the picture was
+    unreachable, unreadable, or simply a photo of a finished plate.
+    """
+    from . import ai, social
+
+    image_url = post.get("image_url")
+    if not image_url or not ai.ai_available():
+        return None
+
+    try:
+        from .images import ImageError, image_for_vision
+    except ImportError:
+        # Same shape as the mirror: one missing dependency costs this feature,
+        # not the import. /api/health reports `images` for exactly this.
+        log.exception("vision fallback unavailable: the image pipeline is missing")
+        return None
+
+    try:
+        data, _content_type = fetch_bytes(image_url)
+        image_b64, media_type = image_for_vision(data)
+    except (ExtractError, ImageError) as exc:
+        log.info("vision fallback could not read %s: %s", image_url, exc)
+        return None
+    except httpx.HTTPError as exc:
+        log.info("vision fallback could not fetch %s: %s", image_url, exc)
+        return None
+
+    try:
+        structured = ai.structure_recipe_image(
+            image_b64,
+            media_type,
+            text=social.strip_urls(post.get("caption") or ""),
+            context=(
+                f"This is the image from a {source_type} post, with its caption. "
+                "The caption alone did not contain a recipe."
+            ),
+        )
+    except ai.AIError as exc:
+        log.info("image structuring failed for %s: %s", url, exc)
+        return None
+
+    if structured.get("has_recipe") and structured.get("ingredients"):
+        return social.to_recipe(structured, url, source_type, post)
+    return None
+
+
 def _extract_social(url: str, source_type: str) -> dict:
-    """Caption + Haiku. Falls back to a link card rather than failing."""
+    """Caption, then the picture, then a link card. Never an error."""
     from . import ai, social
 
     post = social.fetch_post(url, source_type)
@@ -241,6 +296,10 @@ def _extract_social(url: str, source_type: str) -> dict:
                 return social.to_recipe(structured, url, source_type, post)
         except ai.AIError as exc:
             log.info("caption structuring failed for %s: %s", url, exc)
+
+    from_image = _read_post_image(url, source_type, post)
+    if from_image is not None:
+        return from_image
 
     return social.link_card(url, source_type, post)
 

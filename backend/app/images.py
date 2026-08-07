@@ -111,6 +111,31 @@ def _blur_data_uri(img: Image.Image) -> str:
     return "data:image/jpeg;base64," + base64.b64encode(data).decode("ascii")
 
 
+def image_for_vision(data: bytes) -> tuple[str, str]:
+    """A recipe photo, decoded and shrunk to what the model will actually read.
+
+    Returns (base64 JPEG, media type). Unlike the mirror this never touches
+    storage — nothing is kept, so it works signed out and needs no bucket.
+
+    The long edge is capped rather than the width: a recipe written down the
+    side of a portrait screenshot is the exact case this exists for, and
+    constraining width alone would leave that image enormous. Re-encoding as
+    JPEG also normalises whatever the origin served (PNG screenshots, WEBP,
+    a rotation living in EXIF) into the one format the API definitely accepts.
+    """
+    from .ai import VISION_MAX_PIXELS, VISION_MAX_PX, VISION_QUALITY
+
+    img = _open(data)
+    img.thumbnail((VISION_MAX_PX, VISION_MAX_PX), Image.LANCZOS)
+    width, height = img.size
+    if width * height > VISION_MAX_PIXELS:
+        scale = (VISION_MAX_PIXELS / (width * height)) ** 0.5
+        img = img.resize((max(1, int(width * scale)), max(1, int(height * scale))), Image.LANCZOS)
+    buf = io.BytesIO()
+    img.save(buf, format="JPEG", quality=VISION_QUALITY, optimize=True)
+    return base64.b64encode(buf.getvalue()).decode("ascii"), "image/jpeg"
+
+
 def _upload(path: str, data: bytes) -> str:
     """Put one object in the bucket and return its public URL."""
     url, key = _storage()
