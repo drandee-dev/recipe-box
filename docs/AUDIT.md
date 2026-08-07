@@ -260,15 +260,31 @@ client, and all eight components. At startup the only visible tab is Recipes, ye
 `Account`, `RecipeEditor`, `Planner`, `ShoppingList` and `InstallPrompt` are all
 statically imported at `App.jsx:11`.
 
-The two sheets are the obvious first cut. `RecipeEditor` (474 lines) opens on a
-deliberate tap and `Account` (454 lines) only when the avatar is pressed —
-neither can be needed at first paint, and both are already conditionally
-rendered, so `React.lazy` plus a `Suspense` boundary is a small change. The two
-other tabs follow the same argument one step behind.
+**Measured 2026-08-07, and it says my advice above was wrong.** Splitting the
+bundle by hand gives:
 
-Supabase's client is the other half of the weight and is harder to move, since
-auth runs at mount. Worth measuring what it actually contributes before deciding
-it's untouchable.
+| Chunk | Raw | Gzip |
+|---|---|---|
+| `@supabase/supabase-js` | 218.4 kB | 57.0 kB |
+| `react-dom` | 184.9 kB | 57.8 kB |
+| all app code (8 components + libs) | ~72 kB | ~26 kB |
+
+The app's own code is **15% of the bundle**. Lazy-loading `RecipeEditor` and
+`Account`, which is what this item originally recommended, moves about 20 kB of
+484 kB and is not worth a `Suspense` boundary. `react-dom` is a floor that only
+changes by changing framework, which is not on the table for a React 19 app.
+
+**The whole prize is Supabase, and it is deferrable rather than shrinkable.**
+The client is only needed once auth resolves, and a signed-out session never
+needs it at all. Combined with item 14 that becomes one change rather than two:
+render from the localStorage mirror on the first pass, then dynamically
+`import()` the Supabase client and reconcile. That takes roughly 220 kB off the
+critical path instead of 20. Trimming realtime, which this app never uses, by
+importing `@supabase/auth-js` and `@supabase/postgrest-js` directly is a further
+option once the deferral is in place.
+
+Do items 14 and 15 together, and measure again rather than trusting this table
+to still be true.
 
 ## 16. The fonts aren't preloaded, so the whole list reflows once
 
@@ -473,3 +489,101 @@ suffix that an unanchored pattern would have let through.
 The guide's "validate on the client *and* the server" is item 7 above — sign-up
 advertises 8 characters, enforces none, and falls back to whatever Supabase's own
 default is. Same fix, listed there.
+
+
+---
+
+# Part four — the Lazy Developer guides
+
+Reviewed against the 12 live guides at thelazydeveloper.org/resources, two of
+which (Form Validation & Security, Browser-Aware Web Design) are already covered
+in parts two and three.
+
+## Six of the twelve do not apply, and running them would be theatre
+
+The **SEO & Analytics** track (4 guides: on-page SEO, crawlability, structured
+data, GA4) and the **AEO / AI Search** track (2 live: AEO foundations, inspecting
+AI search) both optimise for being found, read and cited by search engines and
+answer engines.
+
+Recipe Box has no public surface to find. It is a `display: standalone` PWA whose
+every screen sits behind a sign-in, its content is recipes the user imported for
+themselves, and there is no marketing page, no article, no pricing, no
+organisation entity. Adding JSON-LD, a sitemap or a crawlability pass would be
+markup nothing will ever request. The GA4 guide is additionally Next.js-specific
+and the app has no analytics at all, which is a deliberate position rather than
+an oversight.
+
+Worth revisiting only if a public landing page is ever added.
+
+## 26. The image endpoint checks who is calling, never what they are touching
+
+From **Authorization & IDOR**. `POST /api/recipes/image` verifies the caller's
+session properly and derives `user_id` from the token rather than the body
+(`main.py:123`), which is exactly the pattern that guide asks for, and the two
+things it writes land under that verified id. So far so good.
+
+What is missing is the second gate. `recipe_id` comes off the request body and is
+never checked against the caller's recipes. There is no cross-user write — the
+storage path is `{verified_user_id}/{recipe_id}`, so a caller can only write into
+their own folder — but there is also nothing tying a mirror to a recipe that
+exists. An authenticated caller can post arbitrary UUIDs with arbitrary image
+URLs and have the backend fetch and store each one, indefinitely, in our bucket.
+Sign-up is open, so the cost of getting an account is an email address, and the
+free tier's storage is the thing being spent.
+
+The client-side cleanup makes it worse rather than better: `store.remove` deletes
+`{user_id}/{recipe_id}-lg.jpg` and `-sm.jpg` for recipes the app knows about, so
+objects filed under a `recipe_id` that never was a recipe are unreachable by that
+path and are never collected.
+
+Fix is one query before the mirror, using the service-role key the backend
+already holds: `recipes?id=eq.{recipe_id}&user_id=eq.{user_id}&select=id`, and a
+422 when it comes back empty. That is the same shape and roughly the same cost as
+the GoTrue round trip already on this path.
+
+## 27. A shared secret cannot fix item 1, and the budget makes it worse
+
+From **Securing Endpoints**. That guide's headline pattern for an endpoint with
+side effects is a shared secret, constant-time compared, failing closed. Written
+down here so nobody reaches for it: **it does not work for item 1.** The only
+caller of `/api/recipes/extract` and `/api/recipes/structure` is a public SPA, so
+any secret it could present is in the bundle every visitor downloads, which the
+**Environment Variables & API Keys** guide is explicitly about. A secret shipped
+to the browser is a secret in the same sense as a doormat key.
+
+That leaves the two options item 1 already names: a per-IP cap, or requiring a
+session and giving up signed-out paste.
+
+The guide's fail-closed principle does expose something new, though. `usage.py`
+fails **open** by design: an unreachable or misconfigured Supabase returns `None`
+and `_structure` proceeds without a budget check (`ai.py`, "both usage calls fail
+open so a Supabase outage never blocks an import"). That is defensible on its own
+and the reasoning is sound. Stacked on an endpoint anyone can call, it means a
+Supabase outage turns a $5 monthly ceiling into no ceiling, on a public endpoint,
+silently. Whichever fix item 1 gets should also decide whether the budget check
+is still allowed to fail open once the endpoint is no longer anonymous.
+
+Passes worth recording from the same guide: identity is never read from a request
+body, no endpoint constructs email headers (Supabase sends all mail), and every
+handler returns an opaque message while logging the traceback server-side.
+
+## 28. Secrets hygiene is in good shape, with two small gaps
+
+From **Environment Variables & API Keys**. Checked and clean: no secret wears a
+`VITE_` prefix (the three that exist are the API base URL, the Supabase URL and
+the anon key, all publishable by design), no `.env` has ever been committed on
+any branch, both `.env.example` files are keyless, and no secret-shaped literal
+appears anywhere in tracked source. `SUPABASE_SERVICE_ROLE_KEY` is read only by
+`images.py` and `usage.py`, both server-side.
+
+Two things to tidy:
+
+- `.gitignore` lists `.env` and `.env.local` specifically. `.env.production`,
+  `.env.development` and anything else in that family are **not** ignored. The
+  guide's pattern is `.env*` plus `!.env.example`, which fails safe instead of
+  enumerating.
+- `backend/.env.example` documents `SUPABASE_JWT_SECRET`, which nothing reads.
+  `auth.py` verifies tokens by asking GoTrue rather than checking a signature
+  locally, and deliberately so. A documented variable that no code consumes is an
+  invitation to paste a real secret somewhere it isn't needed.
