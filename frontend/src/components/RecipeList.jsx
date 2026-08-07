@@ -1,5 +1,7 @@
-import { Fragment, useMemo, useState } from 'react'
-import { TAG_VOCABULARY, filterRecipes, normalizeTag, tagCounts } from '../lib/tags.js'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { filterRecipes, tagCounts } from '../lib/tags.js'
+import { hostOf, metaParts } from '../lib/recipes.js'
+import RecipeDetail from './RecipeDetail.jsx'
 import RecipeThumb from './RecipeThumb.jsx'
 
 // The first cards load their photos eagerly at high priority. Everything below
@@ -7,32 +9,10 @@ import RecipeThumb from './RecipeThumb.jsx'
 // than saving anything.
 const EAGER_CARDS = 2
 
-function hostOf(url) {
-  if (!url) return ''
-  try {
-    return new URL(url).hostname.replace('www.', '')
-  } catch {
-    // A stored URL that no longer parses shouldn't break the card.
-    return ''
-  }
-}
-
-// Time first, then servings. That's the order every comparable app uses, and it
-// matches what you're deciding at six o'clock. Ingredient count moved out: it
-// answers "how much shopping", which belongs on the planner.
-function metaParts(recipe) {
-  const parts = []
-  if (recipe.total_min) parts.push(`${recipe.total_min} min`)
-  if (recipe.servings) {
-    const raw = String(recipe.servings).trim()
-    parts.push(/serv|portion|makes/i.test(raw) ? raw : `Serves ${raw}`)
-  }
-  // A link card has neither, and an empty meta line reads as a rendering bug.
-  if (parts.length === 0) {
-    parts.push(recipe.ingredients?.length > 0 ? `${recipe.ingredients.length} ingredients` : 'Saved link')
-  }
-  return parts
-}
+// Same window the planner's meal removal uses, and for the same reason: long
+// enough to notice the toast, short enough that you aren't left wondering
+// whether the delete happened.
+const UNDO_WINDOW_MS = 4500
 
 export default function RecipeList({
   recipes,
@@ -48,38 +28,80 @@ export default function RecipeList({
   onOpen,
   onDelete,
   onToggleFavorite,
-  onSetTags,
+  onAssign,
   onEdit,
   onWrite,
 }) {
-  const [tagDraft, setTagDraft] = useState('')
+  // Deleting is the one action here whose failure mode is losing a recipe, so it
+  // gets an undo window rather than a confirm dialog — undo costs one tap and
+  // only when you were wrong, a dialog costs one every time you were right
+  // (finding 14). The pending recipe is held here and not in App, exactly as the
+  // planner holds its pending meal removal: App is told nothing until the window
+  // lapses, so undo is a `clearTimeout` rather than a re-insert that has to get
+  // the row's position and id back.
+  const [pendingDelete, setPendingDelete] = useState(null)
+  const pendingRef = useRef(null)
+  const pendingTimeoutRef = useRef(null)
+  useEffect(() => {
+    pendingRef.current = pendingDelete
+  }, [pendingDelete])
 
-  const chips = useMemo(() => tagCounts(recipes), [recipes])
-  const favoriteCount = useMemo(() => recipes.filter((r) => r.favorite).length, [recipes])
+  // Switching tabs unmounts this (App renders it only while tab === 'recipes').
+  // A dangling timer would fire into a stale closure after that, so leaving
+  // mid-window commits the delete instead — navigating away counts as meaning
+  // it, and the alternative is a recipe that comes back on the next visit.
+  useEffect(() => {
+    return () => {
+      if (pendingRef.current) {
+        clearTimeout(pendingTimeoutRef.current)
+        onDelete(pendingRef.current.id)
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  function startDelete(recipe) {
+    // Only one undo window at a time. A second delete commits the first rather
+    // than stacking two toasts whose Undo buttons would be ambiguous.
+    if (pendingRef.current) {
+      clearTimeout(pendingTimeoutRef.current)
+      onDelete(pendingRef.current.id)
+    }
+    onOpen(null)
+    pendingTimeoutRef.current = setTimeout(() => {
+      onDelete(recipe.id)
+      setPendingDelete((cur) => (cur && cur.id === recipe.id ? null : cur))
+    }, UNDO_WINDOW_MS)
+    setPendingDelete(recipe)
+  }
+
+  function undoDelete() {
+    clearTimeout(pendingTimeoutRef.current)
+    setPendingDelete(null)
+  }
+
+  // Everything below counts from `shown`, never `recipes`: a recipe inside its
+  // undo window is gone as far as the list, the chip counts and the empty state
+  // are concerned. It is still in App's state, which is what makes undo free.
+  const shown = useMemo(
+    () => (pendingDelete ? recipes.filter((r) => r.id !== pendingDelete.id) : recipes),
+    [recipes, pendingDelete],
+  )
+
+  const chips = useMemo(() => tagCounts(shown), [shown])
+  const favoriteCount = useMemo(() => shown.filter((r) => r.favorite).length, [shown])
 
   const visible = useMemo(
-    () => filterRecipes(recipes, { query, tags: activeTags, favoritesOnly }),
-    [recipes, query, activeTags, favoritesOnly],
+    () => filterRecipes(shown, { query, tags: activeTags, favoritesOnly }),
+    [shown, query, activeTags, favoritesOnly],
   )
 
   const filtering = query.trim().length > 0 || activeTags.length > 0 || favoritesOnly
-
-  function addTag(recipe, raw) {
-    const tag = normalizeTag(raw)
-    if (!tag || (recipe.tags || []).includes(tag)) return
-    onSetTags(recipe, [...(recipe.tags || []), tag])
-  }
-
-  function removeTag(recipe, tag) {
-    onSetTags(
-      recipe,
-      (recipe.tags || []).filter((t) => t !== tag),
-    )
-  }
+  const open = shown.find((r) => r.id === openId) || null
 
   return (
     <>
-      {recipes.length > 0 && (
+      {shown.length > 0 && (
         <div className="recipes-filters">
           <div className="recipes-search">
             <input
@@ -119,7 +141,7 @@ export default function RecipeList({
           </div>
           {filtering && (
             <p className="recipes-count">
-              {visible.length} of {recipes.length}
+              {visible.length} of {shown.length}
               <button type="button" className="btn btn-quiet" onClick={onClearFilters}>
                 Clear
               </button>
@@ -128,14 +150,14 @@ export default function RecipeList({
         </div>
       )}
 
-      {recipes.length > 0 && visible.length === 0 && (
+      {shown.length > 0 && visible.length === 0 && (
         <p className="rb-empty">
           <strong>Nothing matches that</strong>
           Try fewer words, or clear the filters above.
         </p>
       )}
 
-      {recipes.length === 0 && !loading && (
+      {shown.length === 0 && !loading && (
         <p className="rb-empty">
           <strong>The box is empty</strong>
           Tap the + button to paste a link, paste recipe text, or write one in.
@@ -147,10 +169,8 @@ export default function RecipeList({
 
       <ul className="recipes-list">
         {visible.map((r, i) => {
-          const open = openId === r.id
-          const tags = r.tags || []
-          const detailId = `recipe-detail-${r.id}`
           const host = hostOf(r.source_url)
+          const tags = r.tags || []
           return (
             <li key={r.id} className="recipes-card">
               {/* The head is a plain container with an overlay button stretched
@@ -158,8 +178,7 @@ export default function RecipeList({
                   only contain phrasing content, so the old markup — a div holding
                   an h2 and two paragraphs — was invalid, and screen readers lost
                   the heading and read the whole card as one label. This keeps the
-                  real h2, keeps the whole row tappable, and puts aria-expanded
-                  where it belongs. */}
+                  real h2 and keeps the whole row tappable. */}
               <div className="recipes-card-head">
                 <RecipeThumb recipe={r} priority={i < EAGER_CARDS} />
                 <div className="recipes-card-text">
@@ -191,136 +210,45 @@ export default function RecipeList({
                     </p>
                   )}
                 </div>
+                {/* aria-haspopup, not aria-expanded: this opens a dialog over the
+                    page now rather than expanding a region inside the card, and
+                    aria-expanded would promise content that appears in place. */}
                 <button
                   type="button"
                   className="recipes-card-toggle"
-                  aria-expanded={open}
-                  aria-controls={detailId}
-                  onClick={() => onOpen(open ? null : r.id)}
+                  aria-haspopup="dialog"
+                  onClick={() => onOpen(r.id)}
                 >
-                  <span className="rb-offscreen">
-                    {open ? `Hide ${r.title}` : `Show ${r.title}`}
-                  </span>
+                  <span className="rb-offscreen">Open {r.title}</span>
                 </button>
               </div>
-
-              {open && (
-                <div className="recipes-detail" id={detailId}>
-                  {r.ingredients.length === 0 && r.instructions.length === 0 ? (
-                    <>
-                      {r.description && <p className="recipes-caption">{r.description}</p>}
-                      <p className="recipes-meta">
-                        No recipe was readable from this post. Fill it in by hand with Edit below,
-                        or open the source and paste the text into Paste recipe text.
-                      </p>
-                    </>
-                  ) : (
-                    <>
-                      <h3>Ingredients</h3>
-                      <ul>
-                        {r.ingredients.map((ing, n) => (
-                          <li key={n}>{ing.raw}</li>
-                        ))}
-                      </ul>
-                      <h3>Steps</h3>
-                      <ol>
-                        {r.instructions.map((step, n) => (
-                          <li key={n}>{step}</li>
-                        ))}
-                      </ol>
-                    </>
-                  )}
-
-                  <h3>Tags</h3>
-                  <div className="recipes-tag-edit">
-                    {tags.map((tag) => (
-                      <button
-                        key={tag}
-                        type="button"
-                        className="recipes-tag recipes-tag-remove"
-                        aria-label={`Remove tag ${tag}`}
-                        onClick={() => removeTag(r, tag)}
-                      >
-                        {tag} <span aria-hidden="true">×</span>
-                      </button>
-                    ))}
-                    <form
-                      className="recipes-tag-add"
-                      onSubmit={(e) => {
-                        e.preventDefault()
-                        addTag(r, tagDraft)
-                        setTagDraft('')
-                      }}
-                    >
-                      {/* datalist gives the vocabulary as suggestions without
-                          preventing anything else being typed. */}
-                      <input
-                        className="field"
-                        list="recipes-tag-options"
-                        placeholder="Add a tag"
-                        value={tagDraft}
-                        onChange={(e) => setTagDraft(e.target.value)}
-                        aria-label="Add a tag"
-                      />
-                      <button
-                        type="submit"
-                        className="btn btn-secondary btn-sm"
-                        disabled={!normalizeTag(tagDraft)}
-                      >
-                        Add
-                      </button>
-                    </form>
-                  </div>
-
-                  <div className="recipes-actions">
-                    {/* Favouriting moved off the card face and in here. It's a
-                        once-per-recipe action, and none of the comparable apps
-                        spends a control on every row for it — they all rely on a
-                        saved filter, which the Favorites chip already is. */}
-                    <button
-                      type="button"
-                      className={r.favorite ? 'recipes-fav recipes-fav-on' : 'recipes-fav'}
-                      aria-pressed={Boolean(r.favorite)}
-                      onClick={() => onToggleFavorite(r)}
-                    >
-                      <span className="recipes-fav-star" aria-hidden="true">
-                        {r.favorite ? '★' : '☆'}
-                      </span>
-                      {r.favorite ? 'Favorited' : 'Favorite'}
-                    </button>
-                    <button type="button" className="btn btn-secondary btn-sm" onClick={() => onEdit(r)}>
-                      Edit
-                    </button>
-                    {r.source_url && (
-                      <a
-                        className="btn btn-secondary btn-sm"
-                        href={r.source_url}
-                        target="_blank"
-                        rel="noreferrer"
-                      >
-                        View source
-                      </a>
-                    )}
-                    <button
-                      type="button"
-                      className="btn btn-danger btn-sm"
-                      onClick={() => onDelete(r.id)}
-                    >
-                      Delete
-                    </button>
-                  </div>
-                </div>
-              )}
             </li>
           )
         })}
       </ul>
 
-      <datalist id="recipes-tag-options">
-        {TAG_VOCABULARY.map((tag) => (
-          <option key={tag} value={tag} />
-        ))}
-      </datalist>
+      {open && (
+        <RecipeDetail
+          // Keyed by recipe: opening a different recipe must not inherit the
+          // last one's ticked ingredients or a half-filled plan slot.
+          key={open.id}
+          recipe={open}
+          onClose={() => onOpen(null)}
+          onEdit={onEdit}
+          onDelete={() => startDelete(open)}
+          onToggleFavorite={onToggleFavorite}
+          onAssign={onAssign}
+        />
+      )}
+
+      {pendingDelete && (
+        <div className="rb-toast" role="status">
+          <span>Deleted {pendingDelete.title}</span>
+          <button type="button" className="rb-toast-undo" onClick={undoDelete}>
+            Undo
+          </button>
+        </div>
+      )}
     </>
   )
 }

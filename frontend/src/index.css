@@ -1057,33 +1057,234 @@ textarea.field {
   overflow: hidden;
 }
 
-.recipes-detail {
-  padding: 0 var(--sp-4) var(--sp-4);
-  border-top: 1px solid var(--line);
+/* --- The open recipe (findings 10, 11, 14, 15, 16) --------------------------
+   A sheet, not an expanding card. The card version grew to about 1,100px and
+   pushed the other seven recipes off the bottom; collapsing it dropped you
+   wherever the collapse landed rather than where you had been reading.
+   ------------------------------------------------------------------------- */
+
+/* The `.sheet-tall` height rule is down in the Sheets block, not here: it has to
+   come after `.sheet`'s own max-height or it loses on source order at equal
+   specificity, and the sheet quietly stays at the 85vh default. */
+
+/* Full bleed, cancelling the sheet's side padding. It sits under the sticky
+   head and scrolls away beneath it. */
+.detail-hero {
+  margin: 0 calc(var(--sp-4) * -1) var(--sp-4);
 }
 
-.recipes-detail h3 {
-  font-size: var(--fs-base);
-  margin: var(--sp-4) 0 var(--sp-2);
+.detail-hero .recipes-thumb-hero {
+  width: 100%;
+  aspect-ratio: 16 / 9;
+  border-radius: 0;
 }
 
-.recipes-detail li {
-  margin-bottom: 6px;
-  line-height: 1.45;
-}
-
-.recipes-actions {
+.detail-meta {
   display: flex;
   flex-wrap: wrap;
-  justify-content: flex-start;
   align-items: center;
-  gap: var(--sp-3);
-  margin-top: var(--sp-4);
+  gap: 6px;
+  margin: 0;
+  font-size: var(--fs-sm);
+  color: var(--txt-2);
 }
 
-/* Delete sits apart from the two constructive actions beside it. */
-.recipes-actions .btn-danger {
-  margin-left: auto;
+.detail-tags {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin: var(--sp-3) 0 0;
+}
+
+.detail-actions {
+  display: flex;
+  gap: var(--sp-3);
+  margin: var(--sp-4) 0 0;
+}
+
+/* Both stretch, so neither reads as the leftover half of the row. */
+.detail-actions .btn {
+  flex: 1;
+}
+
+/* The star is state, not an action, so it takes saffron and no fill — the
+   palette rule from pass 1a. Off, it is a hairline outline of the same glyph,
+   which keeps the head from changing width when it flips. */
+.detail-star,
+.detail-more {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 40px;
+  height: 40px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  border-radius: var(--r-pill);
+  background: none;
+  color: var(--txt-2);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* --star / --star-off are the tokens pass 1a shipped for exactly this, --star
+   being the alias onto saffron. They were left without a caller when the old
+   outlined favourite button went. */
+.detail-star {
+  color: var(--star-off);
+}
+
+.detail-star-on {
+  color: var(--star);
+}
+
+.detail-more {
+  font-size: 22px;
+}
+
+/* Anchors the popover. The sheet is the scroll container and scrolls
+   vertically, so a menu hanging below the head is inside it rather than
+   clipped; it is pinned to the right edge for the same reason. */
+.detail-menu {
+  position: relative;
+  display: flex;
+}
+
+.detail-menu-pop {
+  position: absolute;
+  top: calc(100% + var(--sp-1));
+  right: 0;
+  z-index: 2;
+  display: flex;
+  flex-direction: column;
+  min-width: 172px;
+  padding: var(--sp-1);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+  box-shadow: var(--shadow-card);
+}
+
+.detail-menu-item {
+  display: flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 0 var(--sp-3);
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  color: var(--txt);
+  font: inherit;
+  text-align: left;
+  text-decoration: none;
+  cursor: pointer;
+}
+
+.detail-menu-danger {
+  color: var(--danger);
+}
+
+/* The day and slot picker, inline rather than a sheet over a sheet. */
+.detail-plan {
+  margin-top: var(--sp-3);
+  padding: var(--sp-3);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface-2);
+}
+
+/* One scrolling row apiece, the same treatment the filter chips take: seven
+   days will not wrap into anything readable at 390px. */
+.detail-plan-days,
+.detail-plan-slots {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: 6px;
+  margin-bottom: var(--sp-3);
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.detail-plan-days::-webkit-scrollbar,
+.detail-plan-slots::-webkit-scrollbar {
+  display: none;
+}
+
+/* `display: flex` is on this rule and not inherited: .planner-chip is not a flex
+   container, so flex-direction alone was inert and the date ran on from the day
+   name as "TodayAug 7". */
+.detail-plan-days .planner-chip {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 0;
+  line-height: 1.2;
+}
+
+.detail-plan-date {
+  font-size: var(--fs-2xs);
+  opacity: 0.75;
+}
+
+.detail-planned {
+  margin: var(--sp-3) 0 0;
+  font-size: var(--fs-sm);
+  color: var(--ok-ink);
+}
+
+.detail-heading {
+  margin: var(--sp-6) 0 var(--sp-1);
+  font-size: var(--fs-base);
+}
+
+/* Ingredients to gather and steps to keep your place in (finding 11). Both are
+   checkboxes rather than buttons with aria-pressed: "have I got the flour" is a
+   checked state, and a checkbox is the control a screen reader already
+   describes that way. The whole row is the label, so the tap target is the line
+   rather than the 22px box. */
+.detail-checks {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.detail-check label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  min-height: 44px;
+  padding: var(--sp-2) 0;
+  border-bottom: 1px solid var(--line);
+  line-height: 1.45;
+  cursor: pointer;
+}
+
+.detail-checks li:last-child label {
+  border-bottom: none;
+}
+
+.detail-check input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
+}
+
+/* Ticked rows fade as a whole, the same way a picked shopping row does — the
+   checkbox carries the state, so the text is free to drop under the contrast
+   floor as reinforcement. */
+.detail-check-on {
+  opacity: 0.55;
+}
+
+.detail-step-n {
+  flex-shrink: 0;
+  width: 22px;
+  font-weight: 600;
+  color: var(--txt-2);
+  font-variant-numeric: tabular-nums;
 }
 
 /* --- Search, filters, tags ---------------------------------------------- */
@@ -1240,6 +1441,13 @@ textarea.field {
   font-size: 1.1rem;
 }
 
+/* Hero, for the detail sheet. Sizing is in the detail block; this is only the
+   fallback tile, which has to grow with the box or a recipe with no photo gets
+   a 36px letter floating in a 220px band. */
+.recipes-thumb-hero .recipes-thumb-mono {
+  font-size: 4rem;
+}
+
 /* Fallback tile. Never a gap and never a broken-image icon: an origin that
    expires its URLs or blocks hotlinking is not an edge case here. */
 .recipes-thumb-fallback {
@@ -1274,39 +1482,9 @@ textarea.field {
   color: #fffefb;
 }
 
-/* Favourite lives in the open recipe now, not on every row. None of the apps
-   surveyed marks favourites on the card face; they all rely on a saved filter,
-   which the Favorites chip already is. This frees the title's full width. */
-.recipes-fav {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 44px;
-  padding: 0 12px 0 10px;
-  border: 1px solid var(--line-strong);
-  border-radius: var(--r-sm);
-  background: var(--surface);
-  color: var(--txt-2);
-  font: inherit;
-  font-size: var(--fs-sm);
-  cursor: pointer;
-}
-
-.recipes-fav-star {
-  color: var(--star-off);
-  font-size: 1.15rem;
-  line-height: 1;
-}
-
-.recipes-fav-on {
-  border-color: var(--star);
-  background: var(--warn-bg);
-  color: #6b5100;
-}
-
-.recipes-fav-on .recipes-fav-star {
-  color: var(--star);
-}
+/* The favourite button that used to sit in the expanded card is gone: it is a
+   star in the detail sheet's head now (finding 14, `.detail-star`), because it
+   is a state and it was reading as a fourth verb in a row of three. */
 
 .recipes-card-tags {
   display: flex;
@@ -1327,6 +1505,11 @@ textarea.field {
   font-weight: 500;
 }
 
+/* These three belong to the editor and nothing else as of finding 15. Every tag
+   in the *open recipe* used to carry a remove cross too, with an always-open
+   "Add a tag" field under it, so reading a recipe put you one mistap from losing
+   a tag. Tags are plain `.recipes-tag` chips there now; changing them is the
+   editor's job, which is where a remove cross is what you came for. */
 .recipes-tag-edit {
   display: flex;
   flex-wrap: wrap;
@@ -1641,7 +1824,12 @@ textarea.field {
    once, on a dark inverse surface — the one place in the app that isn't the
    warm ground, because a toast is a transient confirmation, not a status
    notice, and none of the warn/ok/info triplet fits that. --- */
-.planner-toast {
+/* One toast, two callers: an undone meal removal and an undone recipe delete.
+   It was `.planner-toast` while the planner was the only thing with an undo
+   window; a second copy under a `recipes-` prefix is how the button rules got to
+   twenty. It clears the tab bar rather than the viewport edge, since a fixed bar
+   reserves no space. */
+.rb-toast {
   position: fixed;
   right: var(--sp-4);
   bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--sp-4));
@@ -1661,7 +1849,7 @@ textarea.field {
   box-shadow: var(--shadow-card);
 }
 
-.planner-toast-undo {
+.rb-toast-undo {
   flex-shrink: 0;
   border: 0;
   background: none;
@@ -1707,6 +1895,17 @@ textarea.field {
      opaque background. The handle below carries that space instead. */
   padding: 0 var(--sp-4) calc(var(--sp-6) + env(safe-area-inset-bottom));
   animation: sheet-rise 0.22s cubic-bezier(0.22, 1, 0.36, 1);
+}
+
+/* The recipe detail asks for a taller panel than the default, because it is a
+   whole document rather than one decision. Not 100dvh: the strip of list left
+   showing above it is what says the recipe is *over* the list and can be pushed
+   back down. It must sit after `.sheet` — same specificity, so on source order,
+   and above it the max-height above wins and the sheet stays at 85vh. */
+.sheet-tall {
+  height: 94vh;
+  height: 94dvh;
+  max-height: none;
 }
 
 .sheet:focus {

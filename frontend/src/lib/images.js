@@ -30,7 +30,12 @@ export function needsMirror(recipe) {
 // one size. `sizes` is the rendered box width: the browser multiplies it by the
 // device pixel ratio and picks, so a 128px box on a 2x phone takes the 320w file
 // and stops pulling a 960px hero down a mobile connection for a thumbnail.
-export function thumbSources(recipe, boxWidth) {
+//
+// `box` is a number of CSS pixels for the fixed boxes (card thumb, picker row),
+// or a ready-made `sizes` string for one that isn't fixed — the detail sheet's
+// hero is as wide as the sheet, which is the viewport up to 640px, and there is
+// no single number that describes it.
+export function thumbSources(recipe, box) {
   const full = recipe?.image_url
   const small = recipe?.image_thumb_url
   if (!full) return null
@@ -38,6 +43,6 @@ export function thumbSources(recipe, boxWidth) {
   return {
     src: small,
     srcSet: `${small} 320w, ${full} 960w`,
-    sizes: `${boxWidth}px`,
+    sizes: typeof box === 'number' ? `${box}px` : box,
   }
 }

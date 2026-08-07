@@ -18,15 +18,23 @@ import { thumbSources } from '../lib/images.js'
 // priority; everything below stays lazy. Lazy-loading the largest image in the
 // viewport is a measured regression, not a saving.
 //
-// `size="sm"` is the row-sized variant used by the planner's picker. Same three
-// states, since a picker row has exactly the same problem a card does.
-const SIZES = { md: { w: 128, h: 96 }, sm: { w: 56, h: 42 } }
+// `size="sm"` is the row-sized variant used by the planner's picker, and
+// `size="hero"` is the full-bleed one at the top of the detail sheet. Same three
+// states in all of them, since a picker row and a hero have exactly the same
+// problem a card does. The hero carries a `sizes` string rather than a width
+// because its box is the sheet's width, not a fixed number of pixels; `w`/`h`
+// are still there to give the <img> its intrinsic ratio.
+const SIZES = {
+  md: { w: 128, h: 96 },
+  sm: { w: 56, h: 42 },
+  hero: { w: 640, h: 360, sizes: 'min(100vw, 640px)' },
+}
 
 export default function RecipeThumb({ recipe, priority = false, size = 'md' }) {
   const [failed, setFailed] = useState(false)
 
   const box = SIZES[size] || SIZES.md
-  const photo = thumbSources(recipe, box.w)
+  const photo = thumbSources(recipe, box.sizes || box.w)
   const showPhoto = Boolean(photo) && !failed
   const cls = size === 'md' ? 'recipes-thumb' : `recipes-thumb recipes-thumb-${size}`
 

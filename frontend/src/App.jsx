@@ -6,7 +6,7 @@ import { makePlanStore, migrateLocalPlan } from './lib/plan.js'
 import { makeShoppingStore, migrateLocalShopping } from './lib/shopping.js'
 import { cacheKeys, clearCache, withMirror } from './lib/cache.js'
 import { MIRROR_CONCURRENCY, needsMirror } from './lib/images.js'
-import { addDays, startOfWeek, toISODate } from './lib/dates.js'
+import { addDays, fromISODate, startOfWeek, toISODate } from './lib/dates.js'
 import { setBusy } from './lib/pwa.js'
 import Account from './components/Account.jsx'
 import CaptureSheet from './components/CaptureSheet.jsx'
@@ -704,9 +704,8 @@ export default function App() {
     return saved
   }
 
-  function handleSetTags(recipe, tags) {
-    return updateRecipe(recipe, { tags })
-  }
+  // No handleSetTags any more: tags are read-only in the open recipe as of
+  // pass 2 (finding 15) and the editor is the one place they change.
 
   function handleToggleTag(tag) {
     setActiveTags((prev) => (prev.includes(tag) ? prev.filter((t) => t !== tag) : [...prev, tag]))
@@ -752,10 +751,26 @@ export default function App() {
     try {
       const saved = await planStore.add(entry)
       setPlan((prev) => prev.map((e) => (e.id === entry.id ? saved : e)))
+      return true
     } catch (err) {
       setPlan((prev) => prev.filter((e) => e.id !== entry.id))
       setError(writeError(err))
+      return false
     }
+  }
+
+  // Adding from the open recipe (finding 16) offers the next seven days, which
+  // routinely reaches past Saturday — and App only holds one week of plan rows,
+  // so the meal would land correctly in the database and then be invisible on a
+  // planner still showing the week you started from. It reads as the add having
+  // failed. So the planner follows the meal.
+  //
+  // After the write, not before: the week change is what `loadPlan` keys off,
+  // and a refetch that beat the insert would come back without the new row and
+  // replace the optimistic copy with nothing.
+  async function handlePlanFromRecipe(recipeId, dateISO, slot) {
+    const added = await handleAssign(recipeId, dateISO, slot)
+    if (added) setWeekStart(startOfWeek(fromISODate(dateISO)))
   }
 
   // Ticking a derived line writes a check row the first time and updates it
@@ -962,7 +977,7 @@ export default function App() {
             onOpen={setOpenId}
             onDelete={handleDelete}
             onToggleFavorite={handleToggleFavorite}
-            onSetTags={handleSetTags}
+            onAssign={handlePlanFromRecipe}
             onEdit={(recipe) => setEditing({ recipe })}
             onWrite={() => setEditing({ recipe: null })}
           />

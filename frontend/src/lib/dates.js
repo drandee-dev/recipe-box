@@ -26,6 +26,16 @@ export function toISODate(date) {
   return `${date.getFullYear()}-${month}-${day}`
 }
 
+// The inverse of toISODate, and it has to be hand-parsed for the same reason
+// toISODate is hand-formatted: `new Date('2026-08-09')` is read as an ISO
+// *instant* and lands on UTC midnight, which is the 8th anywhere west of
+// Greenwich. Splitting the parts and handing them to the local constructor is
+// the only round trip that survives.
+export function fromISODate(iso) {
+  const [year, month, day] = String(iso).split('-').map(Number)
+  return new Date(year, month - 1, day)
+}
+
 export function addDays(date, count) {
   const out = atMidnight(date)
   out.setDate(out.getDate() + count)

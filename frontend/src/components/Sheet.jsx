@@ -26,7 +26,19 @@ let sheetCount = 0
 // to scroll needs its save reachable from anywhere, and the alternative, a
 // sticky bar across the foot, spends a full-width accent slab covering the
 // fields being filled in.
-export default function Sheet({ title, onClose, children, closeLabel = 'Cancel', action = null }) {
+//
+// `className` is for size, and only size. Behaviour stays here so there is still
+// exactly one modal in the app; the recipe detail asks for a taller panel than
+// the 85vh default because it is a whole document rather than one decision, and
+// that is a stylesheet's business, not a second component's.
+export default function Sheet({
+  title,
+  onClose,
+  children,
+  closeLabel = 'Cancel',
+  action = null,
+  className = '',
+}) {
   const sheetRef = useRef(null)
   const headingId = useRef(`sheet-title-${Math.random().toString(36).slice(2, 9)}`)
 
@@ -58,10 +70,19 @@ export default function Sheet({ title, onClose, children, closeLabel = 'Cancel',
     // Reference counted: nested or rapidly swapped sheets must not have the
     // first one to unmount hand scrolling back to a page still covered.
     sheetCount += 1
+    // …and the count doubles as a depth, which is what makes stacking safe. Both
+    // sheets listen on `document`, so without this every key press ran both
+    // handlers: Escape over the editor closed the editor *and* the recipe behind
+    // it (stopPropagation does nothing between two listeners on the same node),
+    // and Shift+Tab from the middle of the editor hit the lower sheet's trap
+    // first, which saw focus outside itself and threw it to its own last item.
+    // Only the topmost sheet handles keys; the ones underneath are covered.
+    const depth = sheetCount
     const previousOverflow = document.body.style.overflow
     document.body.style.overflow = 'hidden'
 
     function onKey(e) {
+      if (depth !== sheetCount) return
       if (e.key === 'Escape') {
         e.stopPropagation()
         onCloseRef.current()
@@ -97,7 +118,7 @@ export default function Sheet({ title, onClose, children, closeLabel = 'Cancel',
     <div className="sheet-backdrop" onClick={onClose}>
       <div
         ref={sheetRef}
-        className="sheet"
+        className={className ? `sheet ${className}` : 'sheet'}
         role="dialog"
         aria-modal="true"
         aria-labelledby={headingId.current}

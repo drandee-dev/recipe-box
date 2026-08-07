@@ -335,9 +335,9 @@ export default function Planner({
       </div>
 
       {pendingRemoval && (
-        <div className="planner-toast" role="status">
+        <div className="rb-toast" role="status">
           <span>Removed from {pendingRemoval.label}</span>
-          <button type="button" className="planner-toast-undo" onClick={undoRemoval}>
+          <button type="button" className="rb-toast-undo" onClick={undoRemoval}>
             Undo
           </button>
         </div>
