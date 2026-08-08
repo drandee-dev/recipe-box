@@ -689,6 +689,56 @@ textarea.field {
   margin-top: var(--sp-2);
 }
 
+/* Photographing a recipe, which is the other half of what this route always
+   claimed to do — "a caption, an email, a photo of a page" described something
+   there was no way to hand it. Two buttons rather than one, because the only
+   difference between them is the `capture` attribute and nobody can be asked
+   to know that: one goes straight to the camera, the other to the library. */
+.rb-photo-pick {
+  display: flex;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+.rb-photo-pick .btn {
+  /* Equal halves. Two auto-width buttons in a row read as one important and one
+     less so, and these are the same choice made twice. */
+  flex: 1 1 0;
+  gap: var(--sp-2);
+  /* Long labels wrap rather than overflow at 320px. */
+  min-width: 0;
+}
+
+.rb-photo-pick svg {
+  width: 20px;
+  height: 20px;
+  flex-shrink: 0;
+}
+
+/* The photo takes the whole sheet — see the note in CaptureSheet. */
+.rb-photo {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+/* Capped by height, not width: a page is portrait, and one sized to the sheet's
+   width alone pushes the button that reads it off the bottom of the screen —
+   which is what the first version of this did, on the one screen where that
+   button is the only thing left to press. */
+.rb-photo-shot {
+  max-width: 100%;
+  max-height: 58vh;
+  max-height: 58dvh;
+  border-radius: var(--r-md);
+  box-shadow: inset 0 0 0 1px var(--line);
+}
+
+.rb-photo .rb-paste-text-actions {
+  align-self: stretch;
+}
+
 /* --- The FAB that opens the capture sheet ----------------------------------
    Floating above the tab bar rather than in the header, for the same reason
    the tabs moved down there in pass 1b: it's where a thumb already is. The

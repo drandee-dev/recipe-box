@@ -26,6 +26,13 @@ export function structureText(text) {
   return post('/api/recipes/structure', { text })
 }
 
+// A photograph of a recipe through the vision path that phase 8 built for
+// reading a post's own picture. Anonymous like the two above: the bytes are read
+// and dropped, nothing is stored, so this is not the endpoint below.
+export function structureImage(image) {
+  return post('/api/recipes/structure-image', { image })
+}
+
 // Phase 7. Hands the origin's image URL to the backend, which fetches it while
 // it still works, resizes it and stores it under our own account. Returns
 // { image_url, image_thumb_url, image_blur }.

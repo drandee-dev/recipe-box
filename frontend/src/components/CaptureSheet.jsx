@@ -5,7 +5,7 @@
 // one "+" trigger, whose sheet is where the three routes finally get the
 // explanatory subtitle a stacked button never had room for.
 
-import { useState } from 'react'
+import { useRef, useState } from 'react'
 import Sheet from './Sheet.jsx'
 import ShortcutSetup from './ShortcutSetup.jsx'
 import { isIos } from '../lib/platform.js'
@@ -19,6 +19,19 @@ const ICONS = {
     </>
   ),
   text: <path d="M5 6.5h14M5 12h14M5 17.5h9" />,
+  camera: (
+    <>
+      <path d="M3.5 8.5h3.2l1.4-2h7.8l1.4 2h3.2v11h-17z" />
+      <circle cx="12" cy="13.5" r="3.4" />
+    </>
+  ),
+  library: (
+    <>
+      <path d="M3.5 5.5h17v13h-17z" />
+      <path d="m3.5 15 4.5-4.2 4.2 3.9 3.1-2.8 5.2 4.6" />
+      <circle cx="8.6" cy="9.2" r="1.2" />
+    </>
+  ),
   pencil: (
     <>
       <path d="M4 20h4.2L19.8 8.4a2 2 0 0 0 0-2.8l-1.4-1.4a2 2 0 0 0-2.8 0L4 15.8z" />
@@ -86,12 +99,31 @@ export default function CaptureSheet({
   pasteText,
   onPasteTextChange,
   onPasteTextSubmit,
+  photo,
+  onPickPhoto,
+  onClearPhoto,
   onWrite,
   onClose,
   error,
   inputRef,
 }) {
   const [shortcutOpen, setShortcutOpen] = useState(false)
+  // Two inputs rather than one, because the difference between them is a single
+  // attribute the user cannot change afterwards. `capture` opens the camera
+  // directly; without it iOS offers its own Take Photo / Photo Library sheet,
+  // which is one tap further from the camera and the reason both exist.
+  const cameraRef = useRef(null)
+  const libraryRef = useRef(null)
+
+  // The reset is not tidying. A file input holds its selection, so choosing the
+  // same photo again after backing out fires no change event at all and the
+  // button reads as broken — which is exactly what "Use different photo" then
+  // "the same one after all" does.
+  function handlePicked(e) {
+    const file = e.target.files?.[0]
+    e.target.value = ''
+    if (file) onPickPhoto(file)
+  }
 
   // A view swap inside the sheet, the same shape the paste-text form uses,
   // rather than a second sheet on top. Setup is a detour off the capture
@@ -104,6 +136,40 @@ export default function CaptureSheet({
     return (
       <Sheet title="iPhone sharing" closeLabel="Close" onClose={onClose}>
         <ShortcutSetup onBack={() => setShortcutOpen(false)} />
+      </Sheet>
+    )
+  }
+
+  // A photo takes the whole sheet, the same way setup does, and this is not a
+  // style choice — it was built inside the paste view first and the screenshot
+  // is what caught it. A portrait photo is taller than the routes it appears
+  // under, so the import field and three capture routes stayed on screen while
+  // both the picture and the button that reads it sat below the fold. There is
+  // one question left at this point and it is not "how would you like to add a
+  // recipe".
+  //
+  // Dismissing the sheet from here keeps the photo, deliberately, for the same
+  // reason it keeps a half-pasted draft: a stray tap on the backdrop should not
+  // cost a picture that may have been taken at somebody else's kitchen table.
+  if (photo) {
+    return (
+      <Sheet title="Read this photo" onClose={onClose}>
+        {error && (
+          <p className="rb-error" role="alert">
+            {error}
+          </p>
+        )}
+        <form className="rb-photo" onSubmit={onPasteTextSubmit}>
+          <img className="rb-photo-shot" src={photo.preview} alt="The photo you picked" />
+          <div className="rb-paste-text-actions">
+            <button type="button" className="btn btn-quiet" onClick={onClearPhoto}>
+              Use another
+            </button>
+            <button type="submit" className="btn btn-primary" disabled={importing}>
+              {importing ? 'Reading…' : 'Read this photo'}
+            </button>
+          </div>
+        </form>
       </Sheet>
     )
   }
@@ -144,7 +210,7 @@ export default function CaptureSheet({
         {!pasteOpen && (
           <Route
             icon="text"
-            title="Paste recipe text"
+            title="Paste text or a photo"
             subtitle="A caption, an email, a photo of a page"
             onClick={onOpenPasteText}
           />
@@ -179,6 +245,37 @@ export default function CaptureSheet({
             onChange={(e) => onPasteTextChange(e.target.value)}
             autoFocus
           />
+          <div className="rb-photo-pick">
+            {/* Hidden but real, and clicked through a button rather than
+                wrapped in a label: a label is not focusable, and an input
+                hidden well enough not to show is hidden well enough not to
+                be tabbed to either. */}
+            <input
+              ref={cameraRef}
+              type="file"
+              accept="image/*"
+              capture="environment"
+              hidden
+              onChange={handlePicked}
+            />
+            <input ref={libraryRef} type="file" accept="image/*" hidden onChange={handlePicked} />
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => cameraRef.current?.click()}
+            >
+              <RouteIcon name="camera" />
+              Take a photo
+            </button>
+            <button
+              type="button"
+              className="btn btn-secondary"
+              onClick={() => libraryRef.current?.click()}
+            >
+              <RouteIcon name="library" />
+              Choose a photo
+            </button>
+          </div>
           <div className="rb-paste-text-actions">
             <button type="button" className="btn btn-quiet" onClick={onClosePasteText}>
               Cancel

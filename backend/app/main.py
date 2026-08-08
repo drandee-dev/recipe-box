@@ -1,3 +1,5 @@
+import base64
+import binascii
 import logging
 
 from fastapi import FastAPI, Header, HTTPException, Request
@@ -41,6 +43,14 @@ class ExtractRequest(BaseModel):
 
 class StructureRequest(BaseModel):
     text: str = Field(min_length=20, max_length=12000)
+
+
+class StructureImageRequest(BaseModel):
+    # Base64 JPEG/PNG/HEIC bytes, no data-URL prefix — the client strips it.
+    # The ceiling is well under Vercel's 4.5 MB request body limit, and the
+    # client already downscales before it gets here; anything approaching this
+    # is a full-resolution phone photo that skipped that step.
+    image: str = Field(min_length=100, max_length=4_000_000)
 
 
 class ImageRequest(BaseModel):
@@ -158,6 +168,63 @@ def structure(body: StructureRequest, request: Request):
 
     if not result.get("has_recipe") or not result.get("ingredients"):
         raise HTTPException(status_code=422, detail="That text doesn't look like a recipe")
+
+    from .social import to_recipe
+
+    return to_recipe(result, "", "manual", {})
+
+
+@app.post("/api/recipes/structure-image")
+def structure_image(body: StructureImageRequest, request: Request):
+    """Photograph-anything box: a picture of a recipe in, recipe out.
+
+    Anonymous and metered like the two above, and for the same reason: it keeps
+    nothing. The bytes are decoded, shrunk to what the model will read, sent, and
+    dropped — this is not the endpoint that saves a photo, which is the one below
+    and is the only one that asks who is calling.
+
+    The vision plumbing itself already existed for phase 8, where a post's own
+    picture is read when its caption yields nothing. This is the same call with a
+    photo the user took instead of one we fetched.
+    """
+    meter_caller(request)
+
+    try:
+        from .images import ImageError, image_for_vision
+    except ImportError:
+        log.exception("the image pipeline is not importable")
+        raise HTTPException(status_code=503, detail="Reading photos is unavailable")
+
+    try:
+        raw = base64.b64decode(body.image, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=422, detail="That photo could not be read")
+
+    try:
+        image_b64, media_type = image_for_vision(raw)
+    except ImageError as exc:
+        log.info("photo could not be prepared: %s", exc)
+        raise HTTPException(status_code=422, detail="That photo could not be read")
+
+    try:
+        from .ai import structure_recipe_image
+
+        result = structure_recipe_image(
+            image_b64,
+            media_type,
+            context="This photograph was taken by the user. Read the recipe written in it.",
+        )
+    except AIBudgetError:
+        raise HTTPException(status_code=429, detail="AI budget for this month is used up")
+    except AIError as exc:
+        log.info("structure-image failed: %s", exc)
+        raise HTTPException(status_code=422, detail="Could not read a recipe from that photo")
+    except Exception:
+        log.exception("unexpected structure-image failure")
+        raise HTTPException(status_code=502, detail="Could not process that photo")
+
+    if not result.get("has_recipe") or not result.get("ingredients"):
+        raise HTTPException(status_code=422, detail="That photo doesn't look like a recipe")
 
     from .social import to_recipe
 

@@ -24,7 +24,7 @@ import os
 import uuid
 
 import httpx
-from PIL import Image, ImageOps, UnidentifiedImageError
+from PIL import Image, ImageChops, ImageDraw, ImageFilter, ImageOps, UnidentifiedImageError
 
 from .extract import ExtractError, fetch_bytes
 
@@ -32,6 +32,14 @@ log = logging.getLogger("recipe.images")
 
 BUCKET = "recipe-images"
 TIMEOUT = 15.0
+
+# Bumped whenever this pipeline starts producing different bytes for the same
+# source. It rides in the public URL as `?v=N`, which does three jobs at once:
+# it busts the year-long immutable cache on an object we overwrite in place, it
+# lets the client tell a photo mirrored by an older pipeline from a current one
+# without a new column, and it keeps the "read it off the URL, never a flag"
+# rule the rest of phase 7 follows. v2 is the play-glyph strip below.
+MIRROR_VERSION = 2
 
 # 960 is the copy of record: big enough that we are not the reason a photo looks
 # bad later, small enough to be a couple of hundred KB. 320 covers the 128px card
@@ -98,6 +106,145 @@ def _open(data: bytes) -> Image.Image:
     return img
 
 
+# --- the Instagram play glyph -------------------------------------------------
+#
+# A reel's og:image is not the cover frame. Instagram composites a white play
+# triangle and a soft dark disc into the JPEG before serving it — the URL says so
+# out loud, `stp=cmp1_dst-jpg_…`, where cmp1 is the composite. There is no clean
+# frame to ask for instead: the URL is signed (`oh`/`oe`), so every rewrite of
+# `stp` comes back 403, and the logged-out page carries no second image URL, no
+# JSON-LD and no og:video. Checked, all of it. So the choice is to repair the
+# pixels or to live with a play button in the middle of every reel recipe.
+#
+# The repair fills the glyph in two parts, and it needs both. Colour comes from
+# diffusion: blur the hole repeatedly, pasting the untouched pixels back each
+# time, so the fill grows inward from the boundary and matches the photo on every
+# side. That alone leaves a smooth disc that reads as a lens smudge. Texture is
+# then borrowed from a clean patch of the same photo — its high frequencies only,
+# lifted by subtracting its own blur — which is what makes the result read as
+# more chicken rather than as a hole.
+#
+# Copying a whole donor patch straight in was the first version and is worth
+# writing down as the thing not to go back to: the area just above the glyph on a
+# reel cover sits in Instagram's own dark disc, so the patch arrived visibly
+# darker than what surrounded it and traded a white triangle for a grey square.
+# Diffusion gets the level right; the donor is only ever asked for grain.
+#
+# Everything below is a fraction of the image's short edge or of the patch, never
+# a pixel count — Instagram scales the glyph with the output size, and we mirror
+# at whatever size the origin served.
+PLAY_WHITE = 235  # per channel; the glyph is a solid 255 with antialiased edges
+PLAY_PROBE = 0.06  # a box this wide at the centre sits inside the triangle
+PLAY_PROBE_WHITE = 0.85
+PLAY_SURROUND = 0.34  # …and this one is mostly photo, even at a generous size
+PLAY_SURROUND_WHITE = 0.20
+PLAY_PATCH = 0.20  # hole diameter: covers the triangle with room to spare
+PLAY_MARGIN = 0.6  # working region around the hole, in patch widths
+PLAY_ITERATIONS = 20  # diffusion passes; each one carries the edge further in
+PLAY_RADIUS = 0.22  # blur radius per pass, in patch widths
+PLAY_FEATHER = 0.10  # softens the seam where the fill meets the photo
+PLAY_DONOR_SHIFT = 1.35  # patch widths above the hole: clear of the glyph and its disc
+PLAY_MIN_EDGE = 120  # below this the probe is a handful of pixels and proves nothing
+
+
+def _white_fraction(img: Image.Image, frac: float) -> float:
+    """How much of a centred box this wide is near-white.
+
+    Done in bands rather than by walking pixels: the darkest channel of each
+    pixel is what decides whether it is white, `darker` gives that in C, and the
+    histogram counts the survivors. A per-pixel loop over a 34%-wide box of a
+    960px photo is ~100k iterations of Python for one boolean.
+    """
+    width, height = img.size
+    size = max(2, int(min(width, height) * frac))
+    left = width // 2 - size // 2
+    top = height // 2 - size // 2
+    crop = img.crop((left, top, left + size, top + size)).convert("RGB")
+    red, green, blue = crop.split()
+    darkest = ImageChops.darker(ImageChops.darker(red, green), blue)
+    white = darkest.point(lambda v: 255 if v >= PLAY_WHITE else 0).histogram()[255]
+    return white / (size * size)
+
+
+def has_play_glyph(img: Image.Image) -> bool:
+    """Does this look like a reel cover with a play triangle burned into it?
+
+    Two readings, and the second one is what makes this safe to run on every
+    photo rather than only on Instagram imports. A solid white centre alone
+    describes a white plate shot from above just as well as it describes the
+    glyph; what separates them is that the plate keeps being white on the way
+    out and the glyph stops abruptly. Measured on the real reel: 0.96 white at
+    the centre against 0.05 at a third of the frame. Eight ordinary food photos
+    read 0.000 at both.
+    """
+    if min(img.size) < PLAY_MIN_EDGE:
+        return False
+    if _white_fraction(img, PLAY_PROBE) < PLAY_PROBE_WHITE:
+        return False
+    return _white_fraction(img, PLAY_SURROUND) <= PLAY_SURROUND_WHITE
+
+
+def _borrowed_texture(img: Image.Image, region_box: tuple, radius: float, shift: int):
+    """The grain of a clean patch of the same photo, with its colour removed.
+
+    Returns a region-sized image of high frequencies centred on mid-grey, or
+    None when there is nowhere clean to take it from. Above the hole first,
+    below it if the frame runs out — Instagram also serves square crops, where
+    the centre sits close enough to the top edge that a patch this size doesn't
+    fit above it.
+    """
+    left, top, right, bottom = region_box
+    height = img.size[1]
+    span = bottom - top
+    donor_top = top - shift
+    if donor_top < 0:
+        donor_top = top + shift
+    if donor_top < 0 or donor_top + span > height:
+        return None
+    donor = img.crop((left, donor_top, right, donor_top + span))
+    return ImageChops.subtract(donor, donor.filter(ImageFilter.GaussianBlur(radius)), 1, 128)
+
+
+def strip_play_glyph(img: Image.Image) -> tuple[Image.Image, bool]:
+    """Patch the play triangle out, if there is one. Returns (image, changed)."""
+    if not has_play_glyph(img):
+        return img, False
+
+    width, height = img.size
+    size = int(min(width, height) * PLAY_PATCH)
+    radius = size * PLAY_RADIUS
+    margin = int(size * PLAY_MARGIN)
+    cx, cy = width // 2, height // 2
+
+    # A working region rather than the whole photo: every pass below is a blur,
+    # and blurring a 960px image twenty times to fix 20% of it is wasteful.
+    region_box = (
+        max(0, cx - size // 2 - margin),
+        max(0, cy - size // 2 - margin),
+        min(width, cx + size // 2 + margin),
+        min(height, cy + size // 2 + margin),
+    )
+    region = img.crop(region_box)
+    hole = Image.new("L", region.size, 0)
+    hx, hy, r = cx - region_box[0], cy - region_box[1], size // 2
+    ImageDraw.Draw(hole).ellipse((hx - r, hy - r, hx + r, hy + r), fill=255)
+
+    # Diffusion. Composite pastes the untouched photo back over everything
+    # outside the hole after each blur, so the only thing that survives from one
+    # pass to the next inside the hole is colour that came from its edge.
+    fill = region
+    for _ in range(PLAY_ITERATIONS):
+        fill = Image.composite(fill.filter(ImageFilter.GaussianBlur(radius)), region, hole)
+
+    texture = _borrowed_texture(img, region_box, radius, int(size * PLAY_DONOR_SHIFT))
+    if texture is not None:
+        fill = ImageChops.add(fill, texture, 1, -128)
+
+    patched = img.copy()
+    patched.paste(Image.composite(fill, region, hole.filter(ImageFilter.GaussianBlur(size * PLAY_FEATHER))), region_box[:2])
+    return patched, True
+
+
 def _encode(img: Image.Image, width: int, quality: int) -> bytes:
     copy = img.copy()
     copy.thumbnail((width, width * HEIGHT_FACTOR), Image.LANCZOS)
@@ -162,7 +309,11 @@ def _upload(path: str, data: bytes) -> str:
         log.warning("storage upload failed for %s: %s %s", path, resp.status_code, resp.text[:200])
         raise ImageError("storage rejected the upload")
 
-    return f"{url}/storage/v1/object/public/{BUCKET}/{path}"
+    # The version is what makes overwriting an object in place work at all. The
+    # header above tells every cache in the way to keep these bytes for a year,
+    # and the path is derived from the recipe id, so a re-mirror that improves
+    # the picture would otherwise never be seen.
+    return f"{url}/storage/v1/object/public/{BUCKET}/{path}?v={MIRROR_VERSION}"
 
 
 def recipe_is_owned(user_id: str, recipe_id: str) -> bool:
@@ -231,6 +382,13 @@ def mirror_image(user_id: str, recipe_id: str, source_url: str) -> dict:
         raise ImageError("could not fetch that image") from exc
 
     img = _open(data)
+    # Before anything is measured or encoded, so the blur and both widths are
+    # all made from the repaired picture. A source with no glyph passes straight
+    # through, which is every photo that isn't a reel cover.
+    img, stripped = strip_play_glyph(img)
+    if stripped:
+        log.info("stripped a play glyph from the cover for %s", recipe_id)
+
     blur = _blur_data_uri(img)
     lg = _upload(f"{user_id}/{recipe_id}-lg.jpg", _encode(img, WIDTHS["lg"], 82))
     sm = _upload(f"{user_id}/{recipe_id}-sm.jpg", _encode(img, WIDTHS["sm"], 80))

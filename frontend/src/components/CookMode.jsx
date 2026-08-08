@@ -234,6 +234,9 @@ export default function CookMode({ recipe, servings, factor = 1, onClose }) {
       title={recipe.title}
       closeLabel="Close"
       onClose={onClose}
+      // The one sheet you use without looking at it. A downward brush past a
+      // step, hands full, should not close the thing being cooked from.
+      dismissible={false}
       action={
         <span className="cook-count" aria-label={`Step ${index + 1} of ${steps.length}`}>
           {index + 1} / {steps.length}

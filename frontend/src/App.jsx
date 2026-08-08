@@ -1,11 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { extractRecipe, mirrorRecipeImage, structureText } from './lib/api.js'
+import { extractRecipe, mirrorRecipeImage, structureImage, structureText } from './lib/api.js'
+import { PhotoError, readPhoto } from './lib/photo.js'
 import { getSupabase, supabaseEnabled } from './lib/supabase.js'
 import { makeStore, migrateLocalRecipes } from './lib/store.js'
 import { makePlanStore, migrateLocalPlan } from './lib/plan.js'
 import { makeShoppingStore, migrateLocalShopping } from './lib/shopping.js'
 import { cacheKeys, clearCache, rememberUser, seedRecipes, withMirror } from './lib/cache.js'
-import { MIRROR_CONCURRENCY, needsMirror } from './lib/images.js'
+import { MIRROR_CONCURRENCY, needsGlyphRepair, needsMirror } from './lib/images.js'
 import { addDays, fromISODate, startOfWeek, toISODate } from './lib/dates.js'
 import { setBusy } from './lib/pwa.js'
 import Account from './components/Account.jsx'
@@ -110,6 +111,10 @@ export default function App() {
   const [captureOpen, setCaptureOpen] = useState(false)
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
+  // `{ base64, preview, width, height }` from lib/photo.js, or null. Held here
+  // rather than in CaptureSheet because the preview is an object URL that has to
+  // be revoked, and the component unmounts every time the sheet closes.
+  const [photo, setPhoto] = useState(null)
   const inputRef = useRef(null)
   const [error, setError] = useState('')
   const [openId, setOpenId] = useState(null)
@@ -242,7 +247,14 @@ export default function App() {
       // No account means no bucket to write to, and offline means the attempt
       // burns a slot in `mirrored` on a failure that says nothing about the URL.
       if (!userId || !supabaseEnabled || !navigator.onLine) return
-      const pending = list.filter((r) => needsMirror(r) && !mirrored.current.has(r.id))
+      // Two jobs, one loop, because they are the same call: a first mirror hands
+      // the backend the origin's URL, a repair hands it our own copy, and either
+      // way what comes back is the three image columns. Instagram recipes
+      // mirrored before the play-glyph strip existed have a play button in the
+      // middle of the photo we are holding — see needsGlyphRepair.
+      const pending = list.filter(
+        (r) => (needsMirror(r) || needsGlyphRepair(r)) && !mirrored.current.has(r.id),
+      )
       // Checked before the client is asked for, so a list with nothing to mirror
       // never touches the deferred import.
       if (pending.length === 0) return
@@ -446,10 +458,12 @@ export default function App() {
   }, [importing])
 
   // Hold off service worker update checks during a capture. An update reloads
-  // the page, which would discard whatever is in the paste box.
+  // the page, which would discard whatever is in the paste box — or the photo
+  // just taken, which is worse, since retyping is possible and re-taking a
+  // picture of somebody's cookbook at their house is not.
   useEffect(() => {
-    setBusy(importing || pasteText.trim().length > 0)
-  }, [importing, pasteText])
+    setBusy(importing || pasteText.trim().length > 0 || Boolean(photo))
+  }, [importing, pasteText, photo])
 
   // Foreground refetch. visibilitychange covers resuming a standalone PWA and
   // unlocking the phone; focus covers desktop tab switches, where a background
@@ -650,6 +664,7 @@ export default function App() {
   function closePasteText() {
     setPasteOpen(false)
     setPasteText('')
+    clearPhoto()
   }
 
   function writeFromCapture() {
@@ -669,14 +684,40 @@ export default function App() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [shareLink, authReady, loading])
 
+  // Shrinking and encoding happen the moment a photo is picked rather than at
+  // submit, so the preview and the bytes that get sent are the same thing and
+  // there is nothing left to fail once the button is pressed.
+  async function handlePickPhoto(file) {
+    setError('')
+    try {
+      const next = await readPhoto(file)
+      setPhoto((prev) => {
+        if (prev) URL.revokeObjectURL(prev.preview)
+        return next
+      })
+    } catch (err) {
+      setError(err instanceof PhotoError ? err.message : writeError(err))
+    }
+  }
+
+  function clearPhoto() {
+    setPhoto((prev) => {
+      if (prev) URL.revokeObjectURL(prev.preview)
+      return null
+    })
+  }
+
+  // One submit for both, because the view is one question: here is a recipe,
+  // read it. Which endpoint answers depends only on whether a photo is attached.
   async function handlePasteText(e) {
     e.preventDefault()
     const text = pasteText.trim()
-    if (text.length < 20 || importing) return
+    if (importing) return
+    if (!photo && text.length < 20) return
     setImporting(true)
     setError('')
     try {
-      const recipe = await structureText(text)
+      const recipe = photo ? await structureImage(photo.base64) : await structureText(text)
       const saved = await store.save({
         ...recipe,
         id: crypto.randomUUID(),
@@ -684,6 +725,7 @@ export default function App() {
       })
       setRecipes((prev) => [saved, ...prev])
       setPasteText('')
+      clearPhoto()
       setPasteOpen(false)
       setCaptureOpen(false)
       setOpenId(saved.id)
@@ -1102,6 +1144,9 @@ export default function App() {
           pasteText={pasteText}
           onPasteTextChange={setPasteText}
           onPasteTextSubmit={handlePasteText}
+          photo={photo}
+          onPickPhoto={handlePickPhoto}
+          onClearPhoto={clearPhoto}
           onWrite={writeFromCapture}
           onClose={closeCaptureSheet}
           error={error}
