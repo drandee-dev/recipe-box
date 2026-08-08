@@ -15,7 +15,7 @@ const BUCKET_PATH = '/storage/v1/object/public/recipe-images/'
 // URL. It is the `?v=N` the upload appends — `MIRROR_VERSION` in images.py, and
 // the two have to move together. Same principle as isMirrored below: the URL
 // says what it is, so there is no column that can disagree with it.
-const MIRROR_VERSION = 2
+const MIRROR_VERSION = 3
 
 // Concurrency for the backfill. Each item is a full download, resize and upload
 // on the backend, so this is about not queueing thirty serverless invocations at
@@ -32,13 +32,12 @@ export function needsMirror(recipe) {
   return Boolean(recipe?.image_url) && !isMirrored(recipe)
 }
 
-// Ours already, but made by a pipeline older than the play-glyph strip.
+// Ours already, but made by a pipeline older than the current play-glyph strip.
 //
-// A reel's cover is served with a white play triangle composited into it, so
-// every Instagram recipe saved before that fix has a play button sitting in the
-// middle of its photo — including in our own bucket, since we faithfully
-// mirrored what Instagram sent. Re-mirroring from the copy we hold is enough to
-// repair it; the origin URL is long expired and isn't needed.
+// A reel's cover is served with a white play triangle and a dark disc
+// composited into it, so every Instagram recipe saved before that fix has a
+// play button in the middle of its photo — including in our own bucket, since
+// we faithfully mirrored what Instagram sent.
 //
 // Only Instagram, because it is the only source that does this: TikTok's oEmbed
 // thumbnail is a clean cover frame, and a recipe site's photo is a photo. Every
@@ -50,6 +49,24 @@ export function needsMirror(recipe) {
 export function needsGlyphRepair(recipe) {
   if (recipe?.source_type !== 'instagram' || !isMirrored(recipe)) return false
   return !recipe.image_url.includes(`?v=${MIRROR_VERSION}`)
+}
+
+// What to hand the backend as the source.
+//
+// A first mirror hands over the photo we were given. **A repair has to go back
+// to the post**, and that is not an optimisation — it is the only thing that
+// works. Our stored copy is the thing being repaired, and a repair that has
+// already happened is baked into those bytes: pipeline v2 filled a large blurred
+// circle over the play button, and no amount of re-processing that circle
+// recovers what was underneath it. Instagram still serves the original cover,
+// so the post URL is where the good pixels are.
+//
+// Falls back to the stored photo when there is no source URL — a hand-written
+// recipe has none, and a repair that fetches nothing is worse than one that
+// re-uploads the same bytes.
+export function mirrorSource(recipe) {
+  if (needsMirror(recipe)) return recipe.image_url
+  return recipe.source_url || recipe.image_url
 }
 
 // srcset only exists for mirrored recipes, since a borrowed URL comes in exactly

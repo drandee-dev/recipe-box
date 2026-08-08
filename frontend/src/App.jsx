@@ -6,7 +6,7 @@ import { makeStore, migrateLocalRecipes } from './lib/store.js'
 import { makePlanStore, migrateLocalPlan } from './lib/plan.js'
 import { makeShoppingStore, migrateLocalShopping } from './lib/shopping.js'
 import { cacheKeys, clearCache, rememberUser, seedRecipes, withMirror } from './lib/cache.js'
-import { MIRROR_CONCURRENCY, needsGlyphRepair, needsMirror } from './lib/images.js'
+import { MIRROR_CONCURRENCY, mirrorSource, needsGlyphRepair, needsMirror } from './lib/images.js'
 import { addDays, fromISODate, startOfWeek, toISODate } from './lib/dates.js'
 import { setBusy } from './lib/pwa.js'
 import Account from './components/Account.jsx'
@@ -276,7 +276,7 @@ export default function App() {
         while (queue.length > 0) {
           const recipe = queue.shift()
           try {
-            const columns = await mirrorRecipeImage(recipe.id, recipe.image_url, token)
+            const columns = await mirrorRecipeImage(recipe.id, mirrorSource(recipe), token)
             const saved = await store.saveImage(recipe.id, columns)
             if (saved) setRecipes((prev) => prev.map((r) => (r.id === saved.id ? saved : r)))
           } catch {
