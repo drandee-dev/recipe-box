@@ -1,5 +1,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64" role="img" aria-label="Recipe Box">
   <rect width="64" height="64" rx="14" fill="#1c7c54"/>
-  <text x="32" y="33" fill="#fff" font-family="Arial, Helvetica, sans-serif" font-weight="700"
-        font-size="30" text-anchor="middle" dominant-baseline="central" letter-spacing="-1">RB</text>
+  <g fill="#fff">
+    <rect x="17.335" y="12.160" width="29.331" height="1.196"/>
+    <path d="M190 0H40V670H410Q534 670 601.5 617.5Q669 565 669 469Q669 301 480 283V275Q522 264 544.5 242.0Q567 220 588 180L685 0H511L419 174Q398 214 372.0 228.5Q346 243 289 243H190ZM190 535V356H409Q464 356 488.0 375.5Q512 395 512 446Q512 495 487.5 515.0Q463 535 409 535Z" transform="translate(17.335 39.882) scale(0.021742 -0.021742)"/><path d="M458 0H37V670H439Q542 670 596.0 628.0Q650 586 650 507Q650 367 494 356V347Q585 340 631.5 297.5Q678 255 678 186Q678 98 623.0 49.0Q568 0 458 0ZM187 535V404H422Q463 404 481.5 419.5Q500 435 500 469Q500 504 481.0 519.5Q462 535 420 535ZM187 280V135H440Q486 135 506.0 151.5Q526 168 526 208Q526 247 506.0 263.5Q486 280 440 280Z" transform="translate(31.989 39.882) scale(0.021742 -0.021742)"/>
+    <rect x="17.335" y="47.492" width="29.331" height="4.348"/>
+  </g>
 </svg>

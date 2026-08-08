@@ -9,7 +9,7 @@
 // buildShoppingList, not a display string, so it keeps matching as long as the
 // line survives. Manual rows carry their own name and quantity.
 
-import { supabase } from './supabase.js'
+import { getSupabase, supabaseEnabled } from './supabase.js'
 
 const LOCAL_KEY = 'recipebox:shopping'
 const COLS = 'id,week_start,name,quantity,checked,kind,created_at'
@@ -62,6 +62,7 @@ const localStore = {
 function supabaseStore(userId) {
   return {
     async listWeek(weekStartISO) {
+      const supabase = await getSupabase()
       const { data, error } = await supabase
         .from('shopping_items')
         .select(COLS)
@@ -70,6 +71,7 @@ function supabaseStore(userId) {
       return data || []
     },
     async add(item) {
+      const supabase = await getSupabase()
       const { data, error } = await supabase
         .from('shopping_items')
         .insert({ ...toRow(item), user_id: userId })
@@ -79,6 +81,7 @@ function supabaseStore(userId) {
       return data
     },
     async update(id, patch) {
+      const supabase = await getSupabase()
       const { data, error } = await supabase
         .from('shopping_items')
         .update(patch)
@@ -89,6 +92,7 @@ function supabaseStore(userId) {
       return data
     },
     async remove(id) {
+      const supabase = await getSupabase()
       const { error } = await supabase.from('shopping_items').delete().eq('id', id)
       if (error) throw new Error(error.message)
     },
@@ -98,6 +102,7 @@ function supabaseStore(userId) {
 export async function migrateLocalShopping(userId) {
   const local = readLocal()
   if (local.length === 0) return 0
+  const supabase = await getSupabase()
   const rows = local.map((r) => ({
     ...toRow(r),
     user_id: userId,
@@ -110,5 +115,5 @@ export async function migrateLocalShopping(userId) {
 }
 
 export function makeShoppingStore(userId) {
-  return userId && supabase ? supabaseStore(userId) : localStore
+  return userId && supabaseEnabled ? supabaseStore(userId) : localStore
 }

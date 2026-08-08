@@ -268,7 +268,16 @@ otherwise look like it's asking for:
   box is dozens to low hundreds of rows with lazy images below the fold. Revisit
   past roughly a thousand.
 
-## 14. The first paint is a blank shell, and the LCP is four hops deep
+## 14. The first paint is a blank shell, and the LCP is four hops deep — FIXED 2026-08-07
+
+**Done together with 15, as this item recommended.** `seedRecipes()` in
+`lib/cache.js` seeds `useState` from the mirror, found via a new
+`recipebox:lastUser` key — the mirror is keyed per user and `userId` is not
+known until `getSession()` resolves, so without that pointer there is no way to
+find the right rows at mount. It is cleared with the rows on sign-out, so it
+can never point at a mirror that is gone. Verified with the cloud blocked: rows
+are on screen at DOMContentLoaded, and the cloud read still replaces them when
+it lands.
 
 `dist/index.html` ships `<div id="root"></div>` and nothing else. Everything —
 header, import bar, the list, the LCP image — waits on 484 KB of JavaScript.
@@ -291,7 +300,20 @@ That turns a returning visit into HTML → JS → paint with real content and a 
 image URL, and it makes the `fetchpriority` and eager-loading already in
 `RecipeThumb` do the job they were written for.
 
-## 15. One 484 KB chunk, with no code splitting
+## 15. One 484 KB chunk, with no code splitting — FIXED 2026-08-07
+
+**Measured after the change.** One 508 kB chunk (148.4 kB gzip) became a 290 kB
+entry (91.7 kB gzip) plus a 219.5 kB lazy chunk (57.4 kB gzip) — 56.7 kB gzip
+off the critical path, matching the ~220 kB raw this item predicted. The entry
+chunk no longer contains any Supabase code, only the project URL string.
+Proved rather than inferred: holding the lazy chunk for three seconds, the app
+still paints its real screen in **58 ms**.
+
+One correction to the note below: *"a signed-out session never needs it at
+all"* is false as written. Loading the client is how the app discovers there is
+no session, so a signed-out visit still fetches it — just not on the critical
+path. Avoiding even that would mean reading Supabase's own storage-key format
+in our code, which is the coupling the `storageKey` note warns against.
 
 `dist/assets/index-BmJMn9RZ.js` is everything: React 19, the whole Supabase
 client, and all eight components. At startup the only visible tab is Recipes, yet

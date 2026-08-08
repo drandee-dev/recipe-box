@@ -21,7 +21,7 @@
 
 import { useState } from 'react'
 import Sheet from './Sheet.jsx'
-import { supabase, supabaseEnabled } from '../lib/supabase.js'
+import { getSupabase, supabaseEnabled } from '../lib/supabase.js'
 
 const REMEMBER_EMAIL_KEY = 'recipebox:rememberedEmail'
 const REMEMBER_ME_KEY = 'recipebox:rememberMe'
@@ -100,6 +100,7 @@ export default function Account({ session }) {
   }
 
   async function signOut() {
+    const supabase = await getSupabase()
     await supabase.auth.signOut()
     close()
   }
@@ -119,6 +120,7 @@ export default function Account({ session }) {
     setBusy(true)
     setStatus('')
     try {
+      const supabase = await getSupabase()
       if (mode === 'signup') {
         const { error } = await supabase.auth.signUp({
           email: addr,
@@ -151,6 +153,7 @@ export default function Account({ session }) {
     setBusy(true)
     setStatus('')
     try {
+      const supabase = await getSupabase()
       const { error } = await supabase.auth.signInWithOtp({
         email: addr,
         options: { emailRedirectTo: `${window.location.origin}/?auth_callback=1` },
@@ -172,6 +175,7 @@ export default function Account({ session }) {
     setBusy(true)
     setStatus('')
     try {
+      const supabase = await getSupabase()
       const { error } = await supabase.auth.resetPasswordForEmail(addr, {
         redirectTo: window.location.origin,
       })
@@ -190,6 +194,7 @@ export default function Account({ session }) {
     setBusy(true)
     setStatus('')
     try {
+      const supabase = await getSupabase()
       const { error } = await supabase.auth.updateUser({ password })
       if (error) throw error
       setPassword('')

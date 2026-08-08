@@ -19,6 +19,13 @@
 
 const PREFIX = 'recipebox:cache:'
 
+// Who was signed in last time. The mirror is keyed per user and `userId` isn't
+// known until `getSession()` resolves, so without this there is no way to find
+// the right rows at mount — which is the whole of audit item 14. Written when a
+// session resolves, cleared on sign-out along with the rows themselves, so it
+// can only ever point at a mirror that is still there.
+const LAST_USER = 'recipebox:lastUser'
+
 // Keyed by user so a second account signing in on the same phone never reads
 // the first one's rows, and by week where the query is week-scoped.
 export const cacheKeys = {
@@ -66,6 +73,33 @@ export async function withMirror(key, fetch) {
   }
 }
 
+export function rememberUser(userId) {
+  try {
+    if (userId) localStorage.setItem(LAST_USER, userId)
+    else localStorage.removeItem(LAST_USER)
+  } catch {
+    // No mirror to find later, which costs a slower first paint and nothing else.
+  }
+}
+
+// The rows to paint before auth resolves (item 14). Returns [] rather than null
+// so it can seed `useState` directly.
+//
+// This paints one user's recipes before we have confirmed the session is still
+// theirs. That is not a new disclosure: the rows are already in this browser's
+// localStorage and stay there until sign-out clears them, so anyone who can read
+// this is someone who could already read the mirror. The load that follows
+// replaces them either way.
+export function seedRecipes() {
+  try {
+    const userId = localStorage.getItem(LAST_USER)
+    if (!userId) return []
+    return readCache(cacheKeys.recipes(userId)) || []
+  } catch {
+    return []
+  }
+}
+
 // Called on sign-out. The keys are per-user so the next account can't read
 // these, but leaving one person's recipes in another's browser storage is not
 // something to do on purpose.
@@ -73,6 +107,9 @@ export function clearCache() {
   try {
     const keys = Object.keys(localStorage).filter((k) => k.startsWith(PREFIX))
     keys.forEach((k) => localStorage.removeItem(k))
+    // Must go with them, or the next mount seeds from rows that were just
+    // deleted and paints the signed-out user's recipes for a frame.
+    localStorage.removeItem(LAST_USER)
   } catch {
     // Nothing to do if storage is unavailable; there is no mirror either.
   }

@@ -7,7 +7,7 @@
 // migrateLocalRecipes preserves local ids, which is what keeps the references
 // in these rows valid across the move.
 
-import { supabase } from './supabase.js'
+import { getSupabase, supabaseEnabled } from './supabase.js'
 import { SLOTS } from './dates.js'
 
 const LOCAL_KEY = 'recipebox:plan'
@@ -60,6 +60,7 @@ const localStore = {
 function supabaseStore(userId) {
   return {
     async listWeek(startISO, endISO) {
+      const supabase = await getSupabase()
       const { data, error } = await supabase
         .from('meal_plan')
         .select(COLS)
@@ -70,6 +71,7 @@ function supabaseStore(userId) {
       return data || []
     },
     async add(entry) {
+      const supabase = await getSupabase()
       const { data, error } = await supabase
         .from('meal_plan')
         .insert({ ...toRow(entry), user_id: userId })
@@ -79,6 +81,7 @@ function supabaseStore(userId) {
       return data
     },
     async remove(id) {
+      const supabase = await getSupabase()
       const { error } = await supabase.from('meal_plan').delete().eq('id', id)
       if (error) throw new Error(error.message)
     },
@@ -91,6 +94,7 @@ function supabaseStore(userId) {
 export async function migrateLocalPlan(userId) {
   const local = readLocal()
   if (local.length === 0) return 0
+  const supabase = await getSupabase()
   const rows = local.map((e) => ({
     ...toRow(e),
     user_id: userId,
@@ -103,5 +107,5 @@ export async function migrateLocalPlan(userId) {
 }
 
 export function makePlanStore(userId) {
-  return userId && supabase ? supabaseStore(userId) : localStore
+  return userId && supabaseEnabled ? supabaseStore(userId) : localStore
 }

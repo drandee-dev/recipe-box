@@ -7,7 +7,7 @@
 // key, so the cloud is the single source of truth while signed in. Signed-out
 // usage stays local-only.
 
-import { supabase } from './supabase.js'
+import { getSupabase, supabaseEnabled } from './supabase.js'
 
 const LOCAL_KEY = 'recipebox:recipes'
 
@@ -83,6 +83,7 @@ const localStore = {
 function supabaseStore(userId) {
   return {
     async list() {
+      const supabase = await getSupabase()
       const { data, error } = await supabase
         .from('recipes')
         .select(COLS)
@@ -91,6 +92,7 @@ function supabaseStore(userId) {
       return data || []
     },
     async save(recipe) {
+      const supabase = await getSupabase()
       const row = { ...toRow(recipe), user_id: userId, updated_at: new Date().toISOString() }
       const { data, error } = await supabase
         .from('recipes')
@@ -105,6 +107,7 @@ function supabaseStore(userId) {
     // handed is already out of date if the user starred it in the meantime.
     // Writing three named columns can't undo an edit it never saw.
     async saveImage(id, columns) {
+      const supabase = await getSupabase()
       const { data, error } = await supabase
         .from('recipes')
         .update({ ...columns, updated_at: new Date().toISOString() })
@@ -115,6 +118,7 @@ function supabaseStore(userId) {
       return data
     },
     async remove(id) {
+      const supabase = await getSupabase()
       const { error } = await supabase.from('recipes').delete().eq('id', id)
       if (error) throw new Error(error.message)
       // Storage has no foreign keys, so deleting the row leaves the photos
@@ -138,6 +142,7 @@ function supabaseStore(userId) {
 export async function migrateLocalRecipes(userId) {
   const local = readLocal()
   if (local.length === 0) return 0
+  const supabase = await getSupabase()
   const rows = local.map((r) => ({
     ...toRow(r),
     user_id: userId,
@@ -151,5 +156,5 @@ export async function migrateLocalRecipes(userId) {
 
 // Pick the active backend. Cloud when signed in; local otherwise.
 export function makeStore(userId) {
-  return userId && supabase ? supabaseStore(userId) : localStore
+  return userId && supabaseEnabled ? supabaseStore(userId) : localStore
 }

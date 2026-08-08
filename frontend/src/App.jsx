@@ -1,10 +1,10 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { extractRecipe, mirrorRecipeImage, structureText } from './lib/api.js'
-import { supabase, supabaseEnabled } from './lib/supabase.js'
+import { getSupabase, supabaseEnabled } from './lib/supabase.js'
 import { makeStore, migrateLocalRecipes } from './lib/store.js'
 import { makePlanStore, migrateLocalPlan } from './lib/plan.js'
 import { makeShoppingStore, migrateLocalShopping } from './lib/shopping.js'
-import { cacheKeys, clearCache, withMirror } from './lib/cache.js'
+import { cacheKeys, clearCache, rememberUser, seedRecipes, withMirror } from './lib/cache.js'
 import { MIRROR_CONCURRENCY, needsMirror } from './lib/images.js'
 import { addDays, fromISODate, startOfWeek, toISODate } from './lib/dates.js'
 import { setBusy } from './lib/pwa.js'
@@ -86,7 +86,15 @@ function readShare() {
 
 export default function App() {
   const [tab, setTab] = useState('recipes')
-  const [recipes, setRecipes] = useState([])
+  // Seeded from the offline mirror rather than starting empty (audit item 14).
+  // The rows for the last signed-in user are already in localStorage, and this
+  // is a change to *when* they are read, not to what they guarantee: the cloud
+  // read below still runs and still replaces them. What it buys is a first paint
+  // with real recipes and real image URLs, which is also what finally lets the
+  // `fetchpriority` and eager loading in RecipeThumb do the job they were
+  // written for — before this, the LCP image's URL wasn't knowable until three
+  // round trips had completed.
+  const [recipes, setRecipes] = useState(seedRecipes)
   const [loading, setLoading] = useState(true)
   const [importUrl, setImportUrl] = useState(() => readShare().url)
   const [shareNotice, setShareNotice] = useState(() => {
@@ -136,7 +144,13 @@ export default function App() {
     if (!SHARE_PARAMS.some((p) => params.has(p))) return
     SHARE_PARAMS.forEach((p) => params.delete(p))
     const qs = params.toString()
-    window.history.replaceState({}, '', qs ? `?${qs}` : window.location.pathname)
+    // The hash has to be carried through. A magic-link callback puts its tokens
+    // there, and since audit item 15 the Supabase client is built inside the
+    // auth effect below rather than at module load — so this strip now runs
+    // *first*, and dropping the hash here would take the tokens with it before
+    // anything had a chance to read them.
+    const hash = window.location.hash
+    window.history.replaceState({}, '', `${qs ? `?${qs}` : window.location.pathname}${hash}`)
   }, [])
 
   // Auth session. authReady gates the recipe load so a restoring cloud session
@@ -144,36 +158,64 @@ export default function App() {
   const [session, setSession] = useState(null)
   const [authReady, setAuthReady] = useState(!supabaseEnabled)
 
+  // This effect is where the Supabase client is actually built (audit item 15).
+  // It runs after the first paint, so the 218 kB download starts immediately but
+  // no longer stands between the HTML and a screen with recipes on it.
   useEffect(() => {
-    if (!supabaseEnabled) return
-    supabase.auth.getSession().then(({ data }) => {
-      setSession(data.session)
-      setAuthReady(true)
-    })
-    const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
-      // The mirror is keyed per user, so the next account can't read it anyway;
-      // dropping it on sign-out just avoids leaving one person's recipes in
-      // storage on a shared phone.
-      if (event === 'SIGNED_OUT') clearCache()
-      setSession(s)
-      setAuthReady(true)
-    })
-    return () => sub.subscription.unsubscribe()
+    if (!supabaseEnabled) return undefined
+    let cancelled = false
+    let subscription = null
+
+    ;(async () => {
+      const supabase = await getSupabase()
+      if (cancelled) return
+      supabase.auth.getSession().then(({ data }) => {
+        if (cancelled) return
+        setSession(data.session)
+        setAuthReady(true)
+      })
+      const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
+        // The mirror is keyed per user, so the next account can't read it anyway;
+        // dropping it on sign-out just avoids leaving one person's recipes in
+        // storage on a shared phone.
+        if (event === 'SIGNED_OUT') clearCache()
+        setSession(s)
+        setAuthReady(true)
+      })
+      subscription = sub.subscription
+      // Unmounted while the import was in flight, so the cleanup below has
+      // already run and there was nothing to unsubscribe from at the time.
+      if (cancelled) subscription.unsubscribe()
+    })()
+
+    return () => {
+      cancelled = true
+      subscription?.unsubscribe()
+    }
   }, [])
 
   // Refresh session when the tab becomes visible (phone sleep/background)
   useEffect(() => {
-    if (!supabaseEnabled) return
-    function onVisible() {
-      if (document.visibilityState === 'visible') {
-        supabase.auth.getSession().then(({ data }) => setSession(data.session))
-      }
+    if (!supabaseEnabled) return undefined
+    async function onVisible() {
+      if (document.visibilityState !== 'visible') return
+      const supabase = await getSupabase()
+      const { data } = await supabase.auth.getSession()
+      setSession(data.session)
     }
     document.addEventListener('visibilitychange', onVisible)
     return () => document.removeEventListener('visibilitychange', onVisible)
   }, [])
 
   const userId = session?.user?.id || null
+
+  // Recorded so the next mount knows whose mirror to seed from. Cleared with the
+  // mirror itself on sign-out, so it can never point at rows that are gone.
+  useEffect(() => {
+    if (!authReady) return
+    rememberUser(userId)
+  }, [authReady, userId])
+
   const store = useMemo(() => makeStore(userId), [userId])
   const planStore = useMemo(() => makePlanStore(userId), [userId])
   const shoppingStore = useMemo(() => makeShoppingStore(userId), [userId])
@@ -199,10 +241,13 @@ export default function App() {
     async (list) => {
       // No account means no bucket to write to, and offline means the attempt
       // burns a slot in `mirrored` on a failure that says nothing about the URL.
-      if (!userId || !supabase || !navigator.onLine) return
+      if (!userId || !supabaseEnabled || !navigator.onLine) return
       const pending = list.filter((r) => needsMirror(r) && !mirrored.current.has(r.id))
+      // Checked before the client is asked for, so a list with nothing to mirror
+      // never touches the deferred import.
       if (pending.length === 0) return
 
+      const supabase = await getSupabase()
       const { data } = await supabase.auth.getSession()
       const token = data?.session?.access_token
       if (!token) return
