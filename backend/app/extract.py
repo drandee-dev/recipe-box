@@ -225,6 +225,52 @@ def readable_text(html: str, limit: int = 12000) -> str:
     return "\n".join(line for line in lines if line)[:limit]
 
 
+# Creators who write the method somewhere other than the caption either say
+# "check my bio" or drop the link straight in. The second case is the one worth
+# following: it names the page rather than a profile holding a hundred of them.
+CAPTION_LINKS = re.compile(r"https?://[^\s<>\"')\]]+")
+
+# Two is enough for "recipe link plus one other thing" and bounds what a caption
+# stuffed with affiliate links can cost us in fetches.
+MAX_CAPTION_LINKS = 2
+
+
+def _caption_link_recipe(caption: str, post_url: str) -> dict | None:
+    """A schema.org recipe from a link the caption itself carried, or None.
+
+    `strip_urls` deletes these before the caption reaches the model, so until now
+    a creator who linked their own blog post was no better off than one who
+    linked nothing. This costs one fetch and no model call, since it only accepts
+    a page with real JSON-LD — the readable-text fallback is deliberately not
+    reused here, because at that point we would be paying Haiku to read a page we
+    only guessed was the recipe.
+
+    Every failure returns None and the caller carries on exactly as before, so
+    this can never turn a working import into a worse one.
+    """
+    from . import social
+
+    tried = 0
+    for match in CAPTION_LINKS.finditer(caption or ""):
+        link = match.group(0).rstrip(".,;:!?")
+        # A link back to TikTok or Instagram is a profile, another post, or a
+        # "follow me" — never the written recipe, and following it would mean
+        # re-entering the social path from inside itself.
+        if social.detect_source(link) != "web" or link == post_url:
+            continue
+        tried += 1
+        if tried > MAX_CAPTION_LINKS:
+            break
+        try:
+            recipe = parse_jsonld_recipe(fetch_html(link), link)
+        except (ExtractError, httpx.HTTPError) as exc:
+            log.info("caption link %s could not be read: %s", link, exc)
+            continue
+        if recipe and recipe.get("ingredients"):
+            return recipe
+    return None
+
+
 def _read_post_image(url: str, source_type: str, post: dict) -> dict | None:
     """Last resort: read the recipe off the post's own picture.
 
@@ -285,7 +331,8 @@ def _extract_social(url: str, source_type: str) -> dict:
     from . import ai, social
 
     post = social.fetch_post(url, source_type)
-    caption = social.strip_urls(post.get("caption") or "")
+    raw_caption = post.get("caption") or ""
+    caption = social.strip_urls(raw_caption)
 
     if caption and ai.ai_available():
         try:
@@ -293,9 +340,21 @@ def _extract_social(url: str, source_type: str) -> dict:
                 caption, context=f"This is the caption of a {source_type} post."
             )
             if structured.get("has_recipe") and structured.get("ingredients"):
-                return social.to_recipe(structured, url, source_type, post)
+                recipe = social.to_recipe(structured, url, source_type, post)
+                # The common partial import: ingredients in the caption, method
+                # left to the video. If the caption also carried a link, the
+                # written recipe is very likely on the other end of it.
+                if not recipe["instructions"]:
+                    social.graft_written_recipe(recipe, _caption_link_recipe(raw_caption, url))
+                return recipe
         except ai.AIError as exc:
             log.info("caption structuring failed for %s: %s", url, exc)
+
+    # Before the picture, not after: this path costs no model call, and a caption
+    # that named its own recipe page is a better source than a video thumbnail.
+    linked = _caption_link_recipe(raw_caption, url)
+    if linked is not None:
+        return social.from_caption_link(linked, url, source_type, post)
 
     from_image = _read_post_image(url, source_type, post)
     if from_image is not None:

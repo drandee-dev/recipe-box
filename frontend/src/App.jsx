@@ -107,6 +107,9 @@ export default function App() {
   const [fromShare] = useState(() => readShare().arrived)
   const autoImported = useRef(false)
   const [savedTitle, setSavedTitle] = useState('')
+  // Saved, but the source only had ingredients. Not an error, so it rides the
+  // saved banner rather than setError.
+  const [savedPartial, setSavedPartial] = useState(false)
   const [importing, setImporting] = useState(false)
   const [captureOpen, setCaptureOpen] = useState(false)
   const [pasteOpen, setPasteOpen] = useState(false)
@@ -615,6 +618,7 @@ export default function App() {
     setImporting(true)
     setError('')
     setSavedTitle('')
+    setSavedPartial(false)
     try {
       const recipe = await extractRecipe(url)
       const saved = await store.save({
@@ -627,6 +631,11 @@ export default function App() {
       setCaptureOpen(false)
       setOpenId(saved.id)
       setSavedTitle(saved.title)
+      // A caption that lists ingredients and leaves the method to the video is a
+      // normal import, not an error, so it can't go through setError. But it is
+      // still a partial recipe, and finding that out by scrolling to an empty
+      // Steps heading is how it used to go.
+      setSavedPartial(saved.ingredients.length > 0 && saved.instructions.length === 0)
       // Now, while the URL the origin just gave us is at its freshest. Not
       // awaited: the recipe is already on screen with its photo showing.
       mirrorImages([saved])
@@ -1028,10 +1037,15 @@ export default function App() {
             <p className="rb-saved">
               <span>
                 Saved “{savedTitle}”.
+                {savedPartial && ' The source had no steps, so only the ingredients came across.'}
                 {fromShare && ' You can close this tab.'}
                 {supabaseEnabled && !userId && ' Sign in to sync it to your other devices.'}
               </span>
-              <button type="button" className="btn btn-quiet rb-notice-close" onClick={() => setSavedTitle('')}>
+              <button type="button" className="btn btn-quiet rb-notice-close" onClick={() => {
+                  setSavedTitle('')
+                  setSavedPartial(false)
+                }}
+              >
                 Dismiss
               </button>
             </p>

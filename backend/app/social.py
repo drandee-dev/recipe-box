@@ -229,5 +229,51 @@ def to_recipe(structured: dict, url: str, source_type: str, post: dict) -> dict:
     }
 
 
+def graft_written_recipe(recipe: dict, linked: dict | None) -> dict:
+    """Fill a caption-derived recipe's gaps from the page the caption linked to.
+
+    Deliberately additive. The caption is what the person actually saved and its
+    ingredient lines are the ones they saw, so they stay; the linked page only
+    supplies what the caption never had. Anything already present is left alone,
+    which is what stops a loosely related link from rewriting a recipe that was
+    fine.
+    """
+    if not linked:
+        return recipe
+    if not recipe.get("instructions") and linked.get("instructions"):
+        recipe["instructions"] = linked["instructions"]
+    for field in ("prep_min", "cook_min", "total_min", "servings"):
+        if recipe.get(field) is None and linked.get(field) is not None:
+            recipe[field] = linked[field]
+    if not recipe.get("description") and linked.get("description"):
+        recipe["description"] = (linked["description"] or "")[:2000] or None
+    recipe["tags"] = merge_tags(recipe.get("tags"), linked.get("tags"))
+    return recipe
+
+
+def from_caption_link(linked: dict, url: str, source_type: str, post: dict) -> dict:
+    """A recipe read off a caption's link, re-attributed to the post it came from.
+
+    The post is what was saved and what the person will recognise in the list, so
+    the source stays the post and the thumbnail stays the post's — a social cover
+    frame is usually the better photo anyway, and it is the one the mirror knows
+    how to repair. Everything else is the linked page's, since that is the half
+    the caption did not have.
+    """
+    # parse_jsonld_recipe always fills a title, so the fallback is for the page
+    # whose markup had no name and got the placeholder — there the post's own
+    # first line is a real dish name and the placeholder is not.
+    title = linked.get("title") or ""
+    if title in ("", "Untitled recipe"):
+        title = post.get("title") or caption_title(post.get("caption") or "") or title
+    return {
+        **linked,
+        "title": (title or "Untitled recipe")[:200],
+        "source_url": url,
+        "source_type": source_type,
+        "image_url": post.get("image_url") or linked.get("image_url") or None,
+    }
+
+
 def strip_urls(text: str) -> str:
     return re.sub(r"https?://\S+", "", text).strip()

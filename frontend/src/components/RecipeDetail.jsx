@@ -416,22 +416,35 @@ export default function RecipeDetail({
           </ul>
 
           <h3 className="detail-heading">Steps</h3>
-          <ol className="detail-checks detail-steps">
-            {recipe.instructions.map((step, n) => (
-              <li key={n} className={done.has(n) ? 'detail-check detail-check-on' : 'detail-check'}>
-                <label>
-                  <input type="checkbox" checked={done.has(n)} onChange={() => toggle(setDone, n)} />
-                  {/* The number is drawn rather than left to the <ol> marker,
-                      because a marker sits outside the label and the whole row
-                      has to be the tap target. */}
-                  <span className="detail-step-n" aria-hidden="true">
-                    {n + 1}
-                  </span>
-                  <span>{step}</span>
-                </label>
-              </li>
-            ))}
-          </ol>
+          {/* Ingredients but no method is a normal import, not a failure: TikTok
+              and Instagram creators routinely list what goes in and leave the
+              how to the video. The `empty` branch above never catches it, so
+              without this the heading sat over an empty list and the import
+              looked broken. Say where the steps went and where to get them. */}
+          {recipe.instructions.length === 0 ? (
+            <p className="detail-meta">
+              The source listed ingredients but no method, usually because the steps are only in
+              the video. Add them with Edit below, or paste them into the + button&rsquo;s Paste
+              recipe text.
+            </p>
+          ) : (
+            <ol className="detail-checks detail-steps">
+              {recipe.instructions.map((step, n) => (
+                <li key={n} className={done.has(n) ? 'detail-check detail-check-on' : 'detail-check'}>
+                  <label>
+                    <input type="checkbox" checked={done.has(n)} onChange={() => toggle(setDone, n)} />
+                    {/* The number is drawn rather than left to the <ol> marker,
+                        because a marker sits outside the label and the whole row
+                        has to be the tap target. */}
+                    <span className="detail-step-n" aria-hidden="true">
+                      {n + 1}
+                    </span>
+                    <span>{step}</span>
+                  </label>
+                </li>
+              ))}
+            </ol>
+          )}
         </>
       )}
 
