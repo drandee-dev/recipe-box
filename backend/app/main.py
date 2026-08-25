@@ -1,6 +1,7 @@
 import base64
 import binascii
 import logging
+from contextlib import contextmanager
 
 from fastapi import FastAPI, Header, HTTPException, Request
 from fastapi.middleware.cors import CORSMiddleware
@@ -136,42 +137,82 @@ def meter_caller(request: Request) -> None:
         )
 
 
+# The three routes below all call the model, and all three answered a failure the
+# same way: 429 for the month's budget, 422 for "it ran but there was no recipe
+# in that", 502 for anything unforeseen. Written out three times the wording was
+# free to drift, and the `except Exception` at the end of each is the one that
+# must never be forgotten — without it a stray error reaches the client as a
+# traceback. `noun` is the only thing that actually differed.
+@contextmanager
+def ai_failures(
+    noun: str,
+    *,
+    unreadable: type[Exception] = AIError,
+    no_recipe: str,
+    broke: str,
+    subject: str = "",
+):
+    """Turn a model call's failures into the HTTP answers the client expects.
+
+    `unreadable` is the exception meaning "we got there and there was no recipe":
+    AIError for the two paste routes, ExtractError for the URL route, which can
+    also fail because the page itself was unreachable.
+
+    The two messages are passed in rather than built from `noun` because they are
+    user-facing copy and the URL route's are not the same sentence with a word
+    swapped — it says it could not *find* a recipe, and could not *fetch* the
+    page. Deriving them would have quietly reworded a live error message.
+    """
+    where = f" for {subject}" if subject else ""
+    try:
+        yield
+    except AIBudgetError:
+        raise HTTPException(status_code=429, detail="AI budget for this month is used up")
+    except unreadable as exc:
+        log.info("%s failed%s: %s", noun, where, exc)
+        raise HTTPException(status_code=422, detail=no_recipe)
+    except Exception:
+        log.exception("unexpected %s failure%s", noun, where)
+        raise HTTPException(status_code=502, detail=broke)
+
+
+def require_recipe(result: dict, noun: str) -> dict:
+    """The model ran and answered; this is whether it found anything.
+
+    Not an error in the model's sense, which is why it sits outside ai_failures:
+    a photo of a plate is a perfectly successful call that read no recipe.
+    """
+    if not result.get("has_recipe") or not result.get("ingredients"):
+        raise HTTPException(status_code=422, detail=f"That {noun} doesn't look like a recipe")
+    from .social import to_recipe
+
+    return to_recipe(result, "", "manual", {})
+
+
 @app.post("/api/recipes/extract")
 def extract(body: ExtractRequest, request: Request):
     meter_caller(request)
-    try:
+    with ai_failures(
+        "extract",
+        unreadable=ExtractError,
+        no_recipe="Could not find a recipe at that URL",
+        broke="Could not fetch that page",
+        subject=body.url,
+    ):
         return extract_recipe(body.url)
-    except AIBudgetError:
-        raise HTTPException(status_code=429, detail="AI budget for this month is used up")
-    except ExtractError as exc:
-        log.info("extract failed for %s: %s", body.url, exc)
-        raise HTTPException(status_code=422, detail="Could not find a recipe at that URL")
-    except Exception:
-        log.exception("unexpected extract failure for %s", body.url)
-        raise HTTPException(status_code=502, detail="Could not fetch that page")
 
 
 @app.post("/api/recipes/structure")
 def structure(body: StructureRequest, request: Request):
     """Paste-anything box: raw text in, recipe out."""
     meter_caller(request)
-    try:
+    with ai_failures(
+        "structure",
+        no_recipe="Could not read a recipe from that text",
+        broke="Could not process that text",
+    ):
         result = structure_recipe(body.text, context="This text was pasted by the user.")
-    except AIBudgetError:
-        raise HTTPException(status_code=429, detail="AI budget for this month is used up")
-    except AIError as exc:
-        log.info("structure failed: %s", exc)
-        raise HTTPException(status_code=422, detail="Could not read a recipe from that text")
-    except Exception:
-        log.exception("unexpected structure failure")
-        raise HTTPException(status_code=502, detail="Could not process that text")
-
-    if not result.get("has_recipe") or not result.get("ingredients"):
-        raise HTTPException(status_code=422, detail="That text doesn't look like a recipe")
-
-    from .social import to_recipe
-
-    return to_recipe(result, "", "manual", {})
+    return require_recipe(result, "text")
 
 
 @app.post("/api/recipes/structure-image")
@@ -206,7 +247,11 @@ def structure_image(body: StructureImageRequest, request: Request):
         log.info("photo could not be prepared: %s", exc)
         raise HTTPException(status_code=422, detail="That photo could not be read")
 
-    try:
+    with ai_failures(
+        "structure-image",
+        no_recipe="Could not read a recipe from that photo",
+        broke="Could not process that photo",
+    ):
         from .ai import structure_recipe_image
 
         result = structure_recipe_image(
@@ -214,21 +259,7 @@ def structure_image(body: StructureImageRequest, request: Request):
             media_type,
             context="This photograph was taken by the user. Read the recipe written in it.",
         )
-    except AIBudgetError:
-        raise HTTPException(status_code=429, detail="AI budget for this month is used up")
-    except AIError as exc:
-        log.info("structure-image failed: %s", exc)
-        raise HTTPException(status_code=422, detail="Could not read a recipe from that photo")
-    except Exception:
-        log.exception("unexpected structure-image failure")
-        raise HTTPException(status_code=502, detail="Could not process that photo")
-
-    if not result.get("has_recipe") or not result.get("ingredients"):
-        raise HTTPException(status_code=422, detail="That photo doesn't look like a recipe")
-
-    from .social import to_recipe
-
-    return to_recipe(result, "", "manual", {})
+    return require_recipe(result, "photo")
 
 
 @app.post("/api/recipes/image")

@@ -10,6 +10,7 @@ import json
 import logging
 import re
 import socket
+from contextlib import contextmanager
 from urllib.parse import urlparse
 
 import httpx
@@ -29,7 +30,7 @@ class ExtractError(Exception):
     """Raised when a URL can't be fetched or no recipe is found."""
 
 
-def _assert_public_host(url: str) -> None:
+def assert_public_host(url: str) -> None:
     parsed = urlparse(url)
     if parsed.scheme not in ("http", "https"):
         raise ExtractError("only http/https URLs are supported")
@@ -46,12 +47,33 @@ def _assert_public_host(url: str) -> None:
             raise ExtractError("host resolves to a non-public address")
 
 
+@contextmanager
+def guarded_client(**headers: str):
+    """An httpx client that has already checked where it is being pointed.
+
+    Every outbound fetch of a user-supplied URL has to do the same two things,
+    and the second is the one that is easy to leave out: check the host before
+    connecting, and check it *again* on the final URL, because a redirect can
+    land somewhere the first check would have refused. Three call sites did this
+    by hand and a fourth would eventually have done it by hand incorrectly,
+    which is not a bug but an SSRF hole.
+
+    Yields `(client, check)`. Call `check(resp.url)` once the response is in
+    hand; it is the post-redirect half and there is no path that may skip it.
+    """
+    with httpx.Client(
+        timeout=TIMEOUT,
+        follow_redirects=True,
+        headers={"User-Agent": UA, **headers},
+    ) as client:
+        yield client, assert_public_host
+
+
 def fetch_html(url: str) -> str:
-    _assert_public_host(url)
-    with httpx.Client(timeout=TIMEOUT, follow_redirects=True, headers={"User-Agent": UA}) as client:
+    assert_public_host(url)
+    with guarded_client() as (client, check):
         resp = client.get(url)
-        # Redirects can land somewhere new — re-check the final host too
-        _assert_public_host(str(resp.url))
+        check(str(resp.url))
         resp.raise_for_status()
         if len(resp.content) > MAX_BYTES:
             raise ExtractError("page too large")
@@ -66,11 +88,10 @@ def fetch_bytes(url: str, max_bytes: int = MAX_IMAGE_BYTES) -> tuple[bytes, str]
     is fine against a 3 MB HTML cap and not fine here, where a hostile or merely
     broken origin can keep sending bytes for as long as we keep reading them.
     """
-    _assert_public_host(url)
-    headers = {"User-Agent": UA, "Accept": "image/*,*/*"}
-    with httpx.Client(timeout=TIMEOUT, follow_redirects=True, headers=headers) as client:
+    assert_public_host(url)
+    with guarded_client(Accept="image/*,*/*") as (client, check):
         with client.stream("GET", url) as resp:
-            _assert_public_host(str(resp.url))
+            check(str(resp.url))
             resp.raise_for_status()
             content_type = resp.headers.get("content-type", "").split(";")[0].strip().lower()
             chunks: list[bytes] = []
@@ -185,7 +206,7 @@ def parse_jsonld_recipe(html: str, source_url: str) -> dict | None:
         # recipe every time — a recipe site with good markup ended up worse
         # organised than a TikTok caption. schema.org has fields for exactly
         # this, and where they are missing the keyword pass reads the text.
-        from .ai import infer_tags
+        from .tags import infer_tags
 
         marked_up = " ".join(
             _joined_str(node.get(field))

@@ -47,7 +47,7 @@ def with_scrim(img, alpha=SCRIM_ALPHA):
     outside, the ratio flat at every radius from the centre to the rim, and full
     strength at r=0.136 with nothing left by r=0.143.
     """
-    from app.images import SCRIM_RADIUS
+    from app.glyph import SCRIM_RADIUS
 
     width, height = img.size
     r = SCRIM_RADIUS * min(width, height)
@@ -87,12 +87,12 @@ def with_play_glyph(img, scrim=True):
 
 class Detection(unittest.TestCase):
     def test_a_reel_cover_is_recognised(self):
-        from app.images import has_play_glyph
+        from app.glyph import has_play_glyph
 
         self.assertTrue(has_play_glyph(with_play_glyph(photo())))
 
     def test_an_ordinary_photo_is_left_alone(self):
-        from app.images import has_play_glyph
+        from app.glyph import has_play_glyph
 
         self.assertFalse(has_play_glyph(photo()))
 
@@ -104,7 +104,7 @@ class Detection(unittest.TestCase):
         keeps being white on the way out and the glyph stops abruptly, which is
         what the second, wider reading is for.
         """
-        from app.images import has_play_glyph
+        from app.glyph import has_play_glyph
 
         img = photo()
         width, height = img.size
@@ -116,7 +116,7 @@ class Detection(unittest.TestCase):
         self.assertFalse(has_play_glyph(img))
 
     def test_a_thumbnail_too_small_to_judge_is_left_alone(self):
-        from app.images import has_play_glyph
+        from app.glyph import has_play_glyph
 
         self.assertFalse(has_play_glyph(with_play_glyph(photo(size=(80, 80)))))
 
@@ -132,18 +132,18 @@ class Scrim(unittest.TestCase):
     """
 
     def _luma(self, img, lo, hi):
-        from app.images import _band_luma
+        from app.glyph import _band_luma
 
         return _band_luma(img, lo, hi)
 
     def test_the_disc_is_measured_at_its_real_strength(self):
-        from app.images import _unscrim
+        from app.glyph import _unscrim
 
         _, gain = _unscrim(with_scrim(photo()))
         self.assertAlmostEqual(gain, 1 / (1 - SCRIM_ALPHA), delta=0.06)
 
     def test_the_photo_underneath_comes_back(self):
-        from app.images import _unscrim
+        from app.glyph import _unscrim
 
         clean = photo()
         lit, _ = _unscrim(with_scrim(clean))
@@ -155,7 +155,7 @@ class Scrim(unittest.TestCase):
     def test_no_step_is_left_at_the_edge(self):
         # A ring is what a wrong gain looks like, and it is more obvious than
         # the disc it replaced.
-        from app.images import _unscrim
+        from app.glyph import _unscrim
 
         lit, _ = _unscrim(with_scrim(photo()))
         self.assertAlmostEqual(self._luma(lit, 0.11, 0.13), self._luma(lit, 0.15, 0.17), delta=6)
@@ -164,7 +164,7 @@ class Scrim(unittest.TestCase):
         # Load-bearing. Applying the gain where there is nothing to undo paints
         # a bright circle — a worse artifact than the one being removed, and on
         # photos that were never broken.
-        from app.images import _unscrim
+        from app.glyph import _unscrim
 
         clean = photo()
         lit, gain = _unscrim(clean)
@@ -174,12 +174,12 @@ class Scrim(unittest.TestCase):
 
 class Stripping(unittest.TestCase):
     def _centre_white(self, img):
-        from app.images import PLAY_PROBE, _white_fraction
+        from app.glyph import PLAY_PROBE, _white_fraction
 
         return _white_fraction(img, PLAY_PROBE)
 
     def test_the_triangle_is_gone_afterwards(self):
-        from app.images import strip_play_glyph
+        from app.glyph import strip_play_glyph
 
         original = with_play_glyph(photo())
         self.assertGreater(self._centre_white(original), 0.85)
@@ -191,7 +191,7 @@ class Stripping(unittest.TestCase):
     def test_running_it_twice_changes_nothing_the_second_time(self):
         # The backfill re-mirrors every Instagram recipe once, and a device that
         # syncs late runs it again. Idempotence is what makes that harmless.
-        from app.images import strip_play_glyph
+        from app.glyph import strip_play_glyph
 
         once, _ = strip_play_glyph(with_play_glyph(photo()))
         twice, changed = strip_play_glyph(once)
@@ -199,7 +199,7 @@ class Stripping(unittest.TestCase):
         self.assertEqual(once.tobytes(), twice.tobytes())
 
     def test_an_ordinary_photo_comes_back_untouched(self):
-        from app.images import strip_play_glyph
+        from app.glyph import strip_play_glyph
 
         original = photo()
         result, changed = strip_play_glyph(original)
@@ -208,7 +208,7 @@ class Stripping(unittest.TestCase):
 
     def test_the_patch_only_covers_the_middle(self):
         """The corners of the frame are the food; they must not move."""
-        from app.images import strip_play_glyph
+        from app.glyph import strip_play_glyph
 
         original = with_play_glyph(photo())
         patched, _ = strip_play_glyph(original)
@@ -227,7 +227,7 @@ class Stripping(unittest.TestCase):
         """
         import math
 
-        from app.images import _glyph_mask, _unscrim
+        from app.glyph import _glyph_mask, _unscrim
 
         lit, _ = _unscrim(with_play_glyph(photo()))
         width, height = lit.size
@@ -241,7 +241,7 @@ class Stripping(unittest.TestCase):
         # The mask is a threshold, so something genuinely white and central
         # would otherwise be erased wholesale. Better a play button than a hole
         # where the dinner was.
-        from app.images import _glyph_mask
+        from app.glyph import _glyph_mask
 
         img = photo()
         width, height = img.size

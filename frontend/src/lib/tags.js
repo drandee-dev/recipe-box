@@ -1,6 +1,6 @@
 // Tag vocabulary and the search/filter logic the Recipes tab runs on.
 //
-// The vocabulary mirrors ALLOWED_TAGS in backend/app/ai.py, which enforces it as
+// The vocabulary mirrors ALLOWED_TAGS in backend/app/tags.py, which enforces it as
 // a JSON-schema enum so the AI cannot invent tags. This copy exists for the
 // suggestion list in the tag editor — the two must be kept in step by hand, and
 // a tag here that the backend doesn't know simply never arrives from an import.
@@ -18,7 +18,9 @@ export const TAG_GROUPS = [
   { label: 'Protein', tags: ['chicken', 'beef', 'pork', 'seafood', 'eggs', 'tofu', 'beans'] },
   {
     label: 'Cuisine',
-    tags: ['italian', 'mexican', 'asian', 'indian', 'mediterranean', 'american'],
+    // One 'latin' rather than a tag per country — see the note beside
+    // ALLOWED_TAGS in backend/app/tags.py. Mexican stays on its own.
+    tags: ['italian', 'mexican', 'latin', 'asian', 'indian', 'mediterranean', 'american'],
   },
   { label: 'Diet', tags: ['vegetarian', 'vegan', 'gluten-free', 'dairy-free', 'low-carb'] },
   {

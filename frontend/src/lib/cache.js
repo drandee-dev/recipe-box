@@ -34,7 +34,7 @@ export const cacheKeys = {
   shopping: (userId, weekISO) => `shopping:${userId}:${weekISO}`,
 }
 
-export function readCache(key) {
+function readCache(key) {
   try {
     const raw = localStorage.getItem(PREFIX + key)
     if (!raw) return null
@@ -45,7 +45,7 @@ export function readCache(key) {
   }
 }
 
-export function writeCache(key, value) {
+function writeCache(key, value) {
   try {
     localStorage.setItem(PREFIX + key, JSON.stringify(value))
   } catch {

@@ -8,7 +8,7 @@
 //
 // Two layers. A line glyph when one of the recipe's tags maps to one, which is
 // cheap only because the AI tag vocabulary is closed (see ALLOWED_TAGS in
-// backend/app/ai.py) — a finite tag list means a finite glyph list. Otherwise a
+// backend/app/tags.py) — a finite tag list means a finite glyph list. Otherwise a
 // monogram of the first letter, on a colour picked from the title.
 //
 // No survey of comparable apps helped here: their marketing screenshots only ever
@@ -176,7 +176,7 @@ const PATHS = {
 // (the glyph and monogram now), sits 1.06–1.12 off --ground so it reads as a
 // tile at all, and leaves --line 1.10–1.16 darker than the fill so the hairline
 // is visible from inside as well as against the page.
-export const TILE_TINTS = [
+const TILE_TINTS = [
   '#e3ece2',
   '#f2e6d6',
   '#e2e9f0',

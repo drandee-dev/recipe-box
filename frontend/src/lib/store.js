@@ -7,10 +7,9 @@
 // key, so the cloud is the single source of truth while signed in. Signed-out
 // usage stays local-only.
 
-import { getSupabase, supabaseEnabled } from './supabase.js'
+import { client, localRows, pickStore, unwrap } from './backend.js'
 
-const LOCAL_KEY = 'recipebox:recipes'
-
+const rows = localRows('recipebox:recipes')
 const COLS =
   'id,title,source_url,source_type,image_url,image_thumb_url,image_blur,description,' +
   'ingredients,instructions,prep_min,cook_min,total_min,servings,tags,favorite,' +
@@ -44,38 +43,30 @@ function toRow(recipe) {
   }
 }
 
-function readLocal() {
-  try {
-    return JSON.parse(localStorage.getItem(LOCAL_KEY)) || []
-  } catch {
-    return []
-  }
-}
-
 const localStore = {
   async list() {
-    return readLocal().sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+    return rows.read().sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
   },
   async save(recipe) {
-    const recipes = readLocal()
+    const recipes = rows.read()
     const idx = recipes.findIndex((r) => r.id === recipe.id)
     if (idx >= 0) recipes[idx] = recipe
     else recipes.unshift(recipe)
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(recipes))
+    rows.write(recipes)
     return recipe
   },
   async remove(id) {
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(readLocal().filter((r) => r.id !== id)))
+    rows.write(rows.read().filter((r) => r.id !== id))
   },
   // Unreachable in practice — mirroring needs a bucket, so it only runs signed
   // in — but the two backends stay interchangeable, and a store method missing
   // from one of them is how that stops being true.
   async saveImage(id, columns) {
-    const recipes = readLocal()
+    const recipes = rows.read()
     const idx = recipes.findIndex((r) => r.id === id)
     if (idx < 0) return null
     recipes[idx] = { ...recipes[idx], ...columns }
-    localStorage.setItem(LOCAL_KEY, JSON.stringify(recipes))
+    rows.write(recipes)
     return recipes[idx]
   },
 }
@@ -83,44 +74,37 @@ const localStore = {
 function supabaseStore(userId) {
   return {
     async list() {
-      const supabase = await getSupabase()
-      const { data, error } = await supabase
+      const supabase = await client()
+      return unwrap(await supabase
         .from('recipes')
         .select(COLS)
-        .order('created_at', { ascending: false })
-      if (error) throw new Error(error.message)
-      return data || []
+        .order('created_at', { ascending: false })) || []
     },
     async save(recipe) {
-      const supabase = await getSupabase()
+      const supabase = await client()
       const row = { ...toRow(recipe), user_id: userId, updated_at: new Date().toISOString() }
-      const { data, error } = await supabase
+      return unwrap(await supabase
         .from('recipes')
         .upsert(row)
         .select(COLS)
-        .single()
-      if (error) throw new Error(error.message)
-      return data
+        .single())
     },
     // An update, not the save() upsert above, and that is the point: mirroring
     // runs in the background seconds after a recipe appears, so the row it was
     // handed is already out of date if the user starred it in the meantime.
     // Writing three named columns can't undo an edit it never saw.
     async saveImage(id, columns) {
-      const supabase = await getSupabase()
-      const { data, error } = await supabase
+      const supabase = await client()
+      return unwrap(await supabase
         .from('recipes')
         .update({ ...columns, updated_at: new Date().toISOString() })
         .eq('id', id)
         .select(COLS)
-        .maybeSingle()
-      if (error) throw new Error(error.message)
-      return data
+        .maybeSingle())
     },
     async remove(id) {
-      const supabase = await getSupabase()
-      const { error } = await supabase.from('recipes').delete().eq('id', id)
-      if (error) throw new Error(error.message)
+      const supabase = await client()
+      unwrap(await supabase.from('recipes').delete().eq('id', id))
       // Storage has no foreign keys, so deleting the row leaves the photos
       // behind. Nothing would ever read them again and nothing would ever
       // remove them either, which on a free tier is a quota that fills up for
@@ -140,21 +124,20 @@ function supabaseStore(userId) {
 // One-time upload of local captures after sign-in. Clearing the local key on
 // success is what makes this run only once per browser.
 export async function migrateLocalRecipes(userId) {
-  const local = readLocal()
+  const local = rows.read()
   if (local.length === 0) return 0
-  const supabase = await getSupabase()
+  const supabase = await client()
   const rows = local.map((r) => ({
     ...toRow(r),
     user_id: userId,
     created_at: r.created_at || new Date().toISOString(),
   }))
-  const { error } = await supabase.from('recipes').upsert(rows)
-  if (error) throw new Error(error.message)
-  localStorage.removeItem(LOCAL_KEY)
+  unwrap(await supabase.from('recipes').upsert(rows))
+  rows.clear()
   return rows.length
 }
 
 // Pick the active backend. Cloud when signed in; local otherwise.
 export function makeStore(userId) {
-  return userId && supabaseEnabled ? supabaseStore(userId) : localStore
+  return pickStore(userId, supabaseStore, localStore)
 }

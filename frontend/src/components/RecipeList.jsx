@@ -1,5 +1,6 @@
-import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
+import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { filterRecipes, tagCounts } from '../lib/tags.js'
+import { usePendingCommit } from '../lib/usePendingCommit.js'
 import { groupByRecency, metaParts } from '../lib/recipes.js'
 import RecipeDetail from './RecipeDetail.jsx'
 import RecipeThumb from './RecipeThumb.jsx'
@@ -13,7 +14,6 @@ const EAGER_CARDS = 4
 // Same window the planner's meal removal uses, and for the same reason: long
 // enough to notice the toast, short enough that you aren't left wondering
 // whether the delete happened.
-const UNDO_WINDOW_MS = 4500
 
 export default function RecipeList({
   recipes,
@@ -36,49 +36,19 @@ export default function RecipeList({
   // Deleting is the one action here whose failure mode is losing a recipe, so it
   // gets an undo window rather than a confirm dialog — undo costs one tap and
   // only when you were wrong, a dialog costs one every time you were right
-  // (finding 14). The pending recipe is held here and not in App, exactly as the
-  // planner holds its pending meal removal: App is told nothing until the window
-  // lapses, so undo is a `clearTimeout` rather than a re-insert that has to get
-  // the row's position and id back.
-  const [pendingDelete, setPendingDelete] = useState(null)
-  const pendingRef = useRef(null)
-  const pendingTimeoutRef = useRef(null)
-  useEffect(() => {
-    pendingRef.current = pendingDelete
-  }, [pendingDelete])
-
-  // Switching tabs unmounts this (App renders it only while tab === 'recipes').
-  // A dangling timer would fire into a stale closure after that, so leaving
-  // mid-window commits the delete instead — navigating away counts as meaning
-  // it, and the alternative is a recipe that comes back on the next visit.
-  useEffect(() => {
-    return () => {
-      if (pendingRef.current) {
-        clearTimeout(pendingTimeoutRef.current)
-        onDelete(pendingRef.current.id)
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
+  // (finding 14). App is told nothing until the window lapses, so undo is a
+  // cancelled timer rather than a re-insert that has to get the row's position
+  // and id back. The window itself — flush-on-second, commit-on-unmount — lives
+  // in usePendingCommit, shared with the planner's meal removal.
+  const {
+    pending: pendingDelete,
+    start: startPendingDelete,
+    undo: undoDelete,
+  } = usePendingCommit(useCallback((recipe) => onDelete(recipe.id), [onDelete]))
 
   function startDelete(recipe) {
-    // Only one undo window at a time. A second delete commits the first rather
-    // than stacking two toasts whose Undo buttons would be ambiguous.
-    if (pendingRef.current) {
-      clearTimeout(pendingTimeoutRef.current)
-      onDelete(pendingRef.current.id)
-    }
     onOpen(null)
-    pendingTimeoutRef.current = setTimeout(() => {
-      onDelete(recipe.id)
-      setPendingDelete((cur) => (cur && cur.id === recipe.id ? null : cur))
-    }, UNDO_WINDOW_MS)
-    setPendingDelete(recipe)
-  }
-
-  function undoDelete() {
-    clearTimeout(pendingTimeoutRef.current)
-    setPendingDelete(null)
+    startPendingDelete(recipe)
   }
 
   // Everything below counts from `shown`, never `recipes`: a recipe inside its

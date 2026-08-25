@@ -7,7 +7,8 @@
 // A day lists only the slots it actually has something in, and an empty day
 // collapses to one dashed row rather than a full card (findings 17, 18).
 
-import { useEffect, useRef, useState } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { usePendingCommit } from '../lib/usePendingCommit.js'
 import RecipeThumb from './RecipeThumb.jsx'
 import Sheet from './Sheet.jsx'
 import {
@@ -34,11 +35,24 @@ const SWIPE_DELETE = 132
 const SWIPE_OVERSHOOT = 40
 const LONG_PRESS_MS = 500
 const SWIPE_SLOP = 8
-const UNDO_WINDOW_MS = 4500
 
 // Week swipe (finding 20). Smaller threshold than the row's delete swipe —
 // this gesture only has one outcome, not "reveal vs delete".
 const WEEK_SWIPE_THRESHOLD = 56
+
+// Both gestures in this file decide their axis the same way: ignore everything
+// inside a slop, then commit once and for all to horizontal or vertical. Only
+// the horizontal half is ours, and `preventDefault` is deliberately left to the
+// caller — it must not fire until after the decision, or a vertical drag stops
+// scrolling the page.
+//
+// Returns the axis just decided, or null while still inside the slop. `g.axis`
+// having a value already means the decision was made on an earlier move.
+function lockAxis(g, dx, dy) {
+  if (Math.abs(dx) < SWIPE_SLOP && Math.abs(dy) < SWIPE_SLOP) return null
+  g.axis = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical'
+  return g.axis
+}
 
 export default function Planner({
   weekStart,
@@ -57,64 +71,25 @@ export default function Planner({
   // Only one row's remove action is ever revealed at a time.
   const [openEntryId, setOpenEntryId] = useState(null)
 
-  // The one in-flight "removed, can still undo" entry. A second removal while
-  // this is showing flushes the first immediately rather than queueing a
-  // second toast — one undo window at a time.
-  const [pendingRemoval, setPendingRemoval] = useState(null)
-  const pendingRef = useRef(null)
-  const pendingTimeoutRef = useRef(null)
-  useEffect(() => {
-    pendingRef.current = pendingRemoval
-  }, [pendingRemoval])
-
-  // Switching tabs unmounts Planner (App.jsx only renders it while
-  // tab === 'planner'). A dangling setTimeout would still fire into a stale
-  // closure after that, so leaving mid-undo-window commits the removal
-  // immediately instead — navigating away counts as confirming it.
-  useEffect(() => {
-    return () => {
-      if (pendingRef.current) {
-        clearTimeout(pendingTimeoutRef.current)
-        onUnassign(pendingRef.current.entry.id)
-      }
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [])
-
-  // A tap outside the open row's own swipe wrapper closes it. Bail while a
-  // Sheet is open, same rule the pull gesture follows.
-  useEffect(() => {
-    if (!openEntryId) return
-    function handleOutside(e) {
-      if (document.querySelector('.sheet-backdrop')) return
-      if (e.target.closest(`[data-entry-id="${openEntryId}"]`)) return
-      setOpenEntryId(null)
-    }
-    document.addEventListener('pointerdown', handleOutside)
-    return () => document.removeEventListener('pointerdown', handleOutside)
-  }, [openEntryId])
+  // The one in-flight "removed, can still undo" entry, held here rather than in
+  // App: App is told nothing until the window lapses, so undo is a cancelled
+  // timer. Flush-on-second-removal and commit-on-unmount live in the shared
+  // hook — leaving the Planner tab unmounts this component, and a removal left
+  // pending there has to commit rather than leave a timer to fire into a fresh
+  // mount later.
+  const {
+    pending: pendingRemoval,
+    start: startRemoval,
+    undo: undoRemoval,
+  } = usePendingCommit(useCallback(({ entry }) => onUnassign(entry.id), [onUnassign]))
 
   function handleEntryOpenChange(id, open) {
     setOpenEntryId((cur) => (open ? id : cur === id ? null : cur))
   }
 
   function removeEntry(entry, label) {
-    if (pendingRef.current) {
-      clearTimeout(pendingTimeoutRef.current)
-      onUnassign(pendingRef.current.entry.id)
-    }
     setOpenEntryId((cur) => (cur === entry.id ? null : cur))
-    pendingTimeoutRef.current = setTimeout(() => {
-      onUnassign(entry.id)
-      setPendingRemoval((cur) => (cur && cur.entry.id === entry.id ? null : cur))
-    }, UNDO_WINDOW_MS)
-    setPendingRemoval({ entry, label })
-  }
-
-  function undoRemoval() {
-    if (!pendingRemoval) return
-    clearTimeout(pendingTimeoutRef.current)
-    setPendingRemoval(null)
+    startRemoval({ entry, label })
   }
 
   // Week swipe state. slideDir only drives the entrance animation of the new
@@ -147,9 +122,7 @@ export default function Planner({
     const dx = e.clientX - g.startX
     const dy = e.clientY - g.startY
     if (g.axis === null) {
-      if (Math.abs(dx) < SWIPE_SLOP && Math.abs(dy) < SWIPE_SLOP) return
-      g.axis = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical'
-      if (g.axis === 'vertical') return
+      if (lockAxis(g, dx, dy) !== 'horizontal') return
       setWeekDragging(true)
     }
     if (g.axis !== 'horizontal') return
@@ -444,10 +417,12 @@ function PlannerEntry({ entry, recipe, dayLabel, isOpen, onOpenChange, onRemove 
     const dx = e.clientX - g.startX
     const dy = e.clientY - g.startY
     if (g.axis === null) {
-      if (Math.abs(dx) < SWIPE_SLOP && Math.abs(dy) < SWIPE_SLOP) return
-      g.axis = Math.abs(dx) > Math.abs(dy) ? 'horizontal' : 'vertical'
+      const axis = lockAxis(g, dx, dy)
+      if (axis === null) return
+      // A decided axis means this is a drag, not a press — either way the
+      // long-press timer must not also fire.
       clearLongPress()
-      if (g.axis === 'vertical') return
+      if (axis !== 'horizontal') return
       setDragging(true)
     }
     if (g.axis !== 'horizontal') return

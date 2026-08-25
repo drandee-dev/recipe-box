@@ -18,6 +18,8 @@ import hashlib
 import logging
 import os
 
+from . import supabase
+
 import httpx
 
 log = logging.getLogger("recipe.usage")
@@ -32,14 +34,10 @@ RATE_LIMIT_CALLS = 20
 RATE_WINDOW_MINUTES = 60
 
 
-def _config() -> tuple[str, str] | None:
-    url = os.environ.get("SUPABASE_URL", "").rstrip("/")
-    key = os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-    return (url, key) if url and key else None
-
-
-def _headers(key: str) -> dict:
-    return {"apikey": key, "Authorization": f"Bearer {key}", "Content-Type": "application/json"}
+# Both live in supabase.py now; these names stay so the call sites below read
+# the way they always did.
+_config = supabase.service_config
+_headers = supabase.headers
 
 
 # Belt and braces on the row read below. PostgREST returns everything unless the

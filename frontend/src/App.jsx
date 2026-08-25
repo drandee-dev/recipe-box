@@ -5,10 +5,12 @@ import { getSupabase, supabaseEnabled } from './lib/supabase.js'
 import { makeStore, migrateLocalRecipes } from './lib/store.js'
 import { makePlanStore, migrateLocalPlan } from './lib/plan.js'
 import { makeShoppingStore, migrateLocalShopping } from './lib/shopping.js'
-import { cacheKeys, clearCache, rememberUser, seedRecipes, withMirror } from './lib/cache.js'
+import { cacheKeys, seedRecipes, withMirror } from './lib/cache.js'
 import { MIRROR_CONCURRENCY, mirrorSource, needsGlyphRepair, needsMirror } from './lib/images.js'
 import { addDays, fromISODate, startOfWeek, toISODate } from './lib/dates.js'
 import { setBusy } from './lib/pwa.js'
+import { useSession } from './lib/useSession.js'
+import { PULL_MIN_SPIN, PULL_TRIGGER, usePullToRefresh } from './lib/usePullToRefresh.js'
 import Account from './components/Account.jsx'
 import CaptureSheet from './components/CaptureSheet.jsx'
 import InstallPrompt from './components/InstallPrompt.jsx'
@@ -49,30 +51,6 @@ function writeError(err) {
 function readError(err) {
   if (!navigator.onLine) return "You're offline, and nothing is saved on this device yet."
   return humanMessage(err, 'That could not be loaded. Pull down to try again.')
-}
-
-// Pull-to-refresh tuning.
-//
-// The indicator follows the finger through a damped curve rather than a fixed
-// multiplier into a hard clamp. `distance = MAX * (1 - e^(-travel / DAMP))` is
-// asymptotic: the first pixels track the finger almost exactly (initial slope
-// is MAX/DAMP, here 1.02), it stiffens as you go, and it can never reach MAX,
-// so there is no wall to hit. The old version moved at a flat 0.5 and then
-// stopped dead at 110px, which is the part that felt mechanical.
-//
-// SLOP is finger travel spent before the gesture takes the touch at all, and it
-// is subtracted afterwards so nothing jumps at the moment of capture. Without
-// it, one stray pixel of downward movement at the top of the list committed to
-// a pull.
-const PULL_SLOP = 8
-const PULL_TRIGGER = 64
-const PULL_MAX = 90
-const PULL_DAMP = 88
-// Minimum time the spinner stays up once a pull has armed it. See refresh().
-const PULL_MIN_SPIN = 550
-
-function pullDistance(travel) {
-  return PULL_MAX * (1 - Math.exp(-travel / PULL_DAMP))
 }
 
 function readShare() {
@@ -135,13 +113,8 @@ export default function App() {
   // they fall back and recover together.
   const [offline, setOffline] = useState(false)
   const [refreshing, setRefreshing] = useState(false)
-  const [pull, setPull] = useState(0)
-  // Separate from `pull` so the indicator can animate to rest on release while
-  // tracking the finger exactly during the drag.
-  const [dragging, setDragging] = useState(false)
-  // Mirrors of state the native touch listeners read: they bind once, so they
-  // would otherwise see the values from first render forever.
-  const pullRef = useRef(0)
+  // Mirrors of state the refresh callback reads from inside a closure that
+  // binds once.
   const refreshingRef = useRef(false)
   const importingRef = useRef(false)
 
@@ -161,68 +134,11 @@ export default function App() {
     window.history.replaceState({}, '', `${qs ? `?${qs}` : window.location.pathname}${hash}`)
   }, [])
 
-  // Auth session. authReady gates the recipe load so a restoring cloud session
-  // isn't raced by a local-storage read (mtg-web pattern).
-  const [session, setSession] = useState(null)
-  const [authReady, setAuthReady] = useState(!supabaseEnabled)
-
-  // This effect is where the Supabase client is actually built (audit item 15).
-  // It runs after the first paint, so the 218 kB download starts immediately but
-  // no longer stands between the HTML and a screen with recipes on it.
-  useEffect(() => {
-    if (!supabaseEnabled) return undefined
-    let cancelled = false
-    let subscription = null
-
-    ;(async () => {
-      const supabase = await getSupabase()
-      if (cancelled) return
-      supabase.auth.getSession().then(({ data }) => {
-        if (cancelled) return
-        setSession(data.session)
-        setAuthReady(true)
-      })
-      const { data: sub } = supabase.auth.onAuthStateChange((event, s) => {
-        // The mirror is keyed per user, so the next account can't read it anyway;
-        // dropping it on sign-out just avoids leaving one person's recipes in
-        // storage on a shared phone.
-        if (event === 'SIGNED_OUT') clearCache()
-        setSession(s)
-        setAuthReady(true)
-      })
-      subscription = sub.subscription
-      // Unmounted while the import was in flight, so the cleanup below has
-      // already run and there was nothing to unsubscribe from at the time.
-      if (cancelled) subscription.unsubscribe()
-    })()
-
-    return () => {
-      cancelled = true
-      subscription?.unsubscribe()
-    }
-  }, [])
-
-  // Refresh session when the tab becomes visible (phone sleep/background)
-  useEffect(() => {
-    if (!supabaseEnabled) return undefined
-    async function onVisible() {
-      if (document.visibilityState !== 'visible') return
-      const supabase = await getSupabase()
-      const { data } = await supabase.auth.getSession()
-      setSession(data.session)
-    }
-    document.addEventListener('visibilitychange', onVisible)
-    return () => document.removeEventListener('visibilitychange', onVisible)
-  }, [])
-
-  const userId = session?.user?.id || null
-
-  // Recorded so the next mount knows whose mirror to seed from. Cleared with the
-  // mirror itself on sign-out, so it can never point at rows that are gone.
-  useEffect(() => {
-    if (!authReady) return
-    rememberUser(userId)
-  }, [authReady, userId])
+  // Who is signed in, and whether we know yet. `authReady` gates the recipe
+  // load below so a restoring cloud session isn't raced by a localStorage read.
+  // The hook is also where the Supabase client gets built, which is what keeps
+  // it out of the entry chunk — see the note in useSession.js.
+  const { session, userId, ready: authReady } = useSession()
 
   const store = useMemo(() => makeStore(userId), [userId])
   const planStore = useMemo(() => makePlanStore(userId), [userId])
@@ -449,12 +365,10 @@ export default function App() {
     }
   }, [store, userId, loadPlan, loadOverlay, mirrorImages])
 
-  // Kept in a ref so the gesture and foreground listeners can bind once with
-  // stable deps and still call the current closure.
-  const refreshRef = useRef(refresh)
-  useEffect(() => {
-    refreshRef.current = refresh
-  }, [refresh])
+  // The gesture and the resume-time refetch, both of which only ever call
+  // `refresh`. Gated on authReady: a refetch before then runs against the
+  // wrong store.
+  const { pull, dragging } = usePullToRefresh(refresh, { enabled: authReady })
 
   useEffect(() => {
     importingRef.current = importing
@@ -467,124 +381,6 @@ export default function App() {
   useEffect(() => {
     setBusy(importing || pasteText.trim().length > 0 || Boolean(photo))
   }, [importing, pasteText, photo])
-
-  // Foreground refetch. visibilitychange covers resuming a standalone PWA and
-  // unlocking the phone; focus covers desktop tab switches, where a background
-  // tab stays "visible". pageshow catches a bfcache restore, which fires
-  // neither of the other two.
-  useEffect(() => {
-    if (!authReady) return
-    function onVisible() {
-      if (document.visibilityState === 'visible') refreshRef.current()
-    }
-    function onPageShow(e) {
-      if (e.persisted) refreshRef.current()
-    }
-    // Coming back from the mirror. Without this the offline banner stays up,
-    // and the list stays behind, until something else happens to trigger a
-    // refetch — which in an app left open on the shopping tab may be nothing.
-    function onOnline() {
-      refreshRef.current()
-    }
-    document.addEventListener('visibilitychange', onVisible)
-    window.addEventListener('focus', onVisible)
-    window.addEventListener('pageshow', onPageShow)
-    window.addEventListener('online', onOnline)
-    return () => {
-      document.removeEventListener('visibilitychange', onVisible)
-      window.removeEventListener('focus', onVisible)
-      window.removeEventListener('pageshow', onPageShow)
-      window.removeEventListener('online', onOnline)
-    }
-  }, [authReady])
-
-  // Pull-to-refresh. Listeners are native rather than React's onTouchMove:
-  // React registers touchmove as passive, so preventDefault there is ignored
-  // and iOS rubber-bands the page instead of showing the pull.
-  useEffect(() => {
-    let startY = null
-    // 'watching' means a touch began somewhere a pull could start from but has
-    // not travelled far enough to be one yet; 'pulling' means it has, and from
-    // then on the gesture owns the touch. Splitting them is what lets a normal
-    // scroll or a tap survive an imprecise finger.
-    let watching = false
-    let pulling = false
-
-    function reset() {
-      watching = false
-      pulling = false
-      startY = null
-      pullRef.current = 0
-      setPull(0)
-      setDragging(false)
-    }
-
-    function onStart(e) {
-      if (e.touches.length !== 1 || window.scrollY > 0) return
-      // A sheet covers the page and scrolls on its own. Dragging inside one
-      // must not pull the list hidden behind it.
-      if (document.querySelector('.sheet-backdrop')) return
-      startY = e.touches[0].clientY
-      watching = true
-      pulling = false
-    }
-
-    function onMove(e) {
-      if (!watching || startY === null) return
-      // A second finger means a pinch or a two-finger scroll, neither of which
-      // is this gesture.
-      if (e.touches.length !== 1) {
-        reset()
-        return
-      }
-      const travel = e.touches[0].clientY - startY
-      // Upward drag, or the page scrolled under us: hand the touch back so it
-      // behaves as an ordinary scroll.
-      if (travel <= 0 || window.scrollY > 0) {
-        reset()
-        return
-      }
-      if (!pulling) {
-        if (travel < PULL_SLOP) return
-        pulling = true
-        setDragging(true)
-      }
-      e.preventDefault()
-      const distance = pullDistance(travel - PULL_SLOP)
-      pullRef.current = distance
-      setPull(distance)
-    }
-
-    function onEnd() {
-      if (!pulling) {
-        reset()
-        return
-      }
-      const distance = pullRef.current
-      // Not a full reset: dragging goes false so the indicator animates to its
-      // resting place, and pull goes to 0 so that place is either the parked
-      // position (refreshing) or off-screen. Resetting the transform without
-      // releasing the drag flag is what made the old one snap.
-      watching = false
-      pulling = false
-      startY = null
-      pullRef.current = 0
-      setDragging(false)
-      setPull(0)
-      if (distance >= PULL_TRIGGER) refreshRef.current({ gesture: true })
-    }
-
-    document.addEventListener('touchstart', onStart, { passive: true })
-    document.addEventListener('touchmove', onMove, { passive: false })
-    document.addEventListener('touchend', onEnd)
-    document.addEventListener('touchcancel', reset)
-    return () => {
-      document.removeEventListener('touchstart', onStart)
-      document.removeEventListener('touchmove', onMove)
-      document.removeEventListener('touchend', onEnd)
-      document.removeEventListener('touchcancel', reset)
-    }
-  }, [])
 
   // iOS drops share-target params when it launches the installed home-screen
   // app, so "Copy link" in the IG/TikTok share sheet plus this button is the

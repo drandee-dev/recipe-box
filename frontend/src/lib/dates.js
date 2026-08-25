@@ -16,7 +16,7 @@ const MONTH_NAMES = [
 
 // Midnight local, so arithmetic never lands mid-day and drifts across a DST
 // boundary.
-export function atMidnight(date) {
+function atMidnight(date) {
   return new Date(date.getFullYear(), date.getMonth(), date.getDate())
 }
 

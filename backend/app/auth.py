@@ -14,7 +14,7 @@ on a request that is about to spend a second downloading a photo anyway.
 """
 
 import logging
-import os
+from . import supabase
 import uuid
 
 import httpx
@@ -28,13 +28,9 @@ class AuthError(Exception):
     """No usable session on the request."""
 
 
-def _config() -> tuple[str, str] | None:
-    url = os.environ.get("SUPABASE_URL", "").rstrip("/")
-    # The anon key is the right apikey for a user-scoped call. Service role is
-    # accepted as a fallback so a deploy that only ever set that one still works,
-    # but the user's own bearer token is what identifies them either way.
-    key = os.environ.get("SUPABASE_ANON_KEY") or os.environ.get("SUPABASE_SERVICE_ROLE_KEY", "")
-    return (url, key) if url and key else None
+# The anon key, not the service role — this call is scoped to the user, and
+# supabase.anon_config documents why the two must not be swapped.
+_config = supabase.anon_config
 
 
 def bearer_token(header: str | None) -> str:
@@ -58,7 +54,7 @@ def verify_token(token: str) -> str:
         with httpx.Client(timeout=TIMEOUT) as client:
             resp = client.get(
                 f"{url}/auth/v1/user",
-                headers={"apikey": key, "Authorization": f"Bearer {token}"},
+                headers=supabase.user_headers(key, token),
             )
     except httpx.HTTPError as exc:
         raise AuthError("could not reach the auth server") from exc

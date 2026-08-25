@@ -9,9 +9,9 @@
 // buildShoppingList, not a display string, so it keeps matching as long as the
 // line survives. Manual rows carry their own name and quantity.
 
-import { getSupabase, supabaseEnabled } from './supabase.js'
+import { client, localRows, pickStore, unwrap } from './backend.js'
 
-const LOCAL_KEY = 'recipebox:shopping'
+const rows = localRows('recipebox:shopping')
 const COLS = 'id,week_start,name,quantity,checked,kind,created_at'
 
 function toRow(item) {
@@ -25,95 +25,75 @@ function toRow(item) {
   }
 }
 
-function readLocal() {
-  try {
-    return JSON.parse(localStorage.getItem(LOCAL_KEY)) || []
-  } catch {
-    return []
-  }
-}
-
-function writeLocal(rows) {
-  localStorage.setItem(LOCAL_KEY, JSON.stringify(rows))
-}
-
 const localStore = {
   async listWeek(weekStartISO) {
-    return readLocal().filter((r) => r.week_start === weekStartISO)
+    return rows.read().filter((r) => r.week_start === weekStartISO)
   },
   async add(item) {
     const row = { ...toRow(item), created_at: item.created_at || new Date().toISOString() }
-    writeLocal([...readLocal(), row])
+    rows.write([...rows.read(), row])
     return row
   },
   async update(id, patch) {
-    const rows = readLocal()
+    const rows = rows.read()
     const index = rows.findIndex((r) => r.id === id)
     if (index < 0) return null
     rows[index] = { ...rows[index], ...patch }
-    writeLocal(rows)
+    rows.write(rows)
     return rows[index]
   },
   async remove(id) {
-    writeLocal(readLocal().filter((r) => r.id !== id))
+    rows.write(rows.read().filter((r) => r.id !== id))
   },
 }
 
 function supabaseStore(userId) {
   return {
     async listWeek(weekStartISO) {
-      const supabase = await getSupabase()
-      const { data, error } = await supabase
+      const supabase = await client()
+      return unwrap(await supabase
         .from('shopping_items')
         .select(COLS)
-        .eq('week_start', weekStartISO)
-      if (error) throw new Error(error.message)
-      return data || []
+        .eq('week_start', weekStartISO)) || []
     },
     async add(item) {
-      const supabase = await getSupabase()
-      const { data, error } = await supabase
+      const supabase = await client()
+      return unwrap(await supabase
         .from('shopping_items')
         .insert({ ...toRow(item), user_id: userId })
         .select(COLS)
-        .single()
-      if (error) throw new Error(error.message)
-      return data
+        .single())
     },
     async update(id, patch) {
-      const supabase = await getSupabase()
-      const { data, error } = await supabase
+      const supabase = await client()
+      return unwrap(await supabase
         .from('shopping_items')
         .update(patch)
         .eq('id', id)
         .select(COLS)
-        .single()
-      if (error) throw new Error(error.message)
-      return data
+        .single())
     },
     async remove(id) {
-      const supabase = await getSupabase()
-      const { error } = await supabase.from('shopping_items').delete().eq('id', id)
-      if (error) throw new Error(error.message)
+      const supabase = await client()
+      unwrap(await supabase.from('shopping_items').delete().eq('id', id))
     },
   }
 }
 
 export async function migrateLocalShopping(userId) {
-  const local = readLocal()
+  const local = rows.read()
   if (local.length === 0) return 0
-  const supabase = await getSupabase()
+  const supabase = await client()
   const rows = local.map((r) => ({
     ...toRow(r),
     user_id: userId,
     created_at: r.created_at || new Date().toISOString(),
   }))
-  const { error } = await supabase.from('shopping_items').upsert(rows)
-  if (error) throw new Error(error.message)
-  localStorage.removeItem(LOCAL_KEY)
+  unwrap(await supabase.from('shopping_items').upsert(rows))
+  rows.clear()
   return rows.length
 }
 
 export function makeShoppingStore(userId) {
-  return userId && supabaseEnabled ? supabaseStore(userId) : localStore
+  return pickStore(userId, supabaseStore, localStore)
 }

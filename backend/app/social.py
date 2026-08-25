@@ -15,8 +15,8 @@ from urllib.parse import quote, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from .ai import hashtags_in, infer_tags, merge_tags, strip_hashtags
-from .extract import TIMEOUT, UA, ExtractError, _assert_public_host, fetch_html
+from .tags import hashtags_in, infer_tags, merge_tags, strip_hashtags
+from .extract import ExtractError, assert_public_host, fetch_html, guarded_client
 
 log = logging.getLogger("recipe.social")
 
@@ -36,17 +36,15 @@ def detect_source(url: str) -> str:
 
 
 def _fetch_json(url: str) -> dict | None:
-    _assert_public_host(url)
     try:
-        with httpx.Client(
-            timeout=TIMEOUT, follow_redirects=True, headers={"User-Agent": UA}
-        ) as client:
+        assert_public_host(url)
+        with guarded_client() as (client, check):
             resp = client.get(url)
-            _assert_public_host(str(resp.url))
+            check(str(resp.url))
             if resp.status_code != 200:
                 return None
             return resp.json()
-    except (httpx.HTTPError, json.JSONDecodeError):
+    except (ExtractError, httpx.HTTPError, json.JSONDecodeError):
         return None
 
 

@@ -10,12 +10,12 @@
 // follows on the backend, and for the same reason: a recipe written down the
 // side of a portrait photo is the case this exists for.
 
-export const PHOTO_MAX_EDGE = 1600
-export const PHOTO_QUALITY = 0.82
+const PHOTO_MAX_EDGE = 1600
+const PHOTO_QUALITY = 0.82
 // Well under the endpoint's own 4 MB ceiling on the base64, which is itself
 // under Vercel's body limit. Something this size after the shrink above is a
 // panorama or a scan, not a page.
-export const PHOTO_MAX_BYTES = 2_500_000
+const PHOTO_MAX_BYTES = 2_500_000
 
 export class PhotoError extends Error {}
 

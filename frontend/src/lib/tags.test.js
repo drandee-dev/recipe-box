@@ -1,7 +1,7 @@
 // Tests for the tag vocabulary and the search the Recipes tab runs on.
 //
 // The parity test at the bottom is the one worth having: the vocabulary here is
-// a hand-maintained copy of ALLOWED_TAGS in backend/app/ai.py, and the two
+// a hand-maintained copy of ALLOWED_TAGS in backend/app/tags.py, and the two
 // drifting apart fails silently in both directions — a tag added only to the
 // backend never appears as a suggestion, and one added only here is a
 // suggestion the model is schema-forbidden from ever producing.
@@ -133,13 +133,17 @@ test('favorites-only and an empty query', () => {
 // ---------------------------------------------------------------------------
 
 test('the tag vocabulary matches ALLOWED_TAGS in the backend', () => {
-  const aiPath = fileURLToPath(new URL('../../../backend/app/ai.py', import.meta.url))
-  const source = readFileSync(aiPath, 'utf8')
+  const tagsPath = fileURLToPath(new URL('../../../backend/app/tags.py', import.meta.url))
+  const source = readFileSync(tagsPath, 'utf8')
 
   const block = source.match(/^ALLOWED_TAGS = \(([\s\S]*?)^\)/m)
-  assert.ok(block, 'could not find ALLOWED_TAGS in backend/app/ai.py')
+  assert.ok(block, 'could not find ALLOWED_TAGS in backend/app/tags.py')
 
-  const backendTags = [...block[1].matchAll(/"([^"]+)"/g)].map((m) => m[1])
+  // Comments come out first. The block is commented, and a note explaining why
+  // a tag exists naturally quotes its name — which the tag scan below would
+  // otherwise read as a second entry and report as drift that isn't there.
+  const entries = block[1].replace(/#[^\n]*/g, '')
+  const backendTags = [...entries.matchAll(/"([^"]+)"/g)].map((m) => m[1])
   assert.ok(backendTags.length > 0, 'parsed no tags out of ALLOWED_TAGS')
 
   // Sets, not arrays: the backend groups them by kind in a different order to
@@ -147,7 +151,7 @@ test('the tag vocabulary matches ALLOWED_TAGS in the backend', () => {
   assert.deepEqual(
     [...backendTags].sort(),
     [...TAG_VOCABULARY].sort(),
-    'frontend/src/lib/tags.js and backend/app/ai.py have drifted apart',
+    'frontend/src/lib/tags.js and backend/app/tags.py have drifted apart',
   )
 })
 
