@@ -63,6 +63,14 @@ infer one from how the food looks.
 Extract only what the text actually states. Do not invent ingredients, quantities,
 or steps that are not there.
 
+A phrase naming part of the finished dish is not an ingredient. "Cheesecake
+filling", "spiced sugar coating", "the cookie dough" and "creamy garlic sauce"
+say what the dish is made of, not what a cook measures out. A caption that
+describes a dish appetisingly but lists nothing to buy has no ingredients in it:
+return has_recipe false rather than turning its adjectives into a shopping list.
+Tag only what the text supports, too — a dish is not pork because pork would go
+well in it.
+
 A list of ingredients with no method is still a recipe. Creators routinely write
 the ingredients into the caption and leave the method to the video, so a post
 that names a dish and lists what goes into it comes back with has_recipe true,

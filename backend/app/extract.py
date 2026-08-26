@@ -11,7 +11,7 @@ import logging
 import re
 import socket
 from contextlib import contextmanager
-from urllib.parse import urlparse
+from urllib.parse import quote_plus, urljoin, urlparse
 
 import httpx
 from bs4 import BeautifulSoup
@@ -256,7 +256,134 @@ CAPTION_LINKS = re.compile(r"https?://[^\s<>\"')\]]+")
 MAX_CAPTION_LINKS = 2
 
 
-def _caption_link_recipe(caption: str, post_url: str) -> dict | None:
+# A bare domain, which is how creators most often write it: "Find the full recipe
+# on inbloombakery.com". No scheme, so CAPTION_LINKS never saw it.
+#
+# The TLD list is short on purpose. Matching any `word.word` turns "e.g. add
+# salt" and every filename into a fetch, and the point of a caption link is that
+# the creator meant it as an address. These are the endings food blogs actually
+# use; anything else is left alone rather than guessed at.
+BARE_DOMAIN = re.compile(
+    r"\b((?:[a-z0-9](?:[a-z0-9-]{0,61}[a-z0-9])?\.)+"
+    r"(?:com|net|org|co|io|blog|kitchen|recipes|food|bakery|life|"
+    r"uk|ca|au|nz|ie|de|fr|es|it|nl|se|no|dk))\b",
+    re.I,
+)
+
+# One. The search hop below can cost three fetches, and a caption naming two
+# sites is naming a sponsor as well as a recipe.
+MAX_BARE_DOMAINS = 1
+
+# How much of the dish's name a candidate URL has to contain before we believe it
+# is that recipe. "Pumpkin Cheesecake Cookies" against /pumpkin-cheesecake-cookies/
+# is 1.0; against /pumpkin-spice-latte-cookies/ it is 0.67, which is the near miss
+# this threshold exists to refuse.
+SLUG_MATCH = 0.75
+
+
+def _words(text: str) -> set:
+    return {w for w in re.findall(r"[a-z0-9]+", (text or "").lower()) if len(w) > 2}
+
+
+def _site_search_url(html: str, term: str) -> str | None:
+    """The site's own search URL, taken from the schema.org SearchAction it publishes.
+
+    This is the "logically correct" part: rather than guessing at `?s=` and
+    hoping the site is WordPress, read the `potentialAction` the site declares in
+    its own JSON-LD, which names the exact template to substitute into. A site
+    that publishes no SearchAction is one we do not know how to search, and we
+    stop rather than inventing an endpoint for it.
+    """
+    soup = BeautifulSoup(html, "html.parser")
+    for script in soup.find_all("script", type="application/ld+json"):
+        try:
+            data = json.loads(script.string or "")
+        except (json.JSONDecodeError, TypeError):
+            continue
+        for action in _find_search_actions(data):
+            target = action.get("target")
+            template = target.get("urlTemplate") if isinstance(target, dict) else target
+            if isinstance(template, str) and "{search_term_string}" in template:
+                return template.replace("{search_term_string}", quote_plus(term))
+    return None
+
+
+def _find_search_actions(data):
+    """Every SearchAction anywhere in a JSON-LD document."""
+    if isinstance(data, dict):
+        if data.get("@type") == "SearchAction":
+            yield data
+        for value in data.values():
+            yield from _find_search_actions(value)
+    elif isinstance(data, list):
+        for item in data:
+            yield from _find_search_actions(item)
+
+
+def _best_result(html: str, site: str, title: str) -> str | None:
+    """The search result whose own URL says it is the dish we are looking for.
+
+    Ranking on the slug rather than taking the first link matters: a search for
+    "Pumpkin Cheesecake Cookies" on a real bakery blog returned /cookbook/ first,
+    then the right post, then /pumpkin-spice-latte-cookies/ and
+    /pumpkin-streusel-cheesecake/ — three plausible-looking near misses that a
+    "first link wins" rule would have picked between at random.
+    """
+    wanted = _words(title)
+    if not wanted:
+        return None
+    host = urlparse(site).hostname or ""
+    best, best_score = None, 0.0
+    soup = BeautifulSoup(html, "html.parser")
+    for anchor_tag in soup.find_all("a", href=True):
+        href = urljoin(site, anchor_tag["href"])
+        parsed = urlparse(href)
+        if parsed.hostname != host or not parsed.path.strip("/"):
+            continue
+        score = len(wanted & _words(parsed.path)) / len(wanted)
+        if score > best_score:
+            best, best_score = href, score
+    return best if best_score >= SLUG_MATCH else None
+
+
+def _recipe_from_site(site: str, title: str) -> dict | None:
+    """Follow a bare domain: the page itself, then the site's own search.
+
+    A creator writing "the full recipe is on myblog.com" is naming the site, not
+    the post, so the address alone almost never carries the recipe — the home
+    page is a CollectionPage. The search hop is what turns the site into the
+    page, and it stays honest by only accepting a result whose URL matches the
+    dish's name and only accepting a page with real schema.org markup.
+    """
+    try:
+        html = fetch_html(site)
+    except (ExtractError, httpx.HTTPError) as exc:
+        log.info("caption domain %s could not be read: %s", site, exc)
+        return None
+
+    direct = parse_jsonld_recipe(html, site)
+    if direct and direct.get("ingredients"):
+        return direct
+
+    if not title:
+        return None
+    search = _site_search_url(html, title)
+    if not search:
+        log.info("%s publishes no SearchAction, so it cannot be searched", site)
+        return None
+
+    try:
+        found = _best_result(fetch_html(search), site, title)
+        if not found:
+            return None
+        recipe = parse_jsonld_recipe(fetch_html(found), found)
+    except (ExtractError, httpx.HTTPError) as exc:
+        log.info("searching %s failed: %s", site, exc)
+        return None
+    return recipe if recipe and recipe.get("ingredients") else None
+
+
+def _caption_link_recipe(caption: str, post_url: str, title: str = "") -> dict | None:
     """A schema.org recipe from a link the caption itself carried, or None.
 
     `strip_urls` deletes these before the caption reaches the model, so until now
@@ -272,6 +399,9 @@ def _caption_link_recipe(caption: str, post_url: str) -> dict | None:
     from . import social
 
     tried = 0
+    # Hosts reached through an explicit link, so the bare-domain pass below does
+    # not follow the same site a second time by its bare name.
+    seen_hosts = set()
     for match in CAPTION_LINKS.finditer(caption or ""):
         link = match.group(0).rstrip(".,;:!?")
         # A link back to TikTok or Instagram is a profile, another post, or a
@@ -282,12 +412,28 @@ def _caption_link_recipe(caption: str, post_url: str) -> dict | None:
         tried += 1
         if tried > MAX_CAPTION_LINKS:
             break
+        seen_hosts.add((urlparse(link).hostname or "").removeprefix("www."))
         try:
             recipe = parse_jsonld_recipe(fetch_html(link), link)
         except (ExtractError, httpx.HTTPError) as exc:
             log.info("caption link %s could not be read: %s", link, exc)
             continue
         if recipe and recipe.get("ingredients"):
+            return recipe
+
+    # Then the bare domains, which is the commoner way creators write it and the
+    # more expensive one to follow, so it comes second and only once.
+    tried = 0
+    for match in BARE_DOMAIN.finditer(caption or ""):
+        host = match.group(1).lower().removeprefix("www.")
+        site = f"https://{match.group(1)}"
+        if social.detect_source(site) != "web" or host in seen_hosts:
+            continue
+        tried += 1
+        if tried > MAX_BARE_DOMAINS:
+            break
+        recipe = _recipe_from_site(site, title)
+        if recipe:
             return recipe
     return None
 
@@ -370,14 +516,20 @@ def _extract_social(url: str, source_type: str) -> dict:
                 # left to the video. If the caption also carried a link, the
                 # written recipe is very likely on the other end of it.
                 if not recipe["instructions"]:
-                    social.graft_written_recipe(recipe, _caption_link_recipe(raw_caption, url))
+                    social.graft_written_recipe(
+                        recipe,
+                        _caption_link_recipe(raw_caption, url, recipe["title"]),
+                    )
                 return recipe
         except ai.AIError as exc:
             log.info("caption structuring failed for %s: %s", url, exc)
 
     # Before the picture, not after: this path costs no model call, and a caption
     # that named its own recipe page is a better source than a video thumbnail.
-    linked = _caption_link_recipe(raw_caption, url)
+    # The model's title if it ran, otherwise the shortened caption — either way
+    # something to search the creator's own site for.
+    hint = ((structured or {}).get("title") or "").strip() or (post.get("title") or "")
+    linked = _caption_link_recipe(raw_caption, url, hint)
     if linked is not None:
         return social.from_caption_link(linked, url, source_type, post)
 

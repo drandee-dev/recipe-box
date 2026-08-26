@@ -15,7 +15,7 @@ from urllib.parse import quote, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
-from .tags import hashtags_in, infer_tags, merge_tags, strip_hashtags
+from .tags import drop_unsupported, hashtags_in, infer_tags, merge_tags, strip_hashtags
 from .extract import ExtractError, assert_public_host, fetch_html, guarded_client
 
 log = logging.getLogger("recipe.social")
@@ -270,7 +270,14 @@ def to_recipe(structured: dict, url: str, source_type: str, post: dict) -> dict:
         # It sees the recipe and the keyword list doesn't, so where they
         # disagree the model is the one to trust — this is a floor, not a vote.
         "tags": merge_tags(
-            structured.get("tags"),
+            # The model leads, but not on a protein the text never mentions.
+            drop_unsupported(
+                structured.get("tags"),
+                title=structured.get("title") or "",
+                description=structured.get("description") or "",
+                ingredients=ingredients,
+                labels=hashtags_in(caption),
+            ),
             infer_tags(
                 title=structured.get("title") or "",
                 description=structured.get("description") or "",

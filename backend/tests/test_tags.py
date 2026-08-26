@@ -16,7 +16,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app.tags import ALLOWED_TAGS, CUISINE_TAGS, infer_tags  # noqa: E402
+from app.tags import ALLOWED_TAGS, CUISINE_TAGS, drop_unsupported, infer_tags  # noqa: E402
 
 PERUVIAN = [
     {"raw": "2 lbs boneless, skinless chicken thighs"},
@@ -106,3 +106,60 @@ class LatinVocabulary(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class UnsupportedProteinTags(unittest.TestCase):
+    """A protein the text never mentions is dropped from the model's answer.
+
+    The model's tags otherwise lead outright and should: it read the recipe and
+    a keyword list did not. But a pumpkin cookie came back tagged `pork` — twice,
+    on a caption that says nothing of the kind — which puts a cookie in front of
+    someone filtering for pork and, worse, in front of someone avoiding it. This
+    is the mirror of the rule diets already follow: diets are never inferred from
+    absence, proteins are never asserted without presence.
+    """
+
+    CAPTION = (
+        "Pumpkin Cheesecake Cookies. The chewiest pumpkin spice cookies filled "
+        "with creamy cheesecake and rolled in spiced sugar."
+    )
+
+    def test_the_pumpkin_cookie_loses_its_pork(self):
+        kept = drop_unsupported(
+            ["dessert", "pork", "baked"],
+            title="Pumpkin Cheesecake Cookies",
+            description=self.CAPTION,
+            ingredients=[{"raw": "Cheesecake filling"}, {"raw": "Spiced sugar coating"}],
+        )
+        self.assertNotIn("pork", kept)
+        self.assertEqual(kept, ["dessert", "baked"])
+
+    def test_a_protein_named_in_the_title_survives(self):
+        self.assertIn("pork", drop_unsupported(["pork"], title="Slow Roast Pork Shoulder"))
+
+    def test_a_protein_named_only_by_a_synonym_survives(self):
+        """`pancetta` is in pork's keyword list; the tag itself never appears."""
+        self.assertIn(
+            "pork",
+            drop_unsupported(["pork"], title="Carbonara", ingredients=[{"raw": "200 g pancetta"}]),
+        )
+
+    def test_a_hashtag_is_enough_support(self):
+        self.assertIn("beef", drop_unsupported(["beef"], title="Weeknight dinner", labels="#beefstew"))
+
+    def test_the_check_is_permissive_about_incidental_mentions(self):
+        """INCIDENTAL is deliberately *not* applied here. The job is to catch a
+        claim with no support at all, not to second-guess a model that saw
+        something the keyword pass would discount."""
+        self.assertIn(
+            "chicken",
+            drop_unsupported(["chicken"], title="Soup", ingredients=[{"raw": "1 l chicken stock"}]),
+        )
+
+    def test_nothing_but_proteins_is_checked(self):
+        """Cuisine and method are not falsifiable this way, so they pass through."""
+        kept = drop_unsupported(["italian", "quick", "dessert", "baked"], title="Nothing")
+        self.assertEqual(kept, ["italian", "quick", "dessert", "baked"])
+
+    def test_an_answer_with_no_protein_in_it_is_returned_untouched(self):
+        self.assertEqual(drop_unsupported(["dessert"], title="X"), ["dessert"])

@@ -10,7 +10,10 @@ quietly if it moves again: `frontend/src/lib/tags.js` hand-mirrors ALLOWED_TAGS,
 and `frontend/src/lib/tags.test.js` parses this file to prove the two agree.
 """
 
+import logging
 import re
+
+log = logging.getLogger("recipe.tags")
 
 # Hashtags are stripped from anything the model reads and kept only for the
 # keyword tagger. This is not tidiness, it is reliability: measured on one real
@@ -281,6 +284,50 @@ def infer_tags(
     if isinstance(total_min, int) and 0 < total_min <= QUICK_MINUTES and "quick" not in found:
         found.append("quick")
     return [t for t in found if t in ALLOWED_TAGS]
+
+
+# Tags the model may not assert without the text backing it up.
+#
+# The model's tags otherwise lead outright, and that is still right: it read the
+# recipe and a keyword list did not. But a *protein* is the one claim that is
+# both flatly checkable and harmful when wrong — a pumpkin cookie came back
+# tagged `pork`, which puts a cookie in front of someone filtering for pork and
+# in front of someone avoiding it. Nothing in the title, the ingredients, the
+# description or the hashtags said pork; the model simply picked a word out of
+# the enum.
+#
+# So this is the mirror of the rule diets already follow. Diets are never
+# inferred from *absence*; proteins are never asserted without *presence*. The
+# check is deliberately permissive — any mention anywhere counts, `INCIDENTAL`
+# is not applied — because the job is to catch a claim with no support at all,
+# not to second-guess a model that saw something the keyword list would discount.
+CHECKED_TAGS = frozenset({"chicken", "beef", "pork", "seafood", "eggs", "tofu", "beans"})
+
+
+def drop_unsupported(tags, *, title="", description="", ingredients=(), labels="") -> list:
+    """Model tags, minus any protein the text never mentions."""
+    kept = normalize_tags(tags)
+    if not any(t in CHECKED_TAGS for t in kept):
+        return kept
+
+    lines = []
+    for item in ingredients or ():
+        if isinstance(item, dict):
+            lines.append(str(item.get("raw") or ""))
+        elif isinstance(item, str):
+            lines.append(item)
+    blob = " ".join([title or "", description or "", labels or "", *lines])
+    blob = " ".join(blob.lower().replace("#", " ").replace("-", " ").split())
+
+    out = []
+    for tag in kept:
+        if tag in CHECKED_TAGS:
+            needles = TAG_KEYWORDS.get(tag, (tag,))
+            if not any(n.replace("-", " ") in blob for n in needles):
+                log.info("dropping unsupported %s tag", tag)
+                continue
+        out.append(tag)
+    return out
 
 
 def merge_tags(primary, *extra) -> list:
