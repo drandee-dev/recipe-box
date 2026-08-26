@@ -11,7 +11,7 @@
 
 import { client, localRows, pickStore, unwrap } from './backend.js'
 
-const rows = localRows('recipebox:shopping')
+const stored = localRows('recipebox:shopping')
 const COLS = 'id,week_start,name,quantity,checked,kind,created_at'
 
 function toRow(item) {
@@ -27,23 +27,23 @@ function toRow(item) {
 
 const localStore = {
   async listWeek(weekStartISO) {
-    return rows.read().filter((r) => r.week_start === weekStartISO)
+    return stored.read().filter((r) => r.week_start === weekStartISO)
   },
   async add(item) {
     const row = { ...toRow(item), created_at: item.created_at || new Date().toISOString() }
-    rows.write([...rows.read(), row])
+    stored.write([...stored.read(), row])
     return row
   },
   async update(id, patch) {
-    const rows = rows.read()
+    const rows = stored.read()
     const index = rows.findIndex((r) => r.id === id)
     if (index < 0) return null
     rows[index] = { ...rows[index], ...patch }
-    rows.write(rows)
+    stored.write(rows)
     return rows[index]
   },
   async remove(id) {
-    rows.write(rows.read().filter((r) => r.id !== id))
+    stored.write(stored.read().filter((r) => r.id !== id))
   },
 }
 
@@ -81,7 +81,7 @@ function supabaseStore(userId) {
 }
 
 export async function migrateLocalShopping(userId) {
-  const local = rows.read()
+  const local = stored.read()
   if (local.length === 0) return 0
   const supabase = await client()
   const rows = local.map((r) => ({
@@ -90,7 +90,7 @@ export async function migrateLocalShopping(userId) {
     created_at: r.created_at || new Date().toISOString(),
   }))
   unwrap(await supabase.from('shopping_items').upsert(rows))
-  rows.clear()
+  stored.clear()
   return rows.length
 }
 

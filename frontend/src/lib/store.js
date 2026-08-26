@@ -9,7 +9,7 @@
 
 import { client, localRows, pickStore, unwrap } from './backend.js'
 
-const rows = localRows('recipebox:recipes')
+const stored = localRows('recipebox:recipes')
 const COLS =
   'id,title,source_url,source_type,image_url,image_thumb_url,image_blur,description,' +
   'ingredients,instructions,prep_min,cook_min,total_min,servings,tags,favorite,' +
@@ -45,28 +45,28 @@ function toRow(recipe) {
 
 const localStore = {
   async list() {
-    return rows.read().sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
+    return stored.read().sort((a, b) => (b.created_at || '').localeCompare(a.created_at || ''))
   },
   async save(recipe) {
-    const recipes = rows.read()
+    const recipes = stored.read()
     const idx = recipes.findIndex((r) => r.id === recipe.id)
     if (idx >= 0) recipes[idx] = recipe
     else recipes.unshift(recipe)
-    rows.write(recipes)
+    stored.write(recipes)
     return recipe
   },
   async remove(id) {
-    rows.write(rows.read().filter((r) => r.id !== id))
+    stored.write(stored.read().filter((r) => r.id !== id))
   },
   // Unreachable in practice — mirroring needs a bucket, so it only runs signed
   // in — but the two backends stay interchangeable, and a store method missing
   // from one of them is how that stops being true.
   async saveImage(id, columns) {
-    const recipes = rows.read()
+    const recipes = stored.read()
     const idx = recipes.findIndex((r) => r.id === id)
     if (idx < 0) return null
     recipes[idx] = { ...recipes[idx], ...columns }
-    rows.write(recipes)
+    stored.write(recipes)
     return recipes[idx]
   },
 }
@@ -124,7 +124,7 @@ function supabaseStore(userId) {
 // One-time upload of local captures after sign-in. Clearing the local key on
 // success is what makes this run only once per browser.
 export async function migrateLocalRecipes(userId) {
-  const local = rows.read()
+  const local = stored.read()
   if (local.length === 0) return 0
   const supabase = await client()
   const rows = local.map((r) => ({
@@ -133,7 +133,7 @@ export async function migrateLocalRecipes(userId) {
     created_at: r.created_at || new Date().toISOString(),
   }))
   unwrap(await supabase.from('recipes').upsert(rows))
-  rows.clear()
+  stored.clear()
   return rows.length
 }
 

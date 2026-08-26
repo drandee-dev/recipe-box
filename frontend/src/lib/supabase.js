@@ -19,8 +19,13 @@
 // to decide whether to ask for a client, and making that a promise would put an
 // await in front of every one of them.
 
-const url = import.meta.env.VITE_SUPABASE_URL
-const anon = import.meta.env.VITE_SUPABASE_ANON_KEY
+// Optional-chained so this module can be imported outside Vite. `import.meta.env`
+// is a Vite construct and is undefined under a plain `node --test`, which meant
+// the stores — which import this transitively — could not be unit-tested at all.
+// That gap is how a temporal-dead-zone bug in all three stores reached
+// production. Under Vite both values are inlined at build time exactly as before.
+const url = import.meta.env?.VITE_SUPABASE_URL
+const anon = import.meta.env?.VITE_SUPABASE_ANON_KEY
 
 export const supabaseEnabled = Boolean(url && anon)
 

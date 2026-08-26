@@ -10,7 +10,7 @@
 import { client, localRows, pickStore, unwrap } from './backend.js'
 import { SLOTS } from './dates.js'
 
-const rows = localRows('recipebox:plan')
+const stored = localRows('recipebox:plan')
 const COLS = 'id,recipe_id,plan_date,slot,created_at'
 
 // The table's check constraint rejects anything else.
@@ -30,18 +30,18 @@ function toRow(entry) {
 const localStore = {
   async listWeek(startISO, endISO) {
     // Dates are zero-padded ISO, so string comparison is date comparison.
-    return rows.read().filter((e) => e.plan_date >= startISO && e.plan_date <= endISO)
+    return stored.read().filter((e) => e.plan_date >= startISO && e.plan_date <= endISO)
   },
   async add(entry) {
     const row = { ...toRow(entry), created_at: entry.created_at || new Date().toISOString() }
-    rows.write([...rows.read(), row])
+    stored.write([...stored.read(), row])
     return row
   },
   async remove(id) {
-    rows.write(rows.read().filter((e) => e.id !== id))
+    stored.write(stored.read().filter((e) => e.id !== id))
   },
   async removeByRecipe(recipeId) {
-    rows.write(rows.read().filter((e) => e.recipe_id !== recipeId))
+    stored.write(stored.read().filter((e) => e.recipe_id !== recipeId))
   },
 }
 
@@ -75,7 +75,7 @@ function supabaseStore(userId) {
 }
 
 export async function migrateLocalPlan(userId) {
-  const local = rows.read()
+  const local = stored.read()
   if (local.length === 0) return 0
   const supabase = await client()
   const rows = local.map((e) => ({
@@ -84,7 +84,7 @@ export async function migrateLocalPlan(userId) {
     created_at: e.created_at || new Date().toISOString(),
   }))
   unwrap(await supabase.from('meal_plan').upsert(rows))
-  rows.clear()
+  stored.clear()
   return rows.length
 }
 
