@@ -355,6 +355,10 @@ def _extract_social(url: str, source_type: str) -> dict:
     raw_caption = post.get("caption") or ""
     caption = social.strip_urls(raw_caption)
 
+    # Kept past the block below so the link card can borrow the model's title.
+    # The model ran, read the caption and named the post; the only thing it said
+    # no to was there being a recipe in it.
+    structured = None
     if caption and ai.ai_available():
         try:
             structured = ai.structure_recipe(
@@ -381,7 +385,7 @@ def _extract_social(url: str, source_type: str) -> dict:
     if from_image is not None:
         return from_image
 
-    return social.link_card(url, source_type, post)
+    return social.link_card(url, source_type, post, structured)
 
 
 def extract_recipe(url: str) -> dict:

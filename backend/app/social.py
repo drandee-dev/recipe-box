@@ -77,17 +77,57 @@ def unwrap_caption(text: str) -> str:
     return match.group(1).strip() if match else body
 
 
-def caption_title(caption: str) -> str:
-    """The first real line of a caption, for when there is no better name.
+# Emoji, including the flag pairs and the variation selectors that trail them.
+# Creators overwhelmingly write "Dish Name 🧡🍂🎃 then the sales pitch", so the
+# first emoji run is the most reliable end-of-name marker available without a
+# model — better than the first full stop, which on a series post ("The recipes
+# every home cook should know. Ep 20: …") lands on the series and drops the dish.
+_EMOJI = re.compile(
+    "[\U0001F300-\U0001FAFF"  # pictographs, food, symbols
+    "\U00002600-\U000027BF"  # misc symbols and dingbats (✨, ❤, ➡)
+    "\U0001F1E6-\U0001F1FF"  # regional indicators, i.e. flag pairs
+    "️‍]+"  # variation selector and zero-width joiner
+)
 
-    Creators lead with the dish — "Green onion crispy mayo chicken under 25 mins
-    series" — so the opening line is a far better name than the account that
-    posted it. Trailing colons come off because that line is usually a heading.
+# The cell title clamps to two lines at roughly 34 characters each, so anything
+# past this is invisible there anyway — and a title is also searched, where a
+# caption-length one matches nearly every query.
+TITLE_CHARS = 70
+
+
+def shorten_title(text: str, limit: int = TITLE_CHARS) -> str:
+    """A caption's opening words, cut down to something that reads as a name.
+
+    Two passes. The emoji run first, since that is where the creator themselves
+    stopped naming the dish and started selling it. Then a word-boundary trim, so
+    the fallback is a clipped phrase rather than a word cut in half — which is
+    what `title[:200]` was doing.
+    """
+    body = (text or "").strip()
+    # A caption that opens with an emoji would otherwise cut to nothing, so the
+    # leading run comes off first and the search starts at the real words.
+    body = _EMOJI.sub("", body, count=1).strip() if _EMOJI.match(body) else body
+    match = _EMOJI.search(body)
+    if match and len(head := body[: match.start()].strip(" -–—:,.")) >= 3:
+        body = head
+    if len(body) <= limit:
+        return body
+    return body[:limit].rsplit(" ", 1)[0].rstrip(" -–—:,.") + "…"
+
+
+def caption_title(caption: str) -> str:
+    """The dish's name as best it can be read off a caption, with no model.
+
+    This used to take "the first real line", which assumed the caption had lines.
+    TikTok's oEmbed returns them with **every newline stripped** — all of a
+    sample came back with zero — so the "first line" was the whole caption, and
+    a 269-character post title was the result. Whatever survives that is now put
+    through `shorten_title`, which is what actually does the work.
     """
     for line in (caption or "").splitlines():
         cleaned = strip_hashtags(line).strip(" -–—:")
         if len(cleaned) >= 3:
-            return cleaned
+            return shorten_title(cleaned)
     return ""
 
 
@@ -132,11 +172,15 @@ def fetch_post(url: str, source_type: str) -> dict:
     if source_type == "tiktok":
         data = _fetch_json(TIKTOK_OEMBED.format(url=quote(url, safe=""))) or {}
         if data.get("title") or data.get("thumbnail_url"):
+            caption = data.get("title") or ""
             return {
-                # TikTok's oEmbed "title" is the post caption.
-                "caption": data.get("title") or "",
+                # TikTok's oEmbed "title" is the post caption, not a title, and
+                # putting it in both slots is how a 269-character caption became
+                # a recipe's *name*. `title` gets a shortened read of it instead;
+                # `caption` keeps every word for the model and the description.
+                "caption": caption,
                 "image_url": data.get("thumbnail_url") or "",
-                "title": data.get("title") or "",
+                "title": caption_title(caption),
                 "author": data.get("author_name") or "",
             }
 
@@ -149,10 +193,22 @@ def fetch_post(url: str, source_type: str) -> dict:
     }
 
 
-def link_card(url: str, source_type: str, post: dict) -> dict:
-    """Saveable placeholder when no recipe could be read from the caption."""
+def link_card(url: str, source_type: str, post: dict, structured: dict | None = None) -> dict:
+    """Saveable placeholder when no recipe could be read from the caption.
+
+    `structured` is the model's answer when there was one. Reaching this function
+    means it said `has_recipe: false`, but `title` is a *required* field in
+    RECIPE_SCHEMA, so it named the post anyway — and that call has already been
+    paid for. Using it is free and it is the best namer available: it reads the
+    whole caption and knows which part is the dish, where the mechanical fallback
+    can only guess from punctuation and emoji.
+    """
     caption = (post.get("caption") or "").strip()
-    title = (post.get("title") or "").strip() or caption_title(caption)
+    title = (
+        ((structured or {}).get("title") or "").strip()
+        or (post.get("title") or "").strip()
+        or caption_title(caption)
+    )
     if not title:
         host = (urlparse(url).hostname or "link").replace("www.", "")
         title = f"Saved from {host}"
