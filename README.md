@@ -43,7 +43,7 @@ Claude Code did most of the implementation here. The architecture decisions, the
 
 That workflow is visible in the repo rather than just claimed. `CLAUDE.md` is the working context I maintain for the tool, and it is where a decision goes once it turns out to be load-bearing: why the shopping list is derived instead of stored, why an Instagram cover photo needs its play-button overlay divided back out instead of painted over, why every outbound fetch of a user URL has to be re-checked after redirects. The commit history is a record of incremental reviewed changes rather than one bulk import.
 
-Two things I would point at in an interview. `docs/AUDIT.md` is a security and quality pass I ran against the app before shipping v1.0, with the findings and what I did about each. And the tests in `frontend/src/lib/*.test.js` and `backend/tests/` deliberately cover the pure logic rather than the UI, because that is where a wrong answer is silent: an ingredient parser that quietly drops an item produces a plausible shopping list, and you only find out in the shop.
+Two things worth calling out. `docs/AUDIT.md` is a security and quality pass I ran against the app before shipping v1.0, with the findings and what I did about each. And the tests in `frontend/src/lib/*.test.js` and `backend/tests/` deliberately cover the pure logic rather than the UI, because that is where a wrong answer is silent: an ingredient parser that quietly drops an item produces a plausible shopping list, and you only find out in the shop.
 
 ## Docs
 
