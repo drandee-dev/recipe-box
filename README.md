@@ -4,6 +4,14 @@ Personal PWA for saving recipes from anywhere, including recipe sites, TikTok an
 
 **Live at [recipe-box-coral.vercel.app](https://recipe-box-coral.vercel.app).** Installable on iOS and Android.
 
+<p align="center">
+  <img src="docs/img/recipes-mobile.png" alt="The recipe grid, two columns of photos grouped by when they were saved" width="31%">
+  <img src="docs/img/planner-mobile.png" alt="The weekly planner with meals assigned to days" width="31%">
+  <img src="docs/img/shopping-mobile.png" alt="The shopping list, grouped by supermarket aisle with quantities merged across recipes" width="31%">
+</p>
+
+<sub>Screenshots use seeded demo recipes. Dish photographs from [Wikimedia Commons](https://commons.wikimedia.org).</sub>
+
 ## What it does
 
 - **Save from anywhere.** Paste a recipe URL and it reads the site's schema.org data directly, no AI involved. Paste a TikTok or Instagram link and Claude Haiku structures the caption into ingredients and steps. Photograph a recipe out of a cookbook and it reads that too. Anything it cannot parse is kept as a link card rather than thrown away.
