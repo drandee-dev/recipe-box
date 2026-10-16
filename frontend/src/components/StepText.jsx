@@ -51,7 +51,12 @@ export default function StepText({ text, recipe, step }) {
         key={i}
         type="button"
         className={due ? 'step-time step-time-ringing' : 'step-time step-time-running'}
-        aria-label={due ? `${piece.text} timer finished, dismiss` : `Stop the ${piece.text} timer`}
+        // Starts with the visible text (the clock), so the name contains the label.
+        aria-label={
+          due
+            ? `Time's up, dismiss the ${piece.text} timer`
+            : `${formatClock(secondsLeft(running, now))}, stop the ${piece.text} timer`
+        }
         onClick={() => stop(running.id)}
       >
         {due ? "Time's up" : formatClock(secondsLeft(running, now))}

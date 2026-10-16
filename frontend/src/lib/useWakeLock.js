@@ -16,23 +16,37 @@ export function useWakeLock() {
   useEffect(() => {
     if (!navigator.wakeLock) return undefined
     let lock = null
+    let pending = false
     let cancelled = false
 
     async function acquire() {
-      if (document.visibilityState !== 'visible') return
+      // `pending` stops a visibility change that lands while the first request
+      // is still out from issuing a second one and orphaning the first.
+      if (document.visibilityState !== 'visible' || lock || pending) return
+      pending = true
       try {
-        lock = await navigator.wakeLock.request('screen')
+        const sentinel = await navigator.wakeLock.request('screen')
         if (cancelled) {
-          lock.release().catch(() => {})
-          lock = null
+          sentinel.release().catch(() => {})
+          return
         }
+        lock = sentinel
+        // The browser releases it when the page is hidden, but the variable
+        // still holds the dead sentinel. Without clearing it here the
+        // re-acquire below never fires and the screen sleeps after one glance
+        // at a text, which is the failure this whole hook exists to prevent.
+        sentinel.addEventListener('release', () => {
+          if (lock === sentinel) lock = null
+        })
       } catch {
         lock = null
+      } finally {
+        pending = false
       }
     }
 
     function onVisible() {
-      if (document.visibilityState === 'visible' && !lock) acquire()
+      acquire()
     }
 
     acquire()

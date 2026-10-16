@@ -2610,7 +2610,12 @@ textarea.field {
   display: none;
 }
 
-/* Everything that sits above the tab bar makes room for the tray. */
+/* Everything that sits above the tab bar makes room for the tray. The install
+   card is sticky at the same offset the tray is fixed at, so it rides above it. */
+.rb-app:has(.rb-tray) .rb-install {
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--tray-h) + var(--sp-2));
+}
+
 .rb-app:has(.rb-tray) {
   padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--tray-h) + var(--sp-6));
 }

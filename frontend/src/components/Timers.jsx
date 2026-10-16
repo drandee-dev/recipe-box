@@ -29,8 +29,10 @@ function describe(timer) {
 // the two controls that screen exists for. The fixed one hides itself while cook
 // mode is open (see `.rb-tray` in the stylesheet).
 export function TimerTray({ inline = false }) {
-  const { timers, now, stop, setListOpen } = useTimers()
-  if (timers.length === 0) return null
+  const { timers, now, stop, listOpen, setListOpen } = useTimers()
+  // The fixed copy steps aside while the list is open: it would be drawn over
+  // the list showing the same timer.
+  if (timers.length === 0 || (!inline && listOpen)) return null
 
   const lead = timers[0]
   const due = isDue(lead, now)
