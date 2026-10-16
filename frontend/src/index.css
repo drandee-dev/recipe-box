@@ -2507,55 +2507,306 @@ textarea.field {
   letter-spacing: -0.015em;
 }
 
-.cook-timer {
-  margin-top: var(--sp-6);
-}
-
-/* Outlined rather than filled, because a filled saffron slab at this size would
-   out-shout the step it belongs to. It is 44px tall by its padding, not by a
-   floor, since it is not one of the five button roles. */
-.cook-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-height: 46px;
-  padding: 0 var(--sp-4);
-  border: 1.5px solid var(--saffron-lit);
-  border-radius: var(--r-pill);
-  background: none;
-  color: var(--saffron-lit);
-  font-size: var(--fs-md);
-  font-weight: 700;
+/* --- Timers (A1) -----------------------------------------------------------
+   A duration in a step is a button made of the step's own words. Green says it
+   is something you can press, saffron says a clock is running (the palette rule:
+   accent for actions, saffron for what is simply true), and a ringing one is
+   filled and pulses, because on iOS the vibrate call is a no-op and the tone may
+   be muted by the hardware switch, so the visual state is the alert that is
+   guaranteed to arrive. The tap area is stretched past the glyphs with a
+   pseudo-element: padding would reflow the sentence it sits in.
+   ------------------------------------------------------------------------- */
+.step-time {
+  position: relative;
+  display: inline;
+  padding: 1px 6px;
+  border: 0;
+  border-bottom: 2px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
 
-.cook-chip svg {
-  width: 20px;
-  height: 20px;
-  flex: none;
+.step-time::after {
+  content: '';
+  position: absolute;
+  inset: -10px -4px;
 }
 
-.cook-chip-verb {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  opacity: 0.7;
+.step-time:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
-/* Filled once it is actually ringing, and only then. On iOS the vibrate call is
-   a no-op and the sound may be muted by the hardware switch, so the visual state
-   is the alert that is guaranteed to arrive. */
-.cook-chip-ringing {
-  border-color: var(--saffron-lit);
-  background: var(--saffron-lit);
-  color: var(--cook-ground);
+.step-time-running {
+  border-bottom-color: var(--saffron);
+  background: color-mix(in srgb, var(--saffron) 14%, transparent);
+}
+
+.step-time-ringing {
+  border-bottom-color: var(--saffron);
+  background: var(--saffron);
+  color: var(--txt);
   animation: cook-pulse 1s ease-in-out infinite;
 }
 
-.cook-chip-ringing .cook-chip-verb {
-  opacity: 0.75;
+.sheet-cook .step-time {
+  border-bottom-color: var(--accent-lit);
+  background: color-mix(in srgb, var(--accent-lit) 16%, transparent);
+}
+
+.sheet-cook .step-time-running {
+  border-bottom-color: var(--saffron-lit);
+  background: color-mix(in srgb, var(--saffron-lit) 18%, transparent);
+}
+
+.sheet-cook .step-time-ringing {
+  background: var(--saffron-lit);
+  color: var(--cook-ground);
+}
+
+.detail-awake {
+  margin: calc(var(--sp-2) * -1) 0 var(--sp-3);
+  color: var(--txt-2);
+  font-size: var(--fs-sm);
+}
+
+/* The tray: the one timer you are waiting on, above the tab bar on every tab.
+   Fixed copy hides while cook mode is open and cook mode draws its own in the
+   flow above Back and Next; a fixed one there would sit on top of them. Sheets
+   are at --z-sheet, so the tray is one above and stays visible over a recipe. */
+:root {
+  --tray-h: 60px;
+}
+
+.timer-tray {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+  min-height: var(--tray-h);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--saffron);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--txt);
+  box-shadow: var(--shadow-card);
+}
+
+.rb-tray {
+  position: fixed;
+  right: var(--sp-4);
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--sp-2));
+  left: var(--sp-4);
+  z-index: calc(var(--z-sheet) + 1);
+  max-width: 608px;
+  margin: 0 auto;
+}
+
+:root:has(.sheet-cook) .rb-tray {
+  display: none;
+}
+
+/* Everything that sits above the tab bar makes room for the tray. The install
+   card is sticky at the same offset the tray is fixed at, so it rides above it. */
+.rb-app:has(.rb-tray) .rb-install {
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--tray-h) + var(--sp-2));
+}
+
+.rb-app:has(.rb-tray) {
+  padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--tray-h) + var(--sp-6));
+}
+
+.rb-app:has(.rb-tray) .rb-fab-wrap {
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--tray-h) + var(--sp-4));
+}
+
+.rb-app:has(.rb-tray) .rb-toast {
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--tray-h) + var(--sp-4));
+}
+
+:root:has(.rb-tray) .sheet:not(.sheet-cook) {
+  padding-bottom: calc(var(--sp-6) + env(safe-area-inset-bottom) + var(--tabbar-h) + var(--tray-h));
+}
+
+.timer-tray-inline {
+  flex: none;
+  margin: 0 var(--sp-4) var(--sp-2);
+  background: none;
+  border-color: var(--saffron-lit);
+  color: var(--cook-ink);
+  box-shadow: none;
+}
+
+.timer-tray-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.timer-tray-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.timer-tray-clock {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.timer-tray-label {
+  overflow: hidden;
+  font-size: var(--fs-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.timer-tray-stop {
+  flex: none;
+  min-width: 72px;
+  min-height: 44px;
+  align-self: center;
+  border: 1px solid currentColor;
+  border-radius: var(--r);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Dark ink, not white: white on --saffron is 3.8:1, under the floor for the
+   12px label. */
+.timer-tray-ringing {
+  background: var(--saffron);
+  color: var(--txt);
+  animation: cook-pulse 1s ease-in-out infinite;
+}
+
+.timer-tray-ringing .timer-tray-label {
+  opacity: 1;
+}
+
+.timer-tray-inline.timer-tray-ringing {
+  background: var(--saffron-lit);
+  color: var(--cook-ground);
+}
+
+.rb-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.rb-timers-btn {
+  position: relative;
+}
+
+.rb-timers-count {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--saffron);
+  color: var(--txt);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.timers-list {
+  margin: 0 0 var(--sp-4);
+  padding: 0;
+  list-style: none;
+}
+
+.timers-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.timers-row-ringing .timers-row-clock {
+  color: var(--saffron);
+}
+
+.timers-row-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.timers-row-clock {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.timers-row-label {
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.timers-empty {
+  margin: 0 0 var(--sp-4);
+  opacity: 0.7;
+}
+
+.timers-add-fields {
+  display: flex;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.timers-add-fields .field {
+  min-width: 0;
+  flex: 1;
+}
+
+.timers-add-fields .timers-minutes {
+  flex: 0 0 110px;
+}
+
+.timers-error {
+  margin: 0 0 var(--sp-3);
+  color: var(--warn-ink);
+  font-size: var(--fs-sm);
+}
+
+.rb-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 @keyframes cook-pulse {
@@ -2637,36 +2888,6 @@ textarea.field {
   opacity: 0.55;
 }
 
-/* A timer still running on a step you have walked away from. Tapping it goes
-   back to that step, which is the only thing you would want from it. */
-.cook-away {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  min-height: 44px;
-  margin: 0 var(--sp-4);
-  padding: 0 var(--sp-3);
-  border: 1px solid var(--saffron-lit);
-  border-radius: var(--r);
-  background: none;
-  color: var(--saffron-lit);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.cook-away-ringing {
-  background: var(--saffron-lit);
-  color: var(--cook-ground);
-  animation: cook-pulse 1s ease-in-out infinite;
-}
-
-.cook-away-clock {
-  font-variant-numeric: tabular-nums;
-}
-
 .cook-actions {
   display: flex;
   flex: none;
@@ -2720,8 +2941,8 @@ textarea.field {
     transition: none;
   }
 
-  .cook-chip-ringing,
-  .cook-away-ringing {
+  .step-time-ringing,
+  .timer-tray-ringing {
     animation: none;
   }
 }

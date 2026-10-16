@@ -6,16 +6,21 @@
 // list keeps its scroll position and the recipe gets the whole screen instead of
 // a card-width column.
 //
-// Everything held here is per-opening and deliberately not stored: which
-// ingredients you have gathered, how far down the steps you are, whether the
-// overflow is open, a half-filled plan slot. The sheet unmounts on close, which
-// clears all of it. Nothing is saved, so nothing can go stale — a tick left over
-// from Tuesday's cook is worse than no tick at all.
+// Most of what is held here is per-opening and deliberately not stored: whether
+// the overflow is open, a half-filled plan slot, the serving scale. The sheet
+// unmounts on close, which clears all of it. The exception is which ingredients
+// you have gathered and which steps you have done: those are kept for twelve
+// hours (lib/cookProgress.js), because losing them to a text message mid-cook is
+// the failure, while a tick left over from Tuesday's cook is worse than no tick,
+// hence the limit.
 
 import { Fragment, useEffect, useRef, useState } from 'react'
 import CookMode from './CookMode.jsx'
 import RecipeThumb from './RecipeThumb.jsx'
 import Sheet from './Sheet.jsx'
+import StepText from './StepText.jsx'
+import { loadProgress, saveProgress } from '../lib/cookProgress.js'
+import { useWakeLock } from '../lib/useWakeLock.js'
 import { baseServings, hostOf, metaParts, servingsLabel } from '../lib/recipes.js'
 import { scaleIngredientText } from '../lib/ingredients.js'
 import { SLOTS, addDays, dayName, shortDate, toISODate } from '../lib/dates.js'
@@ -121,8 +126,12 @@ export default function RecipeDetail({
   // Sets of indices. Ingredients are a gathering list, steps are a progress
   // marker, and they are separate because ticking off the flour has nothing to
   // do with having finished step three.
-  const [gathered, setGathered] = useState(() => new Set())
-  const [done, setDone] = useState(() => new Set())
+  //
+  // They come back if you were cooking in the last twelve hours (lib/cookProgress),
+  // so a text or a locked phone doesn't cost you your place.
+  const [saved] = useState(() => loadProgress(recipe.id, recipe.instructions.length))
+  const [gathered, setGathered] = useState(() => new Set(saved.gathered))
+  const [done, setDone] = useState(() => new Set(saved.done))
   const [menuOpen, setMenuOpen] = useState(false)
 
   const [planOpen, setPlanOpen] = useState(false)
@@ -131,6 +140,11 @@ export default function RecipeDetail({
   const [planned, setPlanned] = useState(null)
 
   const [cooking, setCooking] = useState(false)
+
+  // Held for as long as the recipe is open, not only in cook mode: reading a
+  // recipe off a phone propped on the counter is the same job. Paprika buries
+  // this in a setting and people complain about it.
+  useWakeLock()
 
   // The scaler (finding 12). Like everything else in this sheet it is per
   // opening and unstored: a recipe you cooked double for six people once is not
@@ -152,13 +166,15 @@ export default function RecipeDetail({
   const tags = recipe.tags || []
   const empty = recipe.ingredients.length === 0 && recipe.instructions.length === 0
 
-  function toggle(setter, index) {
-    setter((prev) => {
-      const next = new Set(prev)
-      if (next.has(index)) next.delete(index)
-      else next.add(index)
-      return next
-    })
+  // Saved from the handler, not an effect: an effect would also run on open and
+  // refresh the saved time of progress you never touched.
+  function toggle(kind, index) {
+    const [current, setter] = kind === 'gathered' ? [gathered, setGathered] : [done, setDone]
+    const next = new Set(current)
+    if (next.has(index)) next.delete(index)
+    else next.add(index)
+    setter(next)
+    saveProgress(recipe.id, { [kind]: [...next] })
   }
 
   // What the chosen day is called, used by both the commit button and the
@@ -402,7 +418,7 @@ export default function RecipeDetail({
                   <input
                     type="checkbox"
                     checked={gathered.has(n)}
-                    onChange={() => toggle(setGathered, n)}
+                    onChange={() => toggle('gathered', n)}
                   />
                   {/* Scaled, but only where a quantity was actually found at
                       the head of this line. Anything else is the line as
@@ -416,6 +432,12 @@ export default function RecipeDetail({
           </ul>
 
           <h3 className="detail-heading">Steps</h3>
+          {recipe.instructions.length > 0 && (
+            <p className="detail-awake">
+              {navigator.wakeLock ? 'Screen stays on while this is open. ' : ''}
+              Tap a time in a step to start a timer.
+            </p>
+          )}
           {/* Ingredients but no method is a normal import, not a failure: TikTok
               and Instagram creators routinely list what goes in and leave the
               how to the video. The `empty` branch above never catches it, so
@@ -432,14 +454,16 @@ export default function RecipeDetail({
               {recipe.instructions.map((step, n) => (
                 <li key={n} className={done.has(n) ? 'detail-check detail-check-on' : 'detail-check'}>
                   <label>
-                    <input type="checkbox" checked={done.has(n)} onChange={() => toggle(setDone, n)} />
+                    <input type="checkbox" checked={done.has(n)} onChange={() => toggle('done', n)} />
                     {/* The number is drawn rather than left to the <ol> marker,
                         because a marker sits outside the label and the whole row
                         has to be the tap target. */}
                     <span className="detail-step-n" aria-hidden="true">
                       {n + 1}
                     </span>
-                    <span>{step}</span>
+                    <span>
+                      <StepText text={step} recipe={recipe} step={n} />
+                    </span>
                   </label>
                 </li>
               ))}
