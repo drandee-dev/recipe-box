@@ -8,8 +8,28 @@
 // from a server, which is A2.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { currentPushState, enablePush, mirrorTimers, resyncPush, unmirrorTimer } from './push.js'
 import { ringUrl } from './ring.js'
 import { MAX_TIMERS, isDue, loadTimers, makeTimer, saveTimers, sortTimers } from './timers.js'
+
+// Whether the permission prompt has already been shown from a first Start. Kept
+// so a dismissed prompt is not repeated on every timer; wrapped because storage
+// can be blocked.
+const ASKED_KEY = 'recipebox:pushAsked'
+function readAsked() {
+  try {
+    return localStorage.getItem(ASKED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+function markAsked() {
+  try {
+    localStorage.setItem(ASKED_KEY, '1')
+  } catch {
+    // Asked again next time, which is the lesser harm.
+  }
+}
 
 // Any screen that wants to take you to a recipe (the tray's "Open recipe") says so
 // with this event and App does the navigation. It is an event rather than a prop
@@ -104,23 +124,62 @@ export function TimersProvider({ children }) {
     }
   }, [])
 
+  // --- Lock-screen alerts (lib/push.js) ------------------------------------
+  //
+  // Mirrors are best effort and never block the in-page timer. `signedInRef` is
+  // told by App (it owns the session) and read inside the Start tap, where
+  // nothing may be awaited before the permission prompt is asked.
+  const timersRef = useRef(timers)
+  timersRef.current = timers
+  const signedInRef = useRef(false)
+  const [alerts, setAlerts] = useState(() => currentPushState(false))
+
+  const setSignedIn = useCallback((signedIn) => {
+    signedInRef.current = signedIn
+    setAlerts(currentPushState(signedIn))
+    // On sign-in and on every app load with a session: repair a subscription that
+    // never saved and give an unmirrored running timer another try.
+    if (signedIn) resyncPush(timersRef.current)
+  }, [])
+
+  // From a tap only. Asks for permission (once, from the first Start; the Timers
+  // list has a button for any later try), subscribes, and mirrors what is already
+  // running so a timer started a moment before the answer is not left out.
+  const turnOnAlerts = useCallback(() => {
+    return enablePush(signedInRef.current).then((state) => {
+      setAlerts(state)
+      if (state === 'on') mirrorTimers(timersRef.current)
+    })
+  }, [])
+
   const start = useCallback(
     (spec) => {
       unlockAudio()
-      setTimers((prev) => {
-        // The callers disable their buttons at the cap; this is the backstop.
-        if (prev.length >= MAX_TIMERS) return prev
-        // Pressing the same step's duration twice must not run two clocks.
-        if (spec.key && prev.some((t) => t.key === spec.key)) return prev
-        return [...prev, makeTimer(spec)]
-      })
+      const current = timersRef.current
+      // The callers disable their buttons at the cap; this is the backstop.
+      if (current.length >= MAX_TIMERS) return
+      // Pressing the same step's duration twice must not run two clocks.
+      if (spec.key && current.some((t) => t.key === spec.key)) return
+      const timer = makeTimer(spec)
+      setTimers((prev) => [...prev, timer])
       setNow(Date.now())
+
+      // The permission prompt is only ever shown for a tap, and this is one. Asked
+      // the first time only; a "no" is the phone's to undo, not ours to nag about.
+      const state = currentPushState(signedInRef.current)
+      if (state === 'on') {
+        mirrorTimers([timer])
+      } else if (state === 'ask' && !readAsked()) {
+        markAsked()
+        turnOnAlerts()
+      }
     },
-    [unlockAudio],
+    [unlockAudio, turnOnAlerts],
   )
 
   const stop = useCallback((id) => {
     setTimers((prev) => prev.filter((t) => t.id !== id))
+    unmirrorTimer(id)
   }, [])
 
   // Four times a second, so the seconds digit turns close to when it should. It
@@ -171,6 +230,10 @@ export function TimersProvider({ children }) {
     if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.([200, 100, 200, 100, 200])
     const ids = new Set(fresh.map((t) => t.id))
     setTimers((prev) => prev.map((t) => (ids.has(t.id) ? { ...t, rang: true } : t)))
+    // Rung in the page, so it must not also arrive as a push a few seconds later.
+    // Only when the page is actually in view: a hidden page that was somehow
+    // still running is exactly the case the push exists for.
+    if (document.visibilityState === 'visible') fresh.forEach((t) => unmirrorTimer(t.id))
   }, [timers, now])
 
   useEffect(
@@ -198,8 +261,11 @@ export function TimersProvider({ children }) {
       full: timers.length >= MAX_TIMERS,
       listOpen,
       setListOpen,
+      alerts,
+      setSignedIn,
+      turnOnAlerts,
     }),
-    [timers, now, start, stop, listOpen],
+    [timers, now, start, stop, listOpen, alerts, setSignedIn, turnOnAlerts],
   )
   return <TimersContext.Provider value={value}>{children}</TimersContext.Provider>
 }

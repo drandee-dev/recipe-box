@@ -2831,6 +2831,18 @@ textarea.field {
   flex: 0 0 110px;
 }
 
+.timers-alerts {
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+.timers-alerts-text {
+  margin: 0 0 var(--sp-3);
+  color: var(--txt-2);
+  font-size: var(--fs-sm);
+}
+
 .timers-error {
   margin: 0 0 var(--sp-3);
   color: var(--warn-ink);

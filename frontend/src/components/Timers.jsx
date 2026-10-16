@@ -115,8 +115,32 @@ export function TimersButton() {
   )
 }
 
+// Whether a finished timer will reach the lock screen, and the one thing to do
+// about it. Says nothing where nothing can be done (an unsupported browser, a
+// build without a sender key).
+function AlertsNote({ state, onEnable }) {
+  const text = {
+    on: 'Lock-screen alerts are on. A finished timer shows on your lock screen even if the app is closed.',
+    ask: 'Get an alert on your lock screen when a timer finishes, even with the phone locked.',
+    'needs-install': "To get alerts on a locked phone, add this app to your Home Screen from Safari's Share menu and open it from there.",
+    'signed-out': 'Sign in to get alerts on your lock screen when a timer finishes.',
+    denied: "Alerts are blocked. Turn on notifications for this app in the phone's Settings.",
+  }[state]
+  if (!text) return null
+  return (
+    <div className="timers-alerts">
+      <p className="timers-alerts-text">{text}</p>
+      {state === 'ask' && (
+        <button type="button" className="btn btn-secondary btn-block" onClick={onEnable}>
+          Turn on lock-screen alerts
+        </button>
+      )}
+    </div>
+  )
+}
+
 export function TimersSheet() {
-  const { timers, now, start, stop, full, listOpen, setListOpen } = useTimers()
+  const { timers, now, start, stop, full, listOpen, setListOpen, alerts, turnOnAlerts } = useTimers()
   const open = useOpenRecipe()
   const [name, setName] = useState('')
   const [minutes, setMinutes] = useState('')
@@ -199,6 +223,8 @@ export function TimersSheet() {
           Start timer
         </button>
       </form>
+
+      <AlertsNote state={alerts} onEnable={turnOnAlerts} />
     </Sheet>
   )
 }

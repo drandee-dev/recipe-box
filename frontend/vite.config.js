@@ -31,6 +31,10 @@ export default defineConfig({
         'fonts/*.woff2',
       ],
       workbox: {
+        // Push handling (public/push-sw.js) is loaded into the generated worker
+        // rather than switching the plugin to injectManifest and owning the whole
+        // file. A new worker lets the next load pick it up via the autoUpdate.
+        importScripts: ['push-sw.js'],
         runtimeCaching: [
           {
             // Recipe photos come from arbitrary sites and CDNs, so they can't be

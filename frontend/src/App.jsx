@@ -16,7 +16,7 @@ import CaptureSheet from './components/CaptureSheet.jsx'
 import InstallPrompt from './components/InstallPrompt.jsx'
 import { FeedbackSheet, NewsBanner, WhatsNewSheet } from './components/News.jsx'
 import { TimerTray, TimersButton, TimersSheet } from './components/Timers.jsx'
-import { OPEN_RECIPE_EVENT } from './lib/useTimers.jsx'
+import { OPEN_RECIPE_EVENT, useTimers } from './lib/useTimers.jsx'
 import { latestNews, markNewsSeen, newsSeen } from './lib/news.js'
 import Planner from './components/Planner.jsx'
 import RecipeEditor from './components/RecipeEditor.jsx'
@@ -107,7 +107,11 @@ export default function App() {
   const [photo, setPhoto] = useState(null)
   const inputRef = useRef(null)
   const [error, setError] = useState('')
-  const [openId, setOpenId] = useState(null)
+  // A timer alert's notification opens the app at `/?recipe=<id>` (the push
+  // payload's navigate URL, server side in app/push.py). The id is only compared
+  // to recipe ids, so nothing in it is trusted as anything else. If the list
+  // hasn't loaded yet the recipe opens when it arrives.
+  const [openId, setOpenId] = useState(() => new URLSearchParams(window.location.search).get('recipe'))
   // null when closed, { recipe } when open — with recipe null for a new one.
   // An object rather than two booleans so "editing this recipe" can't drift out
   // of step with "the editor is open".
@@ -131,8 +135,9 @@ export default function App() {
   // share keys are removed; Supabase's auth callback params must survive.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (!SHARE_PARAMS.some((p) => params.has(p))) return
+    if (!SHARE_PARAMS.some((p) => params.has(p)) && !params.has('recipe')) return
     SHARE_PARAMS.forEach((p) => params.delete(p))
+    params.delete('recipe')
     const qs = params.toString()
     // The hash has to be carried through. A magic-link callback puts its tokens
     // there, and since audit item 15 the Supabase client is built inside the
@@ -148,6 +153,13 @@ export default function App() {
   // The hook is also where the Supabase client gets built, which is what keeps
   // it out of the entry chunk — see the note in useSession.js.
   const { session, userId, ready: authReady } = useSession()
+
+  // The timers provider sits above this component, so it is told who is signed
+  // in rather than asking: alerts are only mirrored for a signed-in user.
+  const { setSignedIn } = useTimers()
+  useEffect(() => {
+    setSignedIn(Boolean(userId))
+  }, [userId, setSignedIn])
 
   const store = useMemo(() => makeStore(userId), [userId])
   const planStore = useMemo(() => makePlanStore(userId), [userId])
