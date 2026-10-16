@@ -192,7 +192,7 @@ export default function CookMode({ recipe, servings, factor = 1, onClose }) {
       </div>
 
       {/* Every running timer, above the buttons rather than over them. */}
-      <TimerTray inline />
+      <TimerTray inline current={recipe.id} />
 
       <div className="cook-actions">
         <button type="button" className="cook-back" onClick={() => go(-1)} disabled={index === 0}>
