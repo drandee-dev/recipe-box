@@ -86,12 +86,17 @@ def health():
     from .ai import MONTHLY_BUDGET_CENTS
     from .usage import RATE_LIMIT_CALLS, RATE_WINDOW_MINUTES, month_spend_cents, rate_tracked
 
+    from . import push
+
     spent = month_spend_cents()
     return {
         "status": "ok",
         "ai": ai_available(),
         "storage": storage,
         "images": images,
+        # Whether a due timer could be sent as a push. False means timer alerts
+        # on a locked phone silently never arrive: the only symptom is silence.
+        "push": push.configured(),
         "budget": {
             # False means the ceiling is not being applied, whatever the reason:
             # Supabase unconfigured, unreachable, or refusing the query.
@@ -313,3 +318,25 @@ def recipe_image(body: ImageRequest, authorization: str | None = Header(default=
     except Exception:
         log.exception("unexpected image mirror failure for %s", body.url)
         raise HTTPException(status_code=502, detail="Could not save that image")
+
+
+@app.post("/api/push/fire")
+def push_fire(x_push_secret: str | None = Header(default=None)):
+    """Send every timer alert that has come due. Called by a Supabase cron job.
+
+    Not a user endpoint: the only caller is the database, and what it presents is
+    a shared secret the browser never sees. Anything else gets the same opaque 401
+    whether the secret is wrong, missing or not configured, so the response says
+    nothing about which. It is not metered by `meter_caller` because it spends
+    nothing: no model call, and the sending cost is the push service's, not ours.
+    """
+    from . import push
+
+    if not push.authorized(x_push_secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        return push.fire_due()
+    except Exception:
+        # The cron job retries on its next tick; what failed stays in the logs.
+        log.exception("push fire failed")
+        raise HTTPException(status_code=502, detail="Could not send")

@@ -155,3 +155,53 @@ create policy "file own feedback" on feedback
   with check (auth.uid() = user_id);
 
 create index if not exists feedback_created_idx on feedback (created_at desc);
+
+-- A2: timer alerts on a locked phone. Additive only (new tables nothing else
+-- reads), so the live app is unaffected until it is released.
+--
+-- push_subscriptions: where to send a user's alerts. One row per installed app
+-- per user; the endpoint is the push service's address for that phone.
+create table if not exists push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  endpoint text not null check (char_length(endpoint) <= 2000),
+  p256dh text not null check (char_length(p256dh) <= 200),
+  auth text not null check (char_length(auth) <= 100),
+  user_agent text check (char_length(user_agent) <= 400),
+  created_at timestamptz not null default now(),
+  unique (user_id, endpoint)
+);
+
+alter table push_subscriptions enable row level security;
+
+drop policy if exists "own push subscriptions" on push_subscriptions;
+create policy "own push subscriptions" on push_subscriptions
+  for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- cook_timers: a running timer, mirrored so a server can fire it. The client
+-- inserts on start and deletes on stop or when it rings in the page (so the page
+-- and the push never both alert). `client_id` is the app's own timer id;
+-- `sent_at` is the server's claim, set once per row (app/push.py).
+create table if not exists cook_timers (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  client_id text not null check (char_length(client_id) <= 80),
+  ends_at timestamptz not null,
+  label text check (char_length(label) <= 60),
+  recipe_title text check (char_length(recipe_title) <= 200),
+  open_url text check (char_length(open_url) <= 500),
+  sent_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (user_id, client_id)
+);
+
+alter table cook_timers enable row level security;
+
+drop policy if exists "own cook timers" on cook_timers;
+create policy "own cook timers" on cook_timers
+  for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- What the cron job scans every few seconds: only unsent rows, by due time.
+create index if not exists cook_timers_due_idx on cook_timers (ends_at) where sent_at is null;
