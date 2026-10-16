@@ -2677,6 +2677,43 @@ textarea.field {
   opacity: 0.7;
 }
 
+.timer-tray-actions {
+  display: flex;
+  flex: none;
+  align-self: center;
+  gap: var(--sp-2);
+}
+
+/* A finished timer with a recipe to go back to: the text takes the first row and
+   the two choices share the second, each a full-width target. The page makes
+   room for the taller tray the same way it does for the short one. */
+.timer-tray-two {
+  flex-wrap: wrap;
+}
+
+.timer-tray-two .timer-tray-main,
+.timer-tray-two .timer-tray-actions {
+  flex: 1 1 100%;
+}
+
+.timer-tray-two .timer-tray-actions {
+  align-self: stretch;
+}
+
+.timer-tray-two .timer-tray-stop {
+  flex: 1;
+}
+
+:root:has(.timer-tray-two:not(.timer-tray-inline)) {
+  --tray-h: 116px;
+}
+
+.timers-row-actions {
+  display: flex;
+  flex: none;
+  gap: var(--sp-2);
+}
+
 .timer-tray-stop {
   flex: none;
   min-width: 72px;

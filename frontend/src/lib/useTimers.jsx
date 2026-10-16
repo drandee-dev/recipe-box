@@ -8,10 +8,22 @@
 // from a server, which is A2.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
+import { ringUrl } from './ring.js'
 import { MAX_TIMERS, isDue, loadTimers, makeTimer, saveTimers, sortTimers } from './timers.js'
 
-// Three short tones out of an oscillator rather than an audio file: no asset to
-// ship, no fetch to fail, and nothing to go missing from the cache offline.
+// Any screen that wants to take you to a recipe (the tray's "Open recipe") says so
+// with this event and App does the navigation. It is an event rather than a prop
+// because the inline tray sits inside cook mode, inside the recipe sheet, three
+// components away from the state that opens a recipe.
+export const OPEN_RECIPE_EVENT = 'recipebox:open-recipe'
+
+export function openRecipe(id) {
+  window.dispatchEvent(new CustomEvent(OPEN_RECIPE_EVENT, { detail: id }))
+}
+
+// The fallback ring: three short tones out of an oscillator. The first choice is
+// an audio element (lib/ring.js), which iOS plays over the silent switch; this
+// is what runs if the element is refused.
 function ring(ctx) {
   const start = ctx.currentTime
   for (let i = 0; i < 3; i += 1) {
@@ -37,6 +49,7 @@ export function TimersProvider({ children }) {
   const [timers, setTimers] = useState(() => loadTimers())
   const [now, setNow] = useState(() => Date.now())
   const audioRef = useRef(null)
+  const elementRef = useRef(null)
 
   useEffect(() => {
     saveTimers(timers)
@@ -64,6 +77,31 @@ export function TimersProvider({ children }) {
       }
     }
     audioRef.current?.resume?.().catch(() => {})
+
+    // The audio element is unlocked the same way: its first play() has to come
+    // from this tap. Played muted and stopped at once, so there is no sound now
+    // and the element is free to play for real when a timer comes due.
+    if (!elementRef.current) {
+      try {
+        elementRef.current = new Audio(ringUrl())
+        elementRef.current.preload = 'auto'
+      } catch {
+        elementRef.current = null
+      }
+      const el = elementRef.current
+      if (el) {
+        el.muted = true
+        el.play()
+          .then(() => {
+            el.pause()
+            el.currentTime = 0
+          })
+          .catch(() => {})
+          .finally(() => {
+            el.muted = false
+          })
+      }
+    }
   }, [])
 
   const start = useCallback(
@@ -110,14 +148,23 @@ export function TimersProvider({ children }) {
     // A context that was suspended while the page was away has to be resumed
     // first. After a full reload there is no context at all (it can only be built
     // in a tap), so an overdue timer found then is silent and shows on screen.
+    // The audio element first; if it is missing or refuses, the oscillator.
+    const el = elementRef.current
     const ctx = audioRef.current
-    if (ctx) {
+    const fallback = () => {
+      if (!ctx) return
       Promise.resolve(ctx.resume?.())
         .catch(() => {})
         .then(() => ring(ctx))
         .catch(() => {
           // A refused or closed context is not a reason to lose the timer.
         })
+    }
+    if (el) {
+      el.currentTime = 0
+      el.play().catch(fallback)
+    } else {
+      fallback()
     }
     // Android only, and only once the page has had a tap, or Chrome logs an
     // intervention. On iOS the pulsing tray is the alert that is guaranteed.
@@ -129,6 +176,11 @@ export function TimersProvider({ children }) {
   useEffect(
     () => () => {
       audioRef.current?.close().catch(() => {})
+      const el = elementRef.current
+      if (el) {
+        el.pause()
+        URL.revokeObjectURL(el.src)
+      }
     },
     [],
   )

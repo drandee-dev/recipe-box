@@ -9,7 +9,7 @@ import { useState } from 'react'
 import Sheet from './Sheet.jsx'
 import { formatClock } from '../lib/cook.js'
 import { MAX_SECONDS, isDue, manualSeconds, secondsLeft } from '../lib/timers.js'
-import { useTimers } from '../lib/useTimers.jsx'
+import { openRecipe, useTimers } from '../lib/useTimers.jsx'
 
 function ClockIcon() {
   return (
@@ -28,8 +28,22 @@ function describe(timer) {
 // rather than fixed to the screen, because a fixed tray there would sit on top of
 // the two controls that screen exists for. The fixed one hides itself while cook
 // mode is open (see `.rb-tray` in the stylesheet).
-export function TimerTray({ inline = false }) {
+// "Open recipe" on a finished timer: acknowledges it (it stops asking for you),
+// closes the list if that is where the press came from, and goes to the recipe.
+function useOpenRecipe() {
+  const { stop, setListOpen } = useTimers()
+  return (timer) => {
+    stop(timer.id)
+    setListOpen(false)
+    openRecipe(timer.recipeId)
+  }
+}
+
+// `current` is the recipe already on screen under this tray, if any. A finished
+// timer for that recipe has nowhere to take you, so it only offers Dismiss.
+export function TimerTray({ inline = false, current = null }) {
   const { timers, now, stop, listOpen, setListOpen } = useTimers()
+  const open = useOpenRecipe()
   // The fixed copy steps aside while the list is open: it would be drawn over
   // the list showing the same timer.
   if (timers.length === 0 || (!inline && listOpen)) return null
@@ -37,7 +51,13 @@ export function TimerTray({ inline = false }) {
   const lead = timers[0]
   const due = isDue(lead, now)
   const more = timers.length - 1
-  const cls = ['timer-tray', inline ? 'timer-tray-inline' : 'rb-tray', due ? 'timer-tray-ringing' : '']
+  const canOpen = due && Boolean(lead.recipeId) && lead.recipeId !== current
+  const cls = [
+    'timer-tray',
+    inline ? 'timer-tray-inline' : 'rb-tray',
+    due ? 'timer-tray-ringing' : '',
+    canOpen ? 'timer-tray-two' : '',
+  ]
     .filter(Boolean)
     .join(' ')
 
@@ -58,14 +78,23 @@ export function TimerTray({ inline = false }) {
           </span>
         </span>
       </button>
-      <button
-        type="button"
-        className="timer-tray-stop"
-        aria-label={due ? 'Dismiss finished timer' : 'Stop this timer'}
-        onClick={() => stop(lead.id)}
-      >
-        {due ? 'Dismiss' : 'Stop'}
-      </button>
+      {/* Both options on one row below the text, so each is a full-width target
+          rather than two squeezed beside the clock. */}
+      <div className={canOpen ? 'timer-tray-actions' : 'timer-tray-actions timer-tray-actions-one'}>
+        {canOpen && (
+          <button type="button" className="timer-tray-stop" onClick={() => open(lead)}>
+            Open recipe
+          </button>
+        )}
+        <button
+          type="button"
+          className="timer-tray-stop"
+          aria-label={due ? 'Dismiss finished timer' : 'Stop this timer'}
+          onClick={() => stop(lead.id)}
+        >
+          {due ? 'Dismiss' : 'Stop'}
+        </button>
+      </div>
     </div>
   )
 }
@@ -88,6 +117,7 @@ export function TimersButton() {
 
 export function TimersSheet() {
   const { timers, now, start, stop, full, listOpen, setListOpen } = useTimers()
+  const open = useOpenRecipe()
   const [name, setName] = useState('')
   const [minutes, setMinutes] = useState('')
   const [error, setError] = useState('')
@@ -123,9 +153,16 @@ export function TimersSheet() {
                   <span className="timers-row-clock">{due ? "Time's up" : formatClock(secondsLeft(t, now))}</span>
                   <span className="timers-row-label">{describe(t)}</span>
                 </span>
-                <button type="button" className="btn btn-secondary btn-sm" onClick={() => stop(t.id)}>
-                  {due ? 'Dismiss' : 'Stop'}
-                </button>
+                <span className="timers-row-actions">
+                  {due && t.recipeId && (
+                    <button type="button" className="btn btn-primary btn-sm" onClick={() => open(t)}>
+                      Open recipe
+                    </button>
+                  )}
+                  <button type="button" className="btn btn-secondary btn-sm" onClick={() => stop(t.id)}>
+                    {due ? 'Dismiss' : 'Stop'}
+                  </button>
+                </span>
               </li>
             )
           })}

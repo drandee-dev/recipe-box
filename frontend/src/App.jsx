@@ -16,6 +16,7 @@ import CaptureSheet from './components/CaptureSheet.jsx'
 import InstallPrompt from './components/InstallPrompt.jsx'
 import { FeedbackSheet, NewsBanner, WhatsNewSheet } from './components/News.jsx'
 import { TimerTray, TimersButton, TimersSheet } from './components/Timers.jsx'
+import { OPEN_RECIPE_EVENT } from './lib/useTimers.jsx'
 import { latestNews, markNewsSeen, newsSeen } from './lib/news.js'
 import Planner from './components/Planner.jsx'
 import RecipeEditor from './components/RecipeEditor.jsx'
@@ -617,6 +618,21 @@ export default function App() {
     setFavoritesOnly(false)
   }
 
+  // "Open recipe" on a finished timer (components/Timers.jsx). Filters are
+  // cleared first: the list only opens a recipe it is currently showing, so a
+  // search left in the box would swallow the jump.
+  useEffect(() => {
+    function onOpenRecipe(e) {
+      setTab('recipes')
+      setQuery('')
+      setActiveTags([])
+      setFavoritesOnly(false)
+      setOpenId(e.detail)
+    }
+    window.addEventListener(OPEN_RECIPE_EVENT, onOpenRecipe)
+    return () => window.removeEventListener(OPEN_RECIPE_EVENT, onOpenRecipe)
+  }, [])
+
   async function handleDelete(id) {
     try {
       await store.remove(id)
@@ -1028,7 +1044,7 @@ export default function App() {
       {/* After every other sheet in the tree, so the list opens on top of a
           recipe or cook mode rather than behind it. */}
       <TimersSheet />
-      <TimerTray />
+      <TimerTray current={openId} />
 
       <TabBar tab={tab} onChange={setTab} />
     </div>
