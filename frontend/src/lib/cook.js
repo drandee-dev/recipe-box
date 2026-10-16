@@ -22,33 +22,73 @@ function unitSeconds(word) {
 // failure this is trying to avoid.
 const DURATION = /(\d+(?:\.\d+)?)\s*(?:(?:-|–|—|to)\s*(\d+(?:\.\d+)?)\s*)?(hours?|hrs?|minutes?|mins?|seconds?|secs?)\b/gi
 
-// The *first* duration in the step, not the longest. A step reads in order, and
-// the first number is the one you are about to act on: "fry for 2 minutes, then
-// simmer for 20" starts with two minutes on the clock, and the 20 arrives as its
-// own step or as a second press.
+// Between "1 hr" and "30 min" there may be nothing, a space, "and" or a comma.
+const JOINER = /^\s*(?:,\s*|and\s+)?$/i
+
+// Every duration in the step, in reading order. "Brown the butter 6-8 minutes
+// and cool 15 minutes" is two timers; it used to offer only the first, which
+// left the cooling to be remembered.
 //
 // A range takes its LOW end, unlike everything else here that reads ranges —
 // "bake 25-30 minutes" means look at it at 25. A timer that fires at the high
 // end has already let it go too far, and the whole point is to come back and
 // check. This is the opposite choice from the shopping list's low-end rule for
 // the same underlying reason: pick the end where being wrong is recoverable.
-export function parseDuration(step) {
+//
+// "1 hr 30 min" is ONE duration, not two. Left as two it offered a one-hour
+// timer and a thirty-minute one and a cook would trust whichever they tapped.
+export function findDurations(step) {
   const text = String(step ?? '')
+  const found = []
   DURATION.lastIndex = 0
-  const match = DURATION.exec(text)
-  if (!match) return null
-
-  const unit = unitSeconds(match[3])
-  if (unit === null) return null
-  const seconds = Math.round(Number(match[1]) * unit)
-  if (!Number.isFinite(seconds) || seconds <= 0) return null
-
+  for (let match = DURATION.exec(text); match; match = DURATION.exec(text)) {
+    const unit = unitSeconds(match[3])
+    const seconds = Math.round(Number(match[1]) * (unit ?? 0))
+    if (!unit || !Number.isFinite(seconds) || seconds <= 0) continue
+    const item = {
+      start: match.index,
+      end: match.index + match[0].length,
+      seconds,
+      unit,
+      range: match[2] !== undefined,
+    }
+    const prev = found[found.length - 1]
+    // Hours then minutes (or minutes then seconds), and neither a range.
+    if (
+      prev &&
+      !prev.range &&
+      !item.range &&
+      prev.unit > item.unit &&
+      JOINER.test(text.slice(prev.end, item.start))
+    ) {
+      prev.end = item.end
+      prev.seconds += seconds
+      prev.unit = item.unit
+    } else {
+      found.push(item)
+    }
+  }
   // A step naming a whole day is describing a rest, not something to stand and
   // wait for, and a countdown that cannot survive the phone locking should not
   // claim it can. Four hours is already generous for a screen kept awake.
-  if (seconds > 4 * 3600) return null
+  return found
+    .filter((d) => d.seconds <= 4 * 3600)
+    .map(({ start, end, seconds }) => ({ start, end, seconds, label: text.slice(start, end).trim() }))
+}
 
-  return { seconds, label: match[0].trim() }
+// The step as pieces: plain text, and the durations in it as `{ text, seconds }`
+// so a screen can make each one tappable and still print the step verbatim.
+export function splitDurations(step) {
+  const text = String(step ?? '')
+  const pieces = []
+  let at = 0
+  for (const d of findDurations(text)) {
+    if (d.start > at) pieces.push({ text: text.slice(at, d.start) })
+    pieces.push({ text: text.slice(d.start, d.end), seconds: d.seconds })
+    at = d.end
+  }
+  if (at < text.length) pieces.push({ text: text.slice(at) })
+  return pieces
 }
 
 // mm:ss, or h:mm:ss once there is an hour on the clock. Padded so the digits

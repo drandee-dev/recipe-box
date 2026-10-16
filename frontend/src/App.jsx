@@ -15,6 +15,7 @@ import Account from './components/Account.jsx'
 import CaptureSheet from './components/CaptureSheet.jsx'
 import InstallPrompt from './components/InstallPrompt.jsx'
 import { FeedbackSheet, NewsBanner, WhatsNewSheet } from './components/News.jsx'
+import { TimerTray, TimersButton, TimersSheet } from './components/Timers.jsx'
 import { latestNews, markNewsSeen, newsSeen } from './lib/news.js'
 import Planner from './components/Planner.jsx'
 import RecipeEditor from './components/RecipeEditor.jsx'
@@ -816,11 +817,14 @@ export default function App() {
               <span className="rb-stage-badge">Staging</span>
             )}
           </div>
-          <Account
-            session={session}
-            onWhatsNew={() => setNewsSheet('whatsnew')}
-            onFeedback={() => setNewsSheet('feedback')}
-          />
+          <div className="rb-header-actions">
+            <TimersButton />
+            <Account
+              session={session}
+              onWhatsNew={() => setNewsSheet('whatsnew')}
+              onFeedback={() => setNewsSheet('feedback')}
+            />
+          </div>
         </div>
       </header>
 
@@ -1020,6 +1024,11 @@ export default function App() {
       {/* One card at a time: the install card waits until the news is closed,
           or the Recipes tab opens with a notice at each end of the list. */}
       <InstallPrompt ready={recipes.length > 0 && newsClosed} />
+
+      {/* After every other sheet in the tree, so the list opens on top of a
+          recipe or cook mode rather than behind it. */}
+      <TimersSheet />
+      <TimerTray />
 
       <TabBar tab={tab} onChange={setTab} />
     </div>
