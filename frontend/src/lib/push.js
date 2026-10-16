@@ -131,17 +131,26 @@ export async function resyncPush(timers) {
   }
 }
 
-// Mirror a started timer. Only once alerts are on: a signed-out or denied user
+// Only a timer still counting down is worth a push. One that already rang was
+// deleted from the server on purpose (so it never alerts twice), and mirroring it
+// again on the next app load would put it straight back with a past due time, for
+// the cron to send as an alert for something the user already saw.
+export function mirrorable(timers, now = Date.now()) {
+  return timers.filter((t) => !t.rang && t.endsAt > now)
+}
+
+// Mirror running timers. Only once alerts are on: a signed-out or denied user
 // has nothing to send to.
 export async function mirrorTimers(timers) {
   try {
-    if (currentPushState(true) !== 'on' || timers.length === 0) return
+    const live = mirrorable(timers)
+    if (currentPushState(true) !== 'on' || live.length === 0) return
     const ctx = await client()
     if (!ctx) return
     await ctx.supabase
       .from('cook_timers')
       .upsert(
-        timers.map((t) => timerRow(t, window.location.origin)),
+        live.map((t) => timerRow(t, window.location.origin)),
         { onConflict: 'user_id,client_id', ignoreDuplicates: true },
       )
   } catch {

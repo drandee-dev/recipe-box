@@ -276,7 +276,12 @@ def _deliver(row: dict, out: dict) -> bool | None:
             _send(sub, payload)
             delivered += 1
         except Gone:
-            _drop_subscription(sub["id"])
+            # Housekeeping only. If the cleanup itself fails it must not turn a
+            # row that another subscription already delivered into a retry.
+            try:
+                _drop_subscription(sub["id"])
+            except Exception:  # noqa: BLE001
+                log.exception("could not remove a dead subscription")
         except Exception:  # noqa: BLE001 - one bad endpoint must not stop the rest
             log.exception("push send failed")
     if delivered:

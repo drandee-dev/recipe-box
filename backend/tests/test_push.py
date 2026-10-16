@@ -226,6 +226,24 @@ class FireDue(unittest.TestCase):
         self.assertEqual(sent, ["s1"])
         self.assertEqual(out["sent"], 1)
 
+    def test_a_failed_cleanup_does_not_turn_a_delivered_row_into_a_retry(self):
+        good = {**SUB, "id": "s2"}
+
+        def send(sub):
+            if sub["id"] == "s1":
+                raise push.Gone
+
+        with patch.object(push, "_due_rows", return_value=[row()]), patch.object(
+            push, "_claim", return_value=True
+        ), patch.object(push, "_subscriptions", return_value=[SUB, good]), patch.object(
+            push, "_send", side_effect=lambda s, p: send(s)
+        ), patch.object(
+            push, "_drop_subscription", side_effect=RuntimeError("db down")
+        ), patch.object(push, "_release") as release:
+            out = push.fire_due(NOW)
+        self.assertEqual(out["sent"], 1)
+        release.assert_not_called()
+
     def test_one_failing_endpoint_does_not_stop_the_others(self):
         good = {**SUB, "id": "s2"}
 

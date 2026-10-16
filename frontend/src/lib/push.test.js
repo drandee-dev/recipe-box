@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { pushState, timerRow, urlBase64ToBytes } from './push.js'
+import { mirrorable, pushState, timerRow, urlBase64ToBytes } from './push.js'
 
 const ready = { supported: true, ios: true, standalone: true, hasKey: true, signedIn: true, permission: 'default' }
 
@@ -38,6 +38,16 @@ test('a timer added by hand links to the app and has no recipe title', () => {
   assert.equal(row.open_url, 'https://x.test/')
   assert.equal(row.label, null)
   assert.equal(row.recipe_title, null)
+})
+
+test('mirrorable leaves out a timer that already rang or is already due', () => {
+  const now = 1_000_000
+  const live = { id: 'a', endsAt: now + 5000, rang: false }
+  const rang = { id: 'b', endsAt: now + 5000, rang: true }
+  const pastDue = { id: 'c', endsAt: now - 1, rang: false }
+  const exactlyNow = { id: 'd', endsAt: now, rang: false }
+  assert.deepEqual(mirrorable([live, rang, pastDue, exactlyNow], now).map((t) => t.id), ['a'])
+  assert.deepEqual(mirrorable([], now), [])
 })
 
 test('urlBase64ToBytes decodes URL-safe base64 with and without padding', () => {
