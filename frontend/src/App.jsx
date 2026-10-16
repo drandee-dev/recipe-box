@@ -14,6 +14,8 @@ import { PULL_MIN_SPIN, PULL_TRIGGER, usePullToRefresh } from './lib/usePullToRe
 import Account from './components/Account.jsx'
 import CaptureSheet from './components/CaptureSheet.jsx'
 import InstallPrompt from './components/InstallPrompt.jsx'
+import { FeedbackSheet, NewsBanner, WhatsNewSheet } from './components/News.jsx'
+import { latestNews, markNewsSeen, newsSeen } from './lib/news.js'
 import Planner from './components/Planner.jsx'
 import RecipeEditor from './components/RecipeEditor.jsx'
 import RecipeList from './components/RecipeList.jsx'
@@ -90,6 +92,11 @@ export default function App() {
   const [savedPartial, setSavedPartial] = useState(false)
   const [importing, setImporting] = useState(false)
   const [captureOpen, setCaptureOpen] = useState(false)
+  // The newest news entry, hidden once closed (lib/news.js remembers its id).
+  // newsSheet is which of its two sheets is up: 'whatsnew', 'feedback' or null.
+  const [news] = useState(latestNews)
+  const [newsClosed, setNewsClosed] = useState(() => !news || newsSeen(news.id))
+  const [newsSheet, setNewsSheet] = useState(null)
   const [pasteOpen, setPasteOpen] = useState(false)
   const [pasteText, setPasteText] = useState('')
   // `{ base64, preview, width, height }` from lib/photo.js, or null. Held here
@@ -804,7 +811,11 @@ export default function App() {
       <header className="rb-header">
         <div className="rb-header-row">
           <h1 className="rb-wordmark">Recipe Box</h1>
-          <Account session={session} />
+          <Account
+            session={session}
+            onWhatsNew={() => setNewsSheet('whatsnew')}
+            onFeedback={() => setNewsSheet('feedback')}
+          />
         </div>
       </header>
 
@@ -826,6 +837,25 @@ export default function App() {
 
       {tab === 'recipes' && (
         <main className="rb-main">
+          {/* Below every notice about something that just happened: news can
+              wait a screen, a share that's saving or a recipe just saved can't. */}
+          {!newsClosed && !offline && !fromShare && !savedTitle && !shareNotice && (
+            <NewsBanner
+              entry={news}
+              onWhatsNew={() => setNewsSheet('whatsnew')}
+              onFeedback={() => setNewsSheet('feedback')}
+              onDismiss={(e) => {
+                markNewsSeen(news.id)
+                setNewsClosed(true)
+                // The button is about to vanish, which drops focus to <body>.
+                // Hand it to the list it sat above instead; not the search
+                // field, which would open the keyboard on a phone.
+                const main = e.currentTarget.closest('main')
+                main?.setAttribute('tabindex', '-1')
+                main?.focus({ preventScroll: true })
+              }}
+            />
+          )}
           {fromShare && importing && (
             <p className="rb-notice">Saving the shared link…</p>
           )}
@@ -975,7 +1005,16 @@ export default function App() {
         />
       )}
 
-      <InstallPrompt ready={recipes.length > 0} />
+      {newsSheet === 'whatsnew' && (
+        <WhatsNewSheet onClose={() => setNewsSheet(null)} onFeedback={() => setNewsSheet('feedback')} />
+      )}
+      {newsSheet === 'feedback' && (
+        <FeedbackSheet signedIn={Boolean(userId)} onClose={() => setNewsSheet(null)} />
+      )}
+
+      {/* One card at a time: the install card waits until the news is closed,
+          or the Recipes tab opens with a notice at each end of the list. */}
+      <InstallPrompt ready={recipes.length > 0 && newsClosed} />
 
       <TabBar tab={tab} onChange={setTab} />
     </div>

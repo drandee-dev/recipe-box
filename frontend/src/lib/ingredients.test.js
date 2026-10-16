@@ -369,3 +369,22 @@ test('only the leading quantity is scaled, never a number inside the line', () =
   assert.equal(scaleIngredientText('1 (14 oz) can chickpeas', 2), '2 (14 oz) can chickpeas')
   assert.equal(scaleIngredientText('2 tbsp soy sauce plus 1 tsp more', 2), '4 tbsp soy sauce plus 1 tsp more')
 })
+
+test('a measure in brackets right after the unit is the same amount again, so it scales too', () => {
+  // Found live 2026-10-16: doubling "1 cup (200g) sugar" showed "2 cup (200g)",
+  // a wrong weight on screen. Metric amounts are whole numbers, never
+  // fractions of a gram (one decimal under ten, below).
+  assert.equal(scaleIngredientText('1 cup (200g) sugar', 2), '2 cup (400g) sugar')
+  assert.equal(scaleIngredientText('1 cup (240 ml) milk', 1.5), '1 1/2 cup (360 ml) milk')
+  assert.equal(scaleIngredientText('8 oz (225g) cream cheese', 1.5), '12 oz (338g) cream cheese')
+  assert.equal(scaleIngredientText('1 lb (1/2 kg) beef', 2), '2 lb (1 kg) beef')
+  // Small metric amounts keep a decimal instead of rounding away to nothing.
+  assert.equal(scaleIngredientText('1/4 tsp (1 g) salt', 0.25), '0.06 tsp (0.3 g) salt')
+  assert.equal(scaleIngredientText('1 tsp (5 ml) vanilla', 0.5), '1/2 tsp (2.5 ml) vanilla')
+})
+
+test('a bracket after a container or straight after the number is a size, and stays', () => {
+  assert.equal(scaleIngredientText('1 can (400 g) tomatoes', 2), '2 can (400 g) tomatoes')
+  assert.equal(scaleIngredientText('2 (14 oz) cans tomatoes', 2), '4 (14 oz) cans tomatoes')
+  assert.equal(scaleIngredientText('1 cup (packed) brown sugar', 2), '2 cup (packed) brown sugar')
+})

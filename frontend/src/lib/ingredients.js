@@ -316,6 +316,37 @@ function amountValue(token) {
   return value
 }
 
+// A weight or volume in brackets straight after the measuring unit restates the
+// same amount ("1 cup (200g) sugar"), so it has to scale with it; left alone, a
+// doubled recipe shows the original weight. A bracket after a container or
+// straight after the number is the size of each one ("1 can (400 g)",
+// "2 (14 oz) cans") and must not scale. Both words are checked against the
+// measures, so "(packed)" or "(optional)" never match.
+const MEASURES = new Set(['cup', 'tbsp', 'tsp', 'oz', 'lb', 'g', 'kg', 'ml', 'l', 'quart', 'pint', 'gallon'])
+const METRIC = new Set(['g', 'ml'])
+const BRACKETED = new RegExp(`^(\\s*([A-Za-z]+)\\.?\\s*\\(\\s*)(${AMOUNT})(\\s*([A-Za-z]+)\\.?\\s*\\))`)
+
+// Nobody weighs 337 1/2 g, so grams and millilitres are whole numbers. Under
+// ten they keep one decimal, or a quartered "1 g" would round away to "0 g".
+function formatMetric(value) {
+  return value >= 10 ? String(Math.round(value)) : String(Math.round(value * 10) / 10)
+}
+
+function measureOf(word) {
+  const unit = UNIT_LOOKUP.get(word.toLowerCase())
+  return MEASURES.has(unit) ? unit : null
+}
+
+function scaleBracketed(rest, factor) {
+  const match = rest.match(BRACKETED)
+  if (!match || !measureOf(match[2])) return rest
+  const unit = measureOf(match[5])
+  const value = unit ? amountValue(match[3]) : null
+  if (value === null) return rest
+  const scaled = METRIC.has(unit) ? formatMetric(value * factor) : formatQuantity(value * factor, null)
+  return `${match[1]}${scaled}${match[4]}${rest.slice(match[0].length)}`
+}
+
 export function scaleIngredientText(raw, factor) {
   const text = String(raw ?? '')
   if (!Number.isFinite(factor) || factor <= 0 || factor === 1) return text
@@ -335,7 +366,7 @@ export function scaleIngredientText(raw, factor) {
     amount += `${match[3]}${formatQuantity(high * factor, null)}`
   }
 
-  return `${match[1]}${amount}${text.slice(match[0].length)}`
+  return `${match[1]}${amount}${scaleBracketed(text.slice(match[0].length), factor)}`
 }
 
 // Recipes that came through the AI structurer already carry item/qty/unit, so

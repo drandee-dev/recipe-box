@@ -995,6 +995,111 @@ textarea.field {
   cursor: default;
 }
 
+/* News: the info triplet, like the offline notice, because nothing is wrong
+   and nothing needs doing. It stacks rather than sitting in one row like the
+   other notices: it carries a heading, a sentence and two actions. The close
+   button sits in the corner, so the text keeps its right padding clear of it. */
+.rb-news {
+  position: relative;
+  margin: var(--sp-3) 0 0;
+  padding: var(--sp-3) calc(44px + var(--sp-2)) var(--sp-3) var(--sp-4);
+  border: 1px solid var(--info-line);
+  border-radius: var(--r-sm);
+  background: var(--info-bg);
+  color: var(--info-ink);
+}
+
+.rb-news-title {
+  margin: 0;
+  text-wrap: balance;
+  font-family: 'Clash Display', 'Satoshi', sans-serif;
+  font-size: var(--fs-md);
+  font-weight: 600;
+}
+
+.rb-news-body {
+  margin: var(--sp-1) 0 0;
+  font-size: var(--fs-sm);
+  line-height: 1.45;
+}
+
+.rb-news-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2) var(--sp-4);
+  margin-top: var(--sp-3);
+}
+
+.rb-news-link,
+.rb-news-close {
+  color: var(--info-ink);
+}
+
+.rb-news-close {
+  position: absolute;
+  top: 0;
+  right: 0;
+}
+
+.rb-whatsnew {
+  margin: 0 0 var(--sp-6);
+  padding: 0;
+  list-style: none;
+}
+
+.rb-whatsnew-entry + .rb-whatsnew-entry {
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-6);
+  border-top: 1px solid var(--line);
+}
+
+.rb-whatsnew-title {
+  margin: 0;
+  text-wrap: balance;
+  font-family: 'Clash Display', 'Satoshi', sans-serif;
+  font-size: var(--fs-lg);
+  font-weight: 600;
+}
+
+.rb-whatsnew-date {
+  margin: var(--sp-1) 0 0;
+  color: var(--txt-2);
+  font-size: var(--fs-sm);
+}
+
+.rb-whatsnew-body,
+.rb-whatsnew-notes {
+  margin: var(--sp-3) 0 0;
+  line-height: 1.5;
+}
+
+.rb-whatsnew-notes {
+  padding-left: var(--sp-6);
+}
+
+.rb-whatsnew-notes li + li {
+  margin-top: var(--sp-2);
+}
+
+.rb-whatsnew-version {
+  margin: var(--sp-3) 0 0;
+  color: var(--txt-2);
+  font-size: var(--fs-sm);
+  text-align: center;
+}
+
+.rb-feedback-meta {
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-3);
+}
+
+.rb-feedback-sent {
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-md);
+}
+
 /* Sticky rather than fixed: in flow it reserves its own space, so it can never
    sit on top of the last recipe in the list, and it still pins to the bottom of
    the screen while there is anything below it. It pins above the tab bar rather

@@ -130,3 +130,28 @@ create policy "own shopping items" on shopping_items
 create index if not exists recipes_user_idx on recipes (user_id, created_at desc);
 create index if not exists meal_plan_user_date_idx on meal_plan (user_id, plan_date);
 create index if not exists shopping_user_week_idx on shopping_items (user_id, week_start);
+
+-- 1.0.1: ideas and bug reports sent from the app (components/News.jsx).
+-- Insert-only from the client: a signed-in user can file a report under their
+-- own id, and there is deliberately no select, update or delete policy, so
+-- nobody reads reports through the API, their own included. Andres reads them
+-- in the Supabase table editor, which bypasses RLS. The checks cap what one
+-- insert can store, since the client is the only thing in front of this table.
+create table if not exists feedback (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  kind text not null check (kind in ('idea', 'bug')),
+  body text not null check (char_length(body) between 1 and 2000),
+  app_version text check (char_length(app_version) <= 40),
+  user_agent text check (char_length(user_agent) <= 400),
+  created_at timestamptz not null default now()
+);
+
+alter table feedback enable row level security;
+
+drop policy if exists "file own feedback" on feedback;
+create policy "file own feedback" on feedback
+  for insert to authenticated
+  with check (auth.uid() = user_id);
+
+create index if not exists feedback_created_idx on feedback (created_at desc);

@@ -22,6 +22,7 @@
 import { useState } from 'react'
 import Sheet from './Sheet.jsx'
 import { getSupabase, supabaseEnabled } from '../lib/supabase.js'
+import { APP_VERSION } from '../lib/news.js'
 
 const REMEMBER_EMAIL_KEY = 'recipebox:rememberedEmail'
 const REMEMBER_ME_KEY = 'recipebox:rememberMe'
@@ -61,7 +62,7 @@ const EMAIL_FIELD = {
   placeholder: 'your@email.com',
 }
 
-export default function Account({ session }) {
+export default function Account({ session, onWhatsNew, onFeedback }) {
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState('signin') // signin | signup | magic | forgot
   const [email, setEmail] = useState(() => localStorage.getItem(REMEMBER_EMAIL_KEY) || '')
@@ -97,6 +98,12 @@ export default function Account({ session }) {
     setStatus('')
     setMode('signin')
     setSettingPassword(false)
+  }
+
+  // Close this sheet, then open the other, rather than stacking two sheets.
+  function handOff(open) {
+    close()
+    open?.()
   }
 
   async function signOut() {
@@ -305,6 +312,12 @@ export default function Account({ session }) {
               </form>
             ) : (
               <div className="account-actions">
+                <button type="button" className="btn btn-secondary btn-block" onClick={() => handOff(onFeedback)}>
+                  Send feedback
+                </button>
+                <button type="button" className="btn btn-secondary btn-block" onClick={() => handOff(onWhatsNew)}>
+                  What's new
+                </button>
                 <button
                   type="button"
                   className="btn btn-secondary btn-block"
@@ -330,6 +343,7 @@ export default function Account({ session }) {
                 {status}
               </p>
             )}
+            <p className="rb-whatsnew-version">Version {APP_VERSION}</p>
           </Sheet>
         )}
       </>
@@ -471,8 +485,12 @@ export default function Account({ session }) {
                   Email me a link instead
                 </button>
               )}
+              <button type="button" className="btn btn-quiet" onClick={() => handOff(onWhatsNew)}>
+                What's new
+              </button>
             </p>
           </form>
+          <p className="rb-whatsnew-version">Version {APP_VERSION}</p>
         </Sheet>
       )}
     </>
