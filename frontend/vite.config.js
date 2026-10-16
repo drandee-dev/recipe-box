@@ -2,9 +2,18 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Set only on the staging branch's Vercel scope. Staging installs as its own
+// home-screen app, so it needs its own name on the icon and in the manifest.
+const staging = process.env.VITE_APP_STAGE === 'staging'
+
 export default defineConfig({
   plugins: [
     react(),
+    {
+      name: 'stage-title',
+      transformIndexHtml: (html) =>
+        staging ? html.replace('title" content="Recipes"', 'title" content="Recipes β"') : html,
+    },
     VitePWA({
       registerType: 'autoUpdate',
       // src/lib/pwa.js imports virtual:pwa-register and registers the worker
@@ -41,8 +50,8 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: 'Recipe Box',
-        short_name: 'Recipes',
+        name: staging ? 'Recipe Box β' : 'Recipe Box',
+        short_name: staging ? 'Recipes β' : 'Recipes',
         description: 'Save recipes from anywhere, plan the week',
         theme_color: '#1c7c54',
         background_color: '#ffffff',

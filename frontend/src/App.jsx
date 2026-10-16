@@ -810,7 +810,12 @@ export default function App() {
       </div>
       <header className="rb-header">
         <div className="rb-header-row">
-          <h1 className="rb-wordmark">Recipe Box</h1>
+          <div className="rb-brand">
+            <h1 className="rb-wordmark">Recipe Box</h1>
+            {import.meta.env.VITE_APP_STAGE === 'staging' && (
+              <span className="rb-stage-badge">Staging</span>
+            )}
+          </div>
           <Account
             session={session}
             onWhatsNew={() => setNewsSheet('whatsnew')}

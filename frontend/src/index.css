@@ -386,6 +386,25 @@ textarea.field {
   letter-spacing: calc(var(--wm-size) * -0.018);
 }
 
+.rb-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+/* Only built when VITE_APP_STAGE=staging, so the second home-screen app can't
+   be mistaken for the live one. Saffron: it states a fact, it isn't an action. */
+.rb-stage-badge {
+  padding: 2px 8px;
+  border: 1px solid var(--saffron);
+  border-radius: 999px;
+  color: var(--saffron);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .rb-header-row {
   display: flex;
   align-items: center;
