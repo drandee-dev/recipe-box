@@ -28,6 +28,7 @@ import hmac
 import json
 import logging
 import os
+from urllib.parse import urlsplit
 
 import httpx
 
@@ -38,9 +39,39 @@ log = logging.getLogger("recipe.push")
 TIMEOUT = 5.0
 BATCH = 50
 STALE_SECONDS = 600
+# A row whose sends all failed is given back for the next tick only while it is
+# this fresh. A failing row would otherwise be retried every ten seconds for the
+# whole stale window and hold a place in every batch behind it.
+RETRY_WINDOW_SECONDS = 60
+# Nobody has more than a few phones, and anything beyond this is a table someone
+# filled to make the loop slow. Rows left over wait for the next tick.
+MAX_ROWS_PER_USER = 5
+MAX_SUBS_PER_ROW = 5
 # How long the push service may hold the message if the phone is unreachable. A
 # timer alert after this is worthless, so it is short.
 TTL_SECONDS = 300
+
+# Where a push may be sent. The endpoint is a URL the *client* wrote, and sign-in
+# is open to anyone, so without this the API would POST a signed request to any
+# address a user chose, internal ones included. These are the push services the
+# browsers actually use; Apple's is the one this app is for.
+_PUSH_HOSTS = ("fcm.googleapis.com", "updates.push.services.mozilla.com", "web.push.apple.com")
+_PUSH_SUFFIXES = (".push.apple.com", ".push.services.mozilla.com", ".notify.windows.com")
+
+
+def allowed_endpoint(endpoint: str) -> bool:
+    try:
+        u = urlsplit(endpoint)
+        host = (u.hostname or "").lower()
+        port = u.port
+    except ValueError:
+        return False
+    return (
+        u.scheme == "https"
+        and u.username is None
+        and port in (None, 443)
+        and (host in _PUSH_HOSTS or host.endswith(_PUSH_SUFFIXES))
+    )
 
 
 def secret_configured() -> bool:
@@ -78,16 +109,25 @@ def _rest(path: str) -> tuple[str, dict] | None:
     return f"{url}/rest/v1/{path}", supabase.headers(key)
 
 
+def _due_params(now: dt.datetime) -> dict:
+    # Passed as `params=`, never spliced into the URL: an ISO timestamp ends in
+    # "+00:00", and a raw "+" in a query string is read as a space by PostgREST,
+    # which then rejects the timestamp. The query failed on every tick and no
+    # alert could ever fire. usage.py gets this right the same way.
+    return {
+        "sent_at": "is.null",
+        "ends_at": f"lte.{_iso(now)}",
+        "select": "id,user_id,client_id,label,recipe_title,open_url,ends_at",
+        "order": "ends_at.asc",
+        "limit": str(BATCH),
+    }
+
+
 def _due_rows(now: dt.datetime) -> list[dict]:
-    target = _rest(
-        "cook_timers?sent_at=is.null"
-        f"&ends_at=lte.{_iso(now)}"
-        "&select=id,user_id,client_id,label,recipe_title,open_url,ends_at"
-        f"&order=ends_at.asc&limit={BATCH}"
-    )
+    target = _rest("cook_timers")
     if target is None:
         return []
-    resp = httpx.get(target[0], headers=target[1], timeout=TIMEOUT)
+    resp = httpx.get(target[0], headers=target[1], params=_due_params(now), timeout=TIMEOUT)
     resp.raise_for_status()
     rows = resp.json()
     return rows if isinstance(rows, list) else []
@@ -133,6 +173,12 @@ class Gone(Exception):
 
 
 def _send(sub: dict, payload: str) -> None:
+    # Checked here, at the one place a request leaves, as well as being the natural
+    # thing for a table constraint to say: an address that is not a push service is
+    # treated as a dead subscription and removed, and nothing is sent to it.
+    if not allowed_endpoint(sub["endpoint"]):
+        raise Gone
+
     from pywebpush import WebPushException, webpush
 
     try:
@@ -165,46 +211,74 @@ def payload_for(row: dict) -> str:
         "body": f"{label} · {recipe}" if recipe else label,
         "silent": False,
     }
+    if row.get("client_id"):
+        notification["tag"] = str(row["client_id"])[:80]
     url = row.get("open_url") or ""
     # Only a plain https link back into the app. The column is user-written, and
     # while it can only ever reach that user's own phone, a payload should not be
     # a place to put javascript: or data: URLs either.
     if url.startswith("https://") and len(url) <= 500:
+        # `navigate` is what makes a payload declarative at all, so it is only
+        # claimed with one.
         notification["navigate"] = url
-    if row.get("client_id"):
-        notification["tag"] = str(row["client_id"])[:80]
-    return json.dumps({"web_push": 8030, "notification": notification})
+        return json.dumps({"web_push": 8030, "notification": notification})
+    # No usable link: send it as a plain notification for the worker to show
+    # (public/push-sw.js) rather than as a declarative one iOS may discard.
+    return json.dumps({"notification": notification})
 
 
 def fire_due(now: dt.datetime | None = None) -> dict:
     """Send every due alert once. Returns counts, which is also the log line."""
     now = now or dt.datetime.now(dt.timezone.utc)
-    out = {"due": 0, "sent": 0, "stale": 0, "no_subscription": 0, "failed": 0}
+    out = {"due": 0, "sent": 0, "stale": 0, "no_subscription": 0, "failed": 0, "deferred": 0}
+    per_user: dict[str, int] = {}
     for row in _due_rows(now):
         out["due"] += 1
+        # One user cannot fill a batch: the rest of their rows wait for the next
+        # tick, unclaimed, and everyone else's go first.
+        per_user[row["user_id"]] = per_user.get(row["user_id"], 0) + 1
+        if per_user[row["user_id"]] > MAX_ROWS_PER_USER:
+            out["deferred"] += 1
+            continue
         if not _claim(row["id"], now):
             continue  # another run has it
         due_at = dt.datetime.fromisoformat(row["ends_at"].replace("Z", "+00:00"))
-        if (now - due_at).total_seconds() > STALE_SECONDS:
+        age = (now - due_at).total_seconds()
+        if age > STALE_SECONDS:
             out["stale"] += 1
             continue
-        subs = _subscriptions(row["user_id"])
-        if not subs:
-            out["no_subscription"] += 1
-            continue
-        payload = payload_for(row)
-        delivered = 0
-        for sub in subs:
-            try:
-                _send(sub, payload)
-                delivered += 1
-            except Gone:
-                _drop_subscription(sub["id"])
-            except Exception:  # noqa: BLE001 - one bad endpoint must not stop the rest
-                log.exception("push send failed")
-        if delivered:
-            out["sent"] += 1
-        else:
-            out["failed"] += 1
-            _release(row["id"])
+        # Anything that goes wrong after the claim must hand the row back, or it
+        # is claimed, unsent and forgotten, and the rest of the batch with it.
+        try:
+            delivered = _deliver(row, out)
+        except Exception:  # noqa: BLE001
+            log.exception("push fire failed for a row")
+            delivered = None
+        if delivered is False or delivered is None:
+            if delivered is False:
+                out["failed"] += 1
+            if age <= RETRY_WINDOW_SECONDS:
+                _release(row["id"])
     return out
+
+
+def _deliver(row: dict, out: dict) -> bool | None:
+    """True when at least one send landed, False when every send failed, None when
+    there was nothing to send to (no retry will change that)."""
+    subs = _subscriptions(row["user_id"])[:MAX_SUBS_PER_ROW]
+    if not subs:
+        out["no_subscription"] += 1
+        return True
+    payload = payload_for(row)
+    delivered = 0
+    for sub in subs:
+        try:
+            _send(sub, payload)
+            delivered += 1
+        except Gone:
+            _drop_subscription(sub["id"])
+        except Exception:  # noqa: BLE001 - one bad endpoint must not stop the rest
+            log.exception("push send failed")
+    if delivered:
+        out["sent"] += 1
+    return delivered > 0

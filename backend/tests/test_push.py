@@ -12,6 +12,8 @@ import sys
 import unittest
 from unittest.mock import patch
 
+import httpx
+
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import push  # noqa: E402
@@ -56,6 +58,51 @@ class Authorized(unittest.TestCase):
             self.assertFalse(push.authorized("sécret"))
 
 
+class DueQuery(unittest.TestCase):
+    def test_the_timestamp_is_percent_encoded_on_the_wire(self):
+        # A raw "+" in a query string is read as a space by PostgREST, so the
+        # "+00:00" offset made every due-timer query fail and no alert could ever
+        # fire. Tests that patch _due_rows cannot see this; the built URL can.
+        url = str(httpx.Request("GET", "https://x.test/rest/v1/cook_timers", params=push._due_params(NOW)).url)
+        self.assertIn("%2B00%3A00", url)
+        self.assertNotIn("+00:00", url)
+        self.assertIn("sent_at=is.null", url)
+
+
+class AllowedEndpoint(unittest.TestCase):
+    def test_accepts_the_real_push_services(self):
+        for ok in (
+            "https://web.push.apple.com/QAbc",
+            "https://fcm.googleapis.com/fcm/send/abc",
+            "https://updates.push.services.mozilla.com/wpush/v2/abc",
+            "https://wns2-par02p.notify.windows.com/w/?token=x",
+            "https://api.push.apple.com/3/device/abc",
+        ):
+            self.assertTrue(push.allowed_endpoint(ok), ok)
+
+    def test_refuses_everything_else(self):
+        # The endpoint is written by the client and sign-in is open to anyone.
+        for bad in (
+            "http://web.push.apple.com/x",
+            "https://169.254.169.254/latest/meta-data",
+            "https://localhost/x",
+            "https://evil.test/",
+            "https://web.push.apple.com.evil.test/",
+            "https://evilpush.apple.com.evil.test/",
+            "https://user@web.push.apple.com/x",
+            "https://web.push.apple.com:8443/x",
+            "https://notpush.apple.com/x",
+            "ftp://web.push.apple.com/x",
+            "",
+            "not a url",
+        ):
+            self.assertFalse(push.allowed_endpoint(bad), bad)
+
+    def test_send_refuses_before_any_request_and_reports_it_gone(self):
+        with self.assertRaises(push.Gone):
+            push._send({"endpoint": "https://169.254.169.254/x", "p256dh": "k", "auth": "a"}, "{}")
+
+
 class Payload(unittest.TestCase):
     def test_is_a_declarative_web_push(self):
         body = json.loads(push.payload_for(row()))
@@ -72,8 +119,10 @@ class Payload(unittest.TestCase):
 
     def test_only_an_https_link_becomes_a_navigate_target(self):
         for bad in ("javascript:alert(1)", "http://x.test/", "data:text/html,hi", "//x.test"):
-            n = json.loads(push.payload_for(row(open_url=bad)))["notification"]
-            self.assertNotIn("navigate", n, bad)
+            body = json.loads(push.payload_for(row(open_url=bad)))
+            self.assertNotIn("navigate", body["notification"], bad)
+            # Not claimed as declarative without the link that makes it so.
+            self.assertNotIn("web_push", body, bad)
 
 
 class FireDue(unittest.TestCase):
@@ -136,6 +185,46 @@ class FireDue(unittest.TestCase):
         out, sent, _, released = self.run_fire([row()], send=send)
         self.assertEqual(out["failed"], 1)
         self.assertEqual(released, ["t1"])
+
+    def test_a_failing_row_is_not_retried_past_the_retry_window(self):
+        def send(sub):
+            raise RuntimeError("down")
+
+        _, _, _, released = self.run_fire([row(seconds_ago=push.RETRY_WINDOW_SECONDS + 10)], send=send)
+        self.assertEqual(released, [])
+
+    def test_one_user_cannot_fill_the_batch(self):
+        rows = [row(id=f"t{i}") for i in range(push.MAX_ROWS_PER_USER + 3)] + [row(id="other", user_id="u2")]
+        sent_rows = []
+        with patch.object(push, "_due_rows", return_value=rows), patch.object(
+            push, "_claim", side_effect=lambda rid, now: sent_rows.append(rid) or True
+        ), patch.object(push, "_subscriptions", return_value=[SUB]), patch.object(
+            push, "_send"
+        ), patch.object(push, "_release"):
+            out = push.fire_due(NOW)
+        self.assertEqual(out["deferred"], 3)
+        self.assertEqual(len(sent_rows), push.MAX_ROWS_PER_USER + 1)
+        self.assertIn("other", sent_rows)
+
+    def test_a_row_that_raises_after_the_claim_is_given_back_and_the_batch_continues(self):
+        released = []
+        sent = []
+
+        def subs(user_id):
+            if user_id == "u1":
+                raise httpx.ReadTimeout("slow")
+            return [SUB]
+
+        rows = [row(id="bad", user_id="u1"), row(id="good", user_id="u2")]
+        with patch.object(push, "_due_rows", return_value=rows), patch.object(
+            push, "_claim", return_value=True
+        ), patch.object(push, "_subscriptions", side_effect=subs), patch.object(
+            push, "_send", side_effect=lambda s, p: sent.append(s["id"])
+        ), patch.object(push, "_release", side_effect=released.append):
+            out = push.fire_due(NOW)
+        self.assertEqual(released, ["bad"])
+        self.assertEqual(sent, ["s1"])
+        self.assertEqual(out["sent"], 1)
 
     def test_one_failing_endpoint_does_not_stop_the_others(self):
         good = {**SUB, "id": "s2"}

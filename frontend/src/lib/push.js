@@ -76,6 +76,32 @@ async function client() {
   return data.session ? { supabase, userId: data.session.user.id } : null
 }
 
+// Make sure this phone's push address is saved for the signed-in user. Idempotent
+// and never prompts, so it is safe to run on every sign-in and app load: the first
+// save can fail (no session yet, offline), a second account can sign in on the
+// same phone, and without this the state would read "on" with nowhere to send.
+async function saveSubscription() {
+  const registration = await navigator.serviceWorker.ready
+  const sub =
+    (await registration.pushManager.getSubscription()) ||
+    (await registration.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToBytes(PUBLIC_KEY),
+    }))
+  const json = sub.toJSON()
+  const ctx = await client()
+  if (!ctx || !json.keys) return
+  await ctx.supabase.from('push_subscriptions').upsert(
+    {
+      endpoint: json.endpoint,
+      p256dh: json.keys.p256dh,
+      auth: json.keys.auth,
+      user_agent: navigator.userAgent.slice(0, 400),
+    },
+    { onConflict: 'user_id,endpoint' },
+  )
+}
+
 // Ask for permission and subscribe. MUST be called synchronously from a tap:
 // iOS only shows the permission prompt for a user gesture, so nothing may be
 // awaited before `requestPermission`. Resolves to the new push state.
@@ -85,30 +111,24 @@ export async function enablePush(signedIn) {
   }
   try {
     const permission = await Notification.requestPermission()
-    if (permission !== 'granted') return currentPushState(signedIn)
-    const registration = await navigator.serviceWorker.ready
-    const sub =
-      (await registration.pushManager.getSubscription()) ||
-      (await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToBytes(PUBLIC_KEY),
-      }))
-    const json = sub.toJSON()
-    const ctx = await client()
-    if (!ctx || !json.keys) return currentPushState(signedIn)
-    await ctx.supabase.from('push_subscriptions').upsert(
-      {
-        endpoint: json.endpoint,
-        p256dh: json.keys.p256dh,
-        auth: json.keys.auth,
-        user_agent: navigator.userAgent.slice(0, 400),
-      },
-      { onConflict: 'user_id,endpoint' },
-    )
+    if (permission === 'granted') await saveSubscription()
   } catch {
     // Not set up this time; the in-page timer is unaffected.
   }
   return currentPushState(signedIn)
+}
+
+// No prompt: only when alerts are already on. Saves the subscription again and
+// mirrors whatever is running, which is also how a mirror that failed offline
+// gets another chance.
+export async function resyncPush(timers) {
+  try {
+    if (currentPushState(true) !== 'on') return
+    await saveSubscription()
+    await mirrorTimers(timers)
+  } catch {
+    // Best effort.
+  }
 }
 
 // Mirror a started timer. Only once alerts are on: a signed-out or denied user

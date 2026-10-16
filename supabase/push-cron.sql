@@ -23,14 +23,16 @@ create extension if not exists pg_cron;
 create or replace function public.fire_due_timers() returns void
 language plpgsql
 security definer
-set search_path = public, extensions, vault
+-- pg_catalog first, and every other object schema-qualified below, so nothing a
+-- user could create in public can shadow what a security definer function calls.
+set search_path = pg_catalog
 as $$
 declare
   secret text;
   target text;
 begin
   if not exists (
-    select 1 from cook_timers where sent_at is null and ends_at <= now()
+    select 1 from public.cook_timers where sent_at is null and ends_at <= now()
   ) then
     return;
   end if;

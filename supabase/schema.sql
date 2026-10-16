@@ -165,6 +165,7 @@ create table if not exists push_subscriptions (
   id uuid primary key default gen_random_uuid(),
   user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
   endpoint text not null check (char_length(endpoint) <= 2000),
+  -- (host allow-list is added just below as push_endpoint_is_push_service)
   p256dh text not null check (char_length(p256dh) <= 200),
   auth text not null check (char_length(auth) <= 100),
   user_agent text check (char_length(user_agent) <= 400),
@@ -205,3 +206,39 @@ create policy "own cook timers" on cook_timers
 
 -- What the cron job scans every few seconds: only unsent rows, by due time.
 create index if not exists cook_timers_due_idx on cook_timers (ends_at) where sent_at is null;
+
+-- A2 hardening (review): the API POSTs to whatever endpoint a user stored, and
+-- sign-in is open to anyone, so the table only accepts addresses of real push
+-- services (the API checks the same list, app/push.py allowed_endpoint), and one
+-- user cannot hold unbounded rows that crowd everyone else's alerts out of the
+-- cron batch. Added as alters so a project that already has the tables gets
+-- them. Safe to add outright: the tables were empty when this was written.
+alter table push_subscriptions drop constraint if exists push_endpoint_is_push_service;
+alter table push_subscriptions add constraint push_endpoint_is_push_service check (
+  endpoint ~* '^https://(web\.push\.apple\.com|fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9.-]+\.(push\.apple\.com|push\.services\.mozilla\.com|notify\.windows\.com))(/|\?|$)'
+);
+
+create or replace function cap_push_rows() returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $$
+begin
+  if tg_table_name = 'push_subscriptions'
+     and (select count(*) from public.push_subscriptions where user_id = new.user_id) >= 10 then
+    raise exception 'too many push subscriptions';
+  end if;
+  if tg_table_name = 'cook_timers'
+     and (select count(*) from public.cook_timers where user_id = new.user_id and sent_at is null) >= 20 then
+    raise exception 'too many timers';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists push_subscriptions_cap on push_subscriptions;
+create trigger push_subscriptions_cap before insert on push_subscriptions
+  for each row execute function cap_push_rows();
+
+drop trigger if exists cook_timers_cap on cook_timers;
+create trigger cook_timers_cap before insert on cook_timers
+  for each row execute function cap_push_rows();

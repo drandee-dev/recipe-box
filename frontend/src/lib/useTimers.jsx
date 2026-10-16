@@ -8,7 +8,7 @@
 // from a server, which is A2.
 
 import { createContext, useCallback, useContext, useEffect, useMemo, useRef, useState } from 'react'
-import { currentPushState, enablePush, mirrorTimers, unmirrorTimer } from './push.js'
+import { currentPushState, enablePush, mirrorTimers, resyncPush, unmirrorTimer } from './push.js'
 import { ringUrl } from './ring.js'
 import { MAX_TIMERS, isDue, loadTimers, makeTimer, saveTimers, sortTimers } from './timers.js'
 
@@ -137,6 +137,9 @@ export function TimersProvider({ children }) {
   const setSignedIn = useCallback((signedIn) => {
     signedInRef.current = signedIn
     setAlerts(currentPushState(signedIn))
+    // On sign-in and on every app load with a session: repair a subscription that
+    // never saved and give an unmirrored running timer another try.
+    if (signedIn) resyncPush(timersRef.current)
   }, [])
 
   // From a tap only. Asks for permission (once, from the first Start; the Timers
