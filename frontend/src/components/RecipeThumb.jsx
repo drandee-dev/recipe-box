@@ -32,7 +32,8 @@ import { thumbSources } from '../lib/images.js'
 const SIZES = {
   md: { w: 320, h: 240, sizes: '(min-width: 640px) 298px, calc(50vw - 22px)' },
   sm: { w: 56, h: 42 },
-  hero: { w: 640, h: 360, sizes: 'min(100vw, 640px)' },
+  // 960 because the detail sheet is up to 960px wide on a laptop.
+  hero: { w: 640, h: 360, sizes: 'min(100vw, 960px)' },
 }
 
 export default function RecipeThumb({ recipe, priority = false, size = 'md' }) {
