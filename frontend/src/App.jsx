@@ -705,7 +705,11 @@ export default function App() {
     try {
       const saved = await cookStore.add(row)
       setCookLog((prev) => prev.map((r) => (r.id === row.id ? saved : r)))
-      updateMirror(userId && cacheKeys.cooklog(userId), (rows) => [...rows, saved])
+      // Not appended twice: a refresh that landed between the insert and here has
+      // already written this row into the mirror.
+      updateMirror(userId && cacheKeys.cooklog(userId), (rows) =>
+        rows.some((r) => r.id === saved.id) ? rows : [...rows, saved],
+      )
       return saved.id
     } catch (err) {
       setCookLog((prev) => prev.filter((r) => r.id !== row.id))
