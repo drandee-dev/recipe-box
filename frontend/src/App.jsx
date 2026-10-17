@@ -826,13 +826,14 @@ export default function App() {
 
   // `servings` is how many the meal is for; null/undefined means "as the recipe
   // says". It only moves the quantities the shopping list gathers.
-  async function handleAssign(recipeId, dateISO, slot, servings = null) {
+  async function handleAssign(recipeId, dateISO, slot, servings = null, leftover = false) {
     const entry = {
       id: crypto.randomUUID(),
       recipe_id: recipeId,
       plan_date: dateISO,
       slot,
       servings,
+      leftover: Boolean(leftover),
       created_at: new Date().toISOString(),
     }
     // Optimistic: the sheet closes on tap, so waiting on the round trip would

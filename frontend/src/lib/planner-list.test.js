@@ -93,6 +93,38 @@ test('servings the table would refuse are stored as null, not thrown', () => {
 })
 
 // ---------------------------------------------------------------------------
+// leftovers
+// ---------------------------------------------------------------------------
+
+test('a leftovers meal asks the list for nothing, and is not named as a source', () => {
+  const recipes = [recipe('r1', 'Pasta', '4', ['2 cups flour', '1 onion']), recipe('r2', 'Cake', '4', ['1 cup flour'])]
+  const plain = buildShoppingList([meal('r1', null), meal('r2', null)], recipes)
+  assert.equal(plain.find((i) => i.name === 'flour').qty, 3)
+  const withLeft = buildShoppingList([meal('r1', null), { ...meal('r2', null), leftover: true }], recipes)
+  const flour = withLeft.find((i) => i.name === 'flour')
+  // Only the bought meal contributes: 2 cups, from Pasta alone.
+  assert.equal(flour.qty, 2)
+  assert.deepEqual(flour.sources.map((s) => s.title), ['Pasta'])
+})
+
+test('a week of only leftovers is an empty list', () => {
+  const recipes = [recipe('r1', 'Pasta', '4', ['2 cups flour'])]
+  assert.equal(buildShoppingList([{ ...meal('r1', null), leftover: true }], recipes).length, 0)
+})
+
+test('leftover is false unless said, and can be flipped on a planned meal', async () => {
+  localStorage.clear()
+  const plan = makePlanStore(null)
+  const row = await plan.add({ id: 'p1', recipe_id: 'r1', plan_date: '2026-08-12', slot: 'dinner' })
+  assert.equal(row.leftover, false)
+  assert.equal((await plan.update('p1', { leftover: true })).leftover, true)
+  assert.equal((await plan.update('p1', { leftover: 'yes please' })).leftover, true)
+  assert.equal((await plan.update('p1', { leftover: false })).leftover, false)
+  const added = await plan.add({ id: 'p2', recipe_id: 'r1', plan_date: '2026-08-13', slot: 'lunch', leftover: true })
+  assert.equal(added.leftover, true)
+})
+
+// ---------------------------------------------------------------------------
 // staples and moved aisles
 // ---------------------------------------------------------------------------
 
