@@ -58,7 +58,11 @@ export default defineConfig({
         short_name: staging ? 'Recipes β' : 'Recipes',
         description: 'Save recipes from anywhere, plan the week',
         theme_color: '#1c7c54',
-        background_color: '#ffffff',
+        // The light page ground, not white: this is the launch splash on Android
+        // and a manifest has one value, so it cannot follow dark mode (the
+        // dark-colours manifest member has not shipped). The ground is close
+        // enough to the app's first paint that the hand-off does not flash.
+        background_color: '#f4f1e9',
         display: 'standalone',
         start_url: '/',
         // Two sets, deliberately not one "any maskable" entry. Android crops a

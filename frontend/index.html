@@ -3,7 +3,12 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
-    <meta name="theme-color" content="#1c7c54" />
+    <!-- The browser's own bar. Two tags so it is right before any script runs:
+         the brand green on a light device, the page ground on a dark one.
+         lib/theme.js rewrites both to the same colour when the person chooses a
+         theme, so a chosen theme beats the device. -->
+    <meta name="theme-color" content="#1c7c54" media="(prefers-color-scheme: light)" />
+    <meta name="theme-color" content="#151813" media="(prefers-color-scheme: dark)" />
     <meta name="color-scheme" content="light dark" />
     <!-- A saved light/dark choice is applied before anything paints, so a dark
          phone never flashes a light page while the bundle loads. lib/theme.js
@@ -21,7 +26,11 @@
     <!-- Add to Home Screen is the only install path on iOS, and these are what
          it reads: capable makes the launch standalone rather than a Safari tab,
          title names the icon. status-bar-style stays "default" (opaque, content
-         below it) because the layout adds no top safe-area padding of its own. -->
+         below it) because the layout adds no top safe-area padding of its own.
+         It is one fixed value that cannot follow dark mode (the other styles
+         paint white icons or take the body colour), so an installed iPhone app
+         shows a light status strip over the dark theme: a platform limit, not
+         something the page can change after install. -->
     <meta name="apple-mobile-web-app-capable" content="yes" />
     <meta name="apple-mobile-web-app-status-bar-style" content="default" />
     <meta name="apple-mobile-web-app-title" content="Recipes" />

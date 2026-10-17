@@ -87,6 +87,10 @@
   --on-saffron: #191c18;
   /* A translucent card behind a glyph that sits on a photo. */
   --surface-glass: rgb(255 253 247 / 92%);
+  /* What dims the page behind a sheet. A dark tint on the light ground; on the
+     dark ground the same tint barely shows, so the dark theme uses near-black,
+     which is what makes a sheet stand off the page there. */
+  --scrim: rgb(25 28 24 / 45%);
   /* How much of a fallback tile's tint shows. Full on the light ground, a trace
      on the dark one, where a pastel block would outshine the photographs. */
   --tile-mix: 100%;
@@ -214,6 +218,7 @@
     --info-ink: #b9c6cf;
     --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
     --surface-glass: rgb(29 33 27 / 90%);
+    --scrim: rgb(0 0 0 / 66%);
     --tile-mix: 8%;
     color-scheme: dark;
   }
@@ -247,6 +252,7 @@
   --info-ink: #b9c6cf;
   --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
   --surface-glass: rgb(29 33 27 / 90%);
+  --scrim: rgb(0 0 0 / 66%);
   --tile-mix: 8%;
   color-scheme: dark;
 }
@@ -549,7 +555,7 @@ textarea.field {
 
 /* Signed in it carries the address's initial on the accent, which is the one
    place a filled accent is identity rather than an action — and it is the only
-   way the header can say "you are signed in" in 40px. */
+   way the header can say "you are signed in" in 44px. */
 .rb-avatar-in {
   border-color: var(--accent);
   background: var(--accent);
@@ -1122,9 +1128,9 @@ textarea.field {
 }
 
 /* News: the info triplet, like the offline notice, because nothing is wrong
-   and nothing needs doing. It stacks rather than sitting in one row like the
-   other notices: it carries a heading, a sentence and two actions. The close
-   button sits in the corner, so the text keeps its right padding clear of it. */
+   and nothing needs doing. One slim row: a title over a single clamped line of
+   the body (the whole text is the button that opens What's new) and the close
+   button at the end. */
 .rb-news {
   display: flex;
   align-items: center;
@@ -2438,7 +2444,7 @@ textarea.field {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: rgb(25 28 24 / 45%);
+  background: var(--scrim);
   animation: sheet-fade 0.18s ease-out;
 }
 
@@ -3693,11 +3699,10 @@ textarea.field {
 
 /* Staples fold away under the aisles. A native <details>: the disclosure state
    is the browser's, so there is nothing to keep in step. */
+/* Flat like the aisles above it: a grey band for the heading and rows on the
+   ground. It was a bordered card, the one panel left in a list that is flat. */
 .shopping-staples {
-  margin-bottom: var(--sp-6);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: var(--surface);
+  margin-bottom: var(--sp-3);
 }
 
 .shopping-staples > summary {
@@ -3705,7 +3710,9 @@ textarea.field {
   align-items: center;
   gap: var(--sp-2);
   min-height: 44px;
-  padding: 0 var(--sp-4);
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
   font-size: var(--fs-2xs);
   font-weight: 700;
   text-transform: uppercase;
@@ -3721,7 +3728,7 @@ textarea.field {
 .shopping-staples > ul {
   list-style: none;
   margin: 0;
-  padding: 0 var(--sp-4) var(--sp-1);
+  padding: 0 var(--sp-1);
 }
 
 .shopping-staples .shopping-item:last-child {
