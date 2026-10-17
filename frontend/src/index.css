@@ -3698,9 +3698,9 @@ textarea.field {
 }
 
 /* Staples fold away under the aisles. A native <details>: the disclosure state
-   is the browser's, so there is nothing to keep in step. */
-/* Flat like the aisles above it: a grey band for the heading and rows on the
-   ground. It was a bordered card, the one panel left in a list that is flat. */
+   is the browser's, so there is nothing to keep in step. Flat like the aisles
+   above it: a grey band for the heading and rows on the ground. It was a
+   bordered card, the one panel left in a list that is flat. */
 .shopping-staples {
   margin-bottom: var(--sp-3);
 }
@@ -3723,6 +3723,28 @@ textarea.field {
 
 .shopping-staples-count {
   font-variant-numeric: tabular-nums;
+}
+
+/* `display: flex` on the summary removes the browser's triangle, and the card
+   border that used to say "this opens" is gone, so the band carries its own
+   chevron: right when shut, down when open. */
+.shopping-staples > summary::after {
+  content: '›';
+  margin-left: auto;
+  font-size: 22px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 0.12s ease;
+}
+
+.shopping-staples[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shopping-staples > summary::after {
+    transition: none;
+  }
 }
 
 .shopping-staples > ul {
