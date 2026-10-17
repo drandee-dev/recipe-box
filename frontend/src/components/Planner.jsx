@@ -383,7 +383,7 @@ export default function Planner({
             >
               Leftovers
             </button>
-            <span className="planner-leftover-hint">
+            <span className="planner-leftover-hint" aria-live="polite">
               {leftover ? 'Nothing to buy for this meal.' : 'Eating what was cooked earlier? Mark it as leftovers.'}
             </span>
           </div>
@@ -617,7 +617,7 @@ function MealSheet({ entry, recipe, days, onUpdate, onOpenRecipe, onRemove, onCl
         aria-pressed={Boolean(entry.leftover)}
         onClick={() => onUpdate(entry.id, { leftover: !entry.leftover })}
       >
-        {entry.leftover ? 'Leftovers: nothing to buy' : 'Mark as leftovers'}
+        Leftovers: nothing to buy
       </button>
 
       {base !== null && !entry.leftover && (
