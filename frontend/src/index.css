@@ -2015,6 +2015,10 @@ textarea.field {
 /* A real button now (finding 20): tapping the range itself jumps back to the
    current week, same as the "This week" link beside it. Same face the old
    <strong> had — becoming interactive shouldn't make it look like a link. */
+.week-label {
+  cursor: default;
+}
+
 .planner-weeklabel-btn,
 .week-label {
   border: 0;
@@ -3535,10 +3539,7 @@ textarea.field {
 }
 
 .shopping-tools-note {
-  white-space: nowrap;
-}
-
-.shopping-tools-note {
+  margin: calc(-1 * var(--sp-1)) 0 var(--sp-3);
   font-size: var(--fs-sm);
   color: var(--ok-ink);
 }
@@ -3752,7 +3753,7 @@ textarea.field {
    colours and sizes are the row's own, so a ticked row fades exactly as before. */
 .ing-line {
   display: grid;
-  grid-template-columns: var(--qty-ch, 0) minmax(0, 1fr);
+  grid-template-columns: var(--qty-w, 0) minmax(0, 1fr);
   column-gap: var(--sp-3);
   flex: 1;
   min-width: 0;
@@ -3766,6 +3767,13 @@ textarea.field {
   text-align: right;
   font-weight: 700;
   font-variant-numeric: tabular-nums;
+  /* Never wraps: a wrapped amount adds a row to the most common line of a
+     recipe, the opposite of the point of the column. */
+  white-space: nowrap;
+}
+
+.ing-qty-wrap {
+  white-space: normal;
   overflow-wrap: anywhere;
 }
 

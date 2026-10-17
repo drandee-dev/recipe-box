@@ -406,9 +406,11 @@ export function splitAmount(text) {
 
 // Width, in characters, of the quantity column when a recipe's lines are set in
 // one: the longest bold amount, capped so a freak line ("1 1/2 to 2 tablespoons")
-// cannot take half the screen. 0 when no line has an amount, which is the cue to
-// set the list as plain text with no column at all.
-export const QTY_COLUMN_MAX = 11
+// cannot take half the screen. 14 holds "2 tablespoons" (13), which is on most
+// recipes; a longer one is cut to the cap and the column does not grow for it.
+// 0 when no line has an amount, which is the cue to set the list as plain text
+// with no column at all.
+export const QTY_COLUMN_MAX = 14
 
 export function qtyColumnCh(lines) {
   let longest = 0

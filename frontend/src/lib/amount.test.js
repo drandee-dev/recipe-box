@@ -45,6 +45,13 @@ test('the quantity column is as wide as the longest amount, capped', () => {
   assert.ok(qtyColumnCh(['1 1/2 to 2 1/2 tablespoons oil']) <= QTY_COLUMN_MAX)
 })
 
+test('spelled-out units that are on most recipes fit the column uncut', () => {
+  // These are the common lines a density pass must not turn into two rows.
+  assert.equal(qtyColumnCh(['2 tablespoons olive oil']), '2 tablespoons'.length)
+  assert.equal(qtyColumnCh(['1 teaspoon salt', '2 tablespoons oil']), '2 tablespoons'.length)
+  assert.ok(QTY_COLUMN_MAX >= '2 tablespoons'.length)
+})
+
 test('no amounts anywhere means no column at all', () => {
   assert.equal(qtyColumnCh(['Salt, to taste', 'Pepper']), 0)
   assert.equal(qtyColumnCh([]), 0)

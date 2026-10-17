@@ -464,11 +464,6 @@ export default function ShoppingList({
               Aisle order
             </button>
           )}
-          {shareNote && (
-            <span className="shopping-tools-note" role="status">
-              {shareNote}
-            </span>
-          )}
           {sourceStrip.length > 0 && (
             <ul className="shopping-strip" aria-label="Recipes on this list">
               {sourceStrip.map((s) => (
@@ -490,6 +485,13 @@ export default function ShoppingList({
             </ul>
           )}
         </div>
+      )}
+      {/* Outside the scrolling bar, so the answer to Share is never scrolled out of
+          sight. Only present for the few seconds it is true. */}
+      {shareNote && (
+        <p className="shopping-tools-note" role="status">
+          {shareNote}
+        </p>
       )}
 
       {totalCount === 0 && stapleItems.length === 0 && (
