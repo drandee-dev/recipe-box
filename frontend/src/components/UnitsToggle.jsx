@@ -8,10 +8,12 @@ const OPTIONS = [
   ['us', 'US'],
 ]
 
-export default function UnitsToggle({ value, onChange, label = 'Units' }) {
+// `options` is for the other three-way setting that looks the same (the theme in
+// the account sheet): a list of [value, label] pairs.
+export default function UnitsToggle({ value, onChange, label = 'Units', options = OPTIONS }) {
   return (
     <div className="account-modes units-toggle" role="group" aria-label={label}>
-      {OPTIONS.map(([mode, text]) => (
+      {options.map(([mode, text]) => (
         <button
           key={mode}
           type="button"

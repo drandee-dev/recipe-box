@@ -77,6 +77,20 @@
   --accent-ink: #14563a;
   --accent-soft: #e3efe8;
   --danger: #b3261e;
+  /* The text on a filled accent or danger surface. White on the light theme's
+     deep green and red; the dark theme lifts both fills, so the ink goes dark. */
+  --on-accent: #fff;
+  --on-danger: #fff;
+  /* Dark ink on a saffron fill in both themes: white on saffron is 3.8:1, and the
+     light text colour the dark theme uses for --txt is 2:1 on it. Not overridden
+     in the dark blocks on purpose. */
+  --on-saffron: #191c18;
+  /* A translucent card behind a glyph that sits on a photo. */
+  --surface-glass: rgb(255 253 247 / 92%);
+  /* How much of a fallback tile's tint shows. Full on the light ground, a trace
+     on the dark one, where a pastel block would outshine the photographs. */
+  --tile-mix: 100%;
+  color-scheme: light;
 
   /* --- Saffron. The second accent, and the palette's only other hue.
      It sits at 35° against the accent's 155°, which is 120° round the wheel:
@@ -157,6 +171,84 @@
   --z-sheet: 950;
   --z-modal: 1000;
   --z-toast: 2000;
+}
+
+/* --- Dark theme ---------------------------------------------------------------
+   The same tokens, redefined. Every colour in the app already reads a token, so
+   this is the whole of the theme. It applies when the device prefers dark and the
+   person has not chosen light, or when they have chosen dark. The two selectors
+   hold the same values on purpose: CSS has no way to write them once, and a
+   media query cannot be combined with an attribute test any other way.
+
+   Checked, not eyeballed. Against --ground / --surface: --txt 14.8 / 13.5,
+   --txt-2 8.8 / 8.1, --txt-3 6.7 / 6.1 (all over the 4.5:1 floor), --line-strong
+   4.6 / 4.2 where a border is the component boundary (3:1), the accent fill 6.5
+   with --on-accent on it at 6.4, --accent-ink on --accent-soft 7.6, and the
+   saffron 7.4. Cook mode is already its own dark surface and is untouched. --- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ground: #151813;
+    --surface: #1d211b;
+    --surface-2: #252a22;
+    --line: #343a30;
+    --line-strong: #7b8374;
+    --txt: #ece9df;
+    --txt-2: #b3b8a9;
+    --txt-3: #9aa090;
+    --accent: #3fae80;
+    --accent-ink: #86d6ae;
+    --accent-soft: #1f362a;
+    --danger: #ee7b73;
+    --on-accent: #0f1a14;
+    --on-danger: #1b0a09;
+    --saffron: #d99a3e;
+    --star-off: #8a9083;
+    --warn-bg: #2b2812;
+    --warn-line: #5a5326;
+    --warn-ink: #e6d79a;
+    --ok-bg: #17291f;
+    --ok-line: #2f5a43;
+    --ok-ink: #8fd9b0;
+    --info-bg: #1f262b;
+    --info-line: #3d4a53;
+    --info-ink: #b9c6cf;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
+    --surface-glass: rgb(29 33 27 / 90%);
+    --tile-mix: 8%;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --ground: #151813;
+  --surface: #1d211b;
+  --surface-2: #252a22;
+  --line: #343a30;
+  --line-strong: #7b8374;
+  --txt: #ece9df;
+  --txt-2: #b3b8a9;
+  --txt-3: #9aa090;
+  --accent: #3fae80;
+  --accent-ink: #86d6ae;
+  --accent-soft: #1f362a;
+  --danger: #ee7b73;
+  --on-accent: #0f1a14;
+  --on-danger: #1b0a09;
+  --saffron: #d99a3e;
+  --star-off: #8a9083;
+  --warn-bg: #2b2812;
+  --warn-line: #5a5326;
+  --warn-ink: #e6d79a;
+  --ok-bg: #17291f;
+  --ok-line: #2f5a43;
+  --ok-ink: #8fd9b0;
+  --info-bg: #1f262b;
+  --info-line: #3d4a53;
+  --info-ink: #b9c6cf;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
+  --surface-glass: rgb(29 33 27 / 90%);
+  --tile-mix: 8%;
+  color-scheme: dark;
 }
 
 * {
@@ -253,7 +345,7 @@ select,
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 600;
 }
 
@@ -461,7 +553,7 @@ textarea.field {
 .rb-avatar-in {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-family: 'Clash Display', 'Satoshi', sans-serif;
   font-size: var(--fs-md);
   font-weight: 600;
@@ -1346,7 +1438,7 @@ textarea.field {
   width: 25px;
   height: 25px;
   border-radius: 50%;
-  background: rgb(255 253 247 / 92%);
+  background: var(--surface-glass);
   color: var(--star);
   font-size: 13px;
   line-height: 1;
@@ -1794,7 +1886,7 @@ textarea.field {
 .recipes-chip-on {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .recipes-chip-count {
@@ -1805,7 +1897,10 @@ textarea.field {
 }
 
 .recipes-chip-on .recipes-chip-count {
-  color: #cfe6da;
+  /* The chip's own text colour, slightly quieter. Was a fixed pale green, which
+     is wrong on any fill but the light theme's. */
+  color: var(--on-accent);
+  opacity: 0.85;
 }
 
 .recipes-count {
@@ -1899,6 +1994,9 @@ textarea.field {
   height: 100%;
   display: grid;
   place-items: center;
+  /* The tint is set per recipe (--tile, from the title). --tile-mix is all of it
+     on the light theme and a trace on the dark one. */
+  background: color-mix(in srgb, var(--tile, var(--surface-2)) var(--tile-mix), var(--surface-2));
   box-shadow: inset 0 0 0 1px var(--line);
 }
 
@@ -2252,7 +2350,7 @@ textarea.field {
   /* The one filled-red surface in the app — see the comment beside its JSX
      for why this is a deliberate exception to .btn-danger's text-only rule. */
   background: var(--danger);
-  color: #fff;
+  color: var(--on-danger);
   font-size: var(--fs-xs);
   font-weight: 600;
 }
@@ -2606,7 +2704,7 @@ textarea.field {
 .step-time-ringing {
   border-bottom-color: var(--saffron);
   background: var(--saffron);
-  color: var(--txt);
+  color: var(--on-saffron);
   animation: cook-pulse 1s ease-in-out infinite;
 }
 
@@ -2789,7 +2887,7 @@ textarea.field {
    12px label. */
 .timer-tray-ringing {
   background: var(--saffron);
-  color: var(--txt);
+  color: var(--on-saffron);
   animation: cook-pulse 1s ease-in-out infinite;
 }
 
@@ -2821,7 +2919,7 @@ textarea.field {
   padding: 0 4px;
   border-radius: 8px;
   background: var(--saffron);
-  color: var(--txt);
+  color: var(--on-saffron);
   font-size: 11px;
   font-weight: 700;
   line-height: 16px;
@@ -3282,7 +3380,7 @@ textarea.field {
 .planner-chip-active {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 600;
 }
 

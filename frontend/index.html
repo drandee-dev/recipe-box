@@ -4,6 +4,16 @@
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <meta name="theme-color" content="#1c7c54" />
+    <meta name="color-scheme" content="light dark" />
+    <!-- A saved light/dark choice is applied before anything paints, so a dark
+         phone never flashes a light page while the bundle loads. lib/theme.js
+         applies the same answer again once it is running. -->
+    <script>
+      try {
+        var t = localStorage.getItem('recipebox:theme')
+        if (t === 'dark' || t === 'light') document.documentElement.setAttribute('data-theme', t)
+      } catch (e) {}
+    </script>
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" />
     <!-- Fallback for anything that won't take an SVG favicon. -->
     <link rel="icon" href="/favicon-96.png" sizes="96x96" type="image/png" />

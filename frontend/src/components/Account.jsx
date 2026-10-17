@@ -26,6 +26,7 @@ import { setUnits, useUnits } from '../lib/useUnits.js'
 import { getSupabase, supabaseEnabled } from '../lib/supabase.js'
 import { APP_VERSION } from '../lib/news.js'
 import { downloadExport } from '../lib/exportData.js'
+import { setTheme, useTheme } from '../lib/theme.js'
 
 const REMEMBER_EMAIL_KEY = 'recipebox:rememberedEmail'
 const REMEMBER_ME_KEY = 'recipebox:rememberMe'
@@ -77,6 +78,25 @@ function UnitsSetting() {
         Shows recipes and the shopping list in metric or US measures. Cups of flour and
         sugar are converted to grams, marked with ≈, since they are only approximate.
       </p>
+    </div>
+  )
+}
+
+const THEME_OPTIONS = [
+  ['auto', 'Match device'],
+  ['light', 'Light'],
+  ['dark', 'Dark'],
+]
+
+// Light or dark for this device. Offered signed out too; it is not an account
+// setting and follows nobody to another phone.
+function ThemeSetting() {
+  const theme = useTheme()
+  return (
+    <div className="account-units">
+      <p className="account-label">Appearance</p>
+      <UnitsToggle value={theme} onChange={setTheme} label="Appearance" options={THEME_OPTIONS} />
+      <p className="account-hint">Cook mode is always dark.</p>
     </div>
   )
 }
@@ -311,6 +331,7 @@ export default function Account({ session, recipes = [], exportReady = true, onW
             </p>
 
             <UnitsSetting />
+            <ThemeSetting />
             <ExportSetting recipes={recipes} ready={exportReady} />
 
             {settingPassword ? (
@@ -548,6 +569,7 @@ export default function Account({ session, recipes = [], exportReady = true, onW
             </p>
           </form>
           <UnitsSetting />
+          <ThemeSetting />
           <ExportSetting recipes={recipes} ready={exportReady} />
           <p className="rb-whatsnew-version">Version {APP_VERSION}</p>
         </Sheet>
