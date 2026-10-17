@@ -242,3 +242,12 @@ create trigger push_subscriptions_cap before insert on push_subscriptions
 drop trigger if exists cook_timers_cap on cook_timers;
 create trigger cook_timers_cap before insert on cook_timers
   for each row execute function cap_push_rows();
+
+-- A2 repeats: a finished timer is sent again every 30 seconds, up to 6 times in
+-- all, until the app deletes the row (opening it or dismissing the timer). The
+-- count is what the server's claim compares against, so two overlapping runs
+-- cannot both send the same one. Numbers match app/push.py REPEAT_SECONDS and
+-- MAX_NOTIFICATIONS, and supabase/push-cron.sql.
+alter table cook_timers add column if not exists notify_count integer not null default 0;
+
+create index if not exists cook_timers_active_idx on cook_timers (ends_at) where notify_count < 6;

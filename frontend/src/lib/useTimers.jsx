@@ -198,36 +198,81 @@ export function TimersProvider({ children }) {
     }
   }, [active])
 
-  // Ring each timer once as it comes due, including one found already overdue
-  // after a reload or a wake. `rang` is stored with the timer, so reloading
-  // doesn't ring it again, while the timer itself stays until dismissed.
+  // The alarm. It plays for as long as ANY timer is finished and has not been
+  // dismissed, and stops the moment the last one is: a ring that happens once is
+  // easy to miss across a kitchen, and the cook is the only thing that can say it
+  // was heard. Dismiss, Stop and Open recipe all remove the timer, so all three
+  // end it. After a full reload there is no unlocked audio element (it can only be
+  // made in a tap), so the first tap anywhere starts it instead.
+  const ringingNow = timers.some((t) => isDue(t, now))
   useEffect(() => {
-    const fresh = timers.filter((t) => !t.rang && isDue(t, now))
-    if (fresh.length === 0) return
-    // A context that was suspended while the page was away has to be resumed
-    // first. After a full reload there is no context at all (it can only be built
-    // in a tap), so an overdue timer found then is silent and shows on screen.
-    // The audio element first; if it is missing or refuses, the oscillator.
-    const el = elementRef.current
-    const ctx = audioRef.current
-    const fallback = () => {
-      if (!ctx) return
-      Promise.resolve(ctx.resume?.())
-        .catch(() => {})
-        .then(() => ring(ctx))
-        .catch(() => {
-          // A refused or closed context is not a reason to lose the timer.
-        })
+    if (!ringingNow) return undefined
+    let stopped = false
+    let tones = null
+
+    const oscillatorLoop = () => {
+      const ctx = audioRef.current
+      if (!ctx || tones) return
+      const once = () =>
+        Promise.resolve(ctx.resume?.())
+          .catch(() => {})
+          .then(() => ring(ctx))
+          .catch(() => {})
+      once()
+      tones = setInterval(once, 2000)
     }
-    if (el) {
+
+    const play = () => {
+      const el = elementRef.current
+      if (!el) return false
+      el.loop = true
       el.currentTime = 0
-      el.play().catch(fallback)
-    } else {
-      fallback()
+      el.play().catch(oscillatorLoop)
+      return true
+    }
+
+    function onFirstTap() {
+      if (stopped) return
+      // This tap is the gesture, so the element is made and played for real here,
+      // not through the muted unlock in unlockAudio (which would pause it again).
+      if (!elementRef.current) {
+        try {
+          elementRef.current = new Audio(ringUrl())
+        } catch {
+          return
+        }
+      }
+      play()
+    }
+
+    if (!play()) {
+      // No element yet (a reload): wait for a tap, which is also what lets iOS
+      // play it. The tray and the pulsing chips are the alert until then.
+      document.addEventListener('pointerdown', onFirstTap, { once: true })
     }
     // Android only, and only once the page has had a tap, or Chrome logs an
     // intervention. On iOS the pulsing tray is the alert that is guaranteed.
     if (navigator.userActivation?.hasBeenActive) navigator.vibrate?.([200, 100, 200, 100, 200])
+
+    return () => {
+      stopped = true
+      document.removeEventListener('pointerdown', onFirstTap)
+      clearInterval(tones)
+      const el = elementRef.current
+      if (el) {
+        el.pause()
+        el.currentTime = 0
+        el.loop = false
+      }
+    }
+  }, [ringingNow])
+
+  // Mark each timer as having rung once as it comes due, including one found
+  // already overdue after a reload or a wake. `rang` is stored with the timer, so
+  // it is not announced again, while the timer itself stays until dismissed.
+  useEffect(() => {
+    const fresh = timers.filter((t) => !t.rang && isDue(t, now))
+    if (fresh.length === 0) return
     const ids = new Set(fresh.map((t) => t.id))
     setTimers((prev) => prev.map((t) => (ids.has(t.id) ? { ...t, rang: true } : t)))
     // Rung in the page, so it must not also arrive as a push a few seconds later.

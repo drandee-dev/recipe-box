@@ -31,8 +31,13 @@ declare
   secret text;
   target text;
 begin
+  -- The same question app/push.py asks (REPEAT_SECONDS 30, MAX_NOTIFICATIONS 6):
+  -- finished, and either never sent or last sent long enough ago to send again.
   if not exists (
-    select 1 from public.cook_timers where sent_at is null and ends_at <= now()
+    select 1 from public.cook_timers
+    where ends_at <= now()
+      and notify_count < 6
+      and (sent_at is null or sent_at <= now() - interval '30 seconds')
   ) then
     return;
   end if;

@@ -31,6 +31,8 @@ def row(seconds_ago=3, **over):
         "recipe_title": "Chop Suey",
         "open_url": "https://recipe-box-coral.vercel.app/?recipe=r1",
         "ends_at": due.isoformat(),
+        "sent_at": None,
+        "notify_count": 0,
     }
     base.update(over)
     return base
@@ -66,7 +68,86 @@ class DueQuery(unittest.TestCase):
         url = str(httpx.Request("GET", "https://x.test/rest/v1/cook_timers", params=push._due_params(NOW)).url)
         self.assertIn("%2B00%3A00", url)
         self.assertNotIn("+00:00", url)
-        self.assertIn("sent_at=is.null", url)
+        # Both timestamps (the due time and the repeat cut-off inside `or`).
+        self.assertEqual(url.count("%2B00%3A00"), 2)
+        self.assertIn("sent_at.is.null", url)
+
+
+class Repeats(unittest.TestCase):
+    """A finished timer is sent again until the app answers, up to a cap."""
+
+    def test_the_due_query_asks_for_unsent_or_old_enough_and_under_the_cap(self):
+        params = push._due_params(NOW)
+        self.assertEqual(params["notify_count"], f"lt.{push.MAX_NOTIFICATIONS}")
+        self.assertTrue(params["or"].startswith("(sent_at.is.null,sent_at.lte."))
+        url = str(httpx.Request("GET", "https://x.test/rest/v1/cook_timers", params=params).url)
+        # The nested timestamp has a "+" too, so it must be encoded as well.
+        self.assertNotIn("+00:00", url)
+
+    def test_a_repeat_is_not_dropped_as_late(self):
+        # Minutes past due is what a repeat is; only a first send can be too late.
+        late = row(seconds_ago=push.STALE_SECONDS + 120, notify_count=2, sent_at="2026-10-16T11:58:00+00:00")
+        sent = []
+        with patch.object(push, "_due_rows", return_value=[late]), patch.object(
+            push, "_claim", return_value=True
+        ), patch.object(push, "_subscriptions", return_value=[SUB]), patch.object(
+            push, "_send", side_effect=lambda s, p: sent.append(p)
+        ), patch.object(push, "_release") as release:
+            out = push.fire_due(NOW)
+        self.assertEqual(out["sent"], 1)
+        self.assertEqual(out["stale"], 0)
+        release.assert_not_called()
+        self.assertIn("Still ringing", json.loads(sent[0])["notification"]["body"])
+
+    def test_a_failed_repeat_is_not_handed_back(self):
+        # The count moves on either way, so the next turn comes in thirty seconds.
+        again = row(seconds_ago=40, notify_count=1, sent_at="2026-10-16T11:59:20+00:00")
+
+        def boom(sub, payload):
+            raise RuntimeError("down")
+
+        with patch.object(push, "_due_rows", return_value=[again]), patch.object(
+            push, "_claim", return_value=True
+        ), patch.object(push, "_subscriptions", return_value=[SUB]), patch.object(
+            push, "_send", side_effect=boom
+        ), patch.object(push, "_release") as release:
+            push.fire_due(NOW)
+        release.assert_not_called()
+
+    def test_the_first_banner_and_each_repeat_have_distinct_tags(self):
+        tags = [json.loads(push.payload_for(row(notify_count=n)))["notification"]["tag"] for n in range(3)]
+        self.assertEqual(tags[0], "abc")
+        self.assertEqual(len(set(tags)), 3)
+
+    def test_only_a_repeat_says_still_ringing(self):
+        first = json.loads(push.payload_for(row()))["notification"]["body"]
+        again = json.loads(push.payload_for(row(notify_count=1)))["notification"]["body"]
+        self.assertNotIn("Still ringing", first)
+        self.assertTrue(again.startswith("Still ringing: "))
+
+    def test_the_claim_only_succeeds_against_the_count_that_was_read(self):
+        # One conditional PATCH, filtered on the count the caller saw and moving it
+        # on by one: a second run holding the same row matches nothing.
+        sent = {}
+
+        class Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return [{"id": "t1"}]
+
+        def fake_patch(url, headers=None, json=None, timeout=None):
+            sent["url"], sent["json"] = url, json
+            return Resp()
+
+        with patch.dict(os.environ, {"SUPABASE_URL": "https://p.supabase.co", "SUPABASE_SERVICE_ROLE_KEY": "k"}), patch.object(
+            push.httpx, "patch", side_effect=fake_patch
+        ):
+            self.assertTrue(push._claim(row(notify_count=2), NOW))
+        self.assertIn("id=eq.t1", sent["url"])
+        self.assertIn("notify_count=eq.2", sent["url"])
+        self.assertEqual(sent["json"]["notify_count"], 3)
 
 
 class AllowedEndpoint(unittest.TestCase):
@@ -139,7 +220,7 @@ class FireDue(unittest.TestCase):
         ), patch.object(push, "_subscriptions", return_value=list(subs)), patch.object(
             push, "_send", side_effect=fake_send
         ), patch.object(push, "_drop_subscription", side_effect=dropped.append), patch.object(
-            push, "_release", side_effect=released.append
+            push, "_release", side_effect=lambda r: released.append(r["id"])
         ):
             out = push.fire_due(NOW)
         return out, sent, dropped, released
@@ -197,7 +278,7 @@ class FireDue(unittest.TestCase):
         rows = [row(id=f"t{i}") for i in range(push.MAX_ROWS_PER_USER + 3)] + [row(id="other", user_id="u2")]
         sent_rows = []
         with patch.object(push, "_due_rows", return_value=rows), patch.object(
-            push, "_claim", side_effect=lambda rid, now: sent_rows.append(rid) or True
+            push, "_claim", side_effect=lambda r, now: sent_rows.append(r["id"]) or True
         ), patch.object(push, "_subscriptions", return_value=[SUB]), patch.object(
             push, "_send"
         ), patch.object(push, "_release"):
@@ -220,7 +301,7 @@ class FireDue(unittest.TestCase):
             push, "_claim", return_value=True
         ), patch.object(push, "_subscriptions", side_effect=subs), patch.object(
             push, "_send", side_effect=lambda s, p: sent.append(s["id"])
-        ), patch.object(push, "_release", side_effect=released.append):
+        ), patch.object(push, "_release", side_effect=lambda r: released.append(r["id"])):
             out = push.fire_due(NOW)
         self.assertEqual(released, ["bad"])
         self.assertEqual(sent, ["s1"])
