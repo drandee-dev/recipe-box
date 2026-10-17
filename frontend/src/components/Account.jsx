@@ -311,7 +311,7 @@ export default function Account({ session, recipes = [], exportReady = true, onW
             </p>
 
             <UnitsSetting />
-            <ExportSetting recipes={recipes} />
+            <ExportSetting recipes={recipes} ready={exportReady} />
 
             {settingPassword ? (
               <form className="account-form" onSubmit={savePassword}>
@@ -548,7 +548,7 @@ export default function Account({ session, recipes = [], exportReady = true, onW
             </p>
           </form>
           <UnitsSetting />
-          <ExportSetting recipes={recipes} />
+          <ExportSetting recipes={recipes} ready={exportReady} />
           <p className="rb-whatsnew-version">Version {APP_VERSION}</p>
         </Sheet>
       )}
