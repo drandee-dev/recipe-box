@@ -1873,7 +1873,16 @@ textarea.field {
   border-bottom: 1px solid var(--line);
 }
 
+/* The search field and the sort control share a row; the field takes what the
+   control leaves. */
+.recipes-search {
+  display: flex;
+  gap: var(--sp-2);
+}
+
 .recipes-search input {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   min-height: 46px;
   padding: 0 14px;
@@ -1891,6 +1900,21 @@ textarea.field {
 .recipes-search input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+/* Same face, height and border as the field beside it. A native select, so the
+   phone's own picker opens; 16px so iOS does not zoom when it does. */
+.recipes-sort {
+  flex-shrink: 0;
+  width: 132px;
+  min-height: 46px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--txt);
+  font: inherit;
+  font-size: var(--fs-input);
 }
 
 /* One row, scrolling horizontally rather than wrapping (finding 4) — nine
@@ -3968,6 +3992,46 @@ textarea.field {
   .shopping-strip-x:active {
     transform: none;
   }
+}
+
+/* The cooked line under the tags: the count and last date, then the quiet
+   buttons. They share a row and wrap rather than squeeze. */
+.detail-cooked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--sp-3);
+  margin: var(--sp-1) 0 0;
+}
+
+.detail-cooked-label {
+  font-size: var(--fs-sm);
+  color: var(--txt-2);
+}
+
+/* Notes: read as written, line breaks kept. */
+.detail-notes {
+  margin-top: var(--sp-6);
+}
+
+.detail-note-text {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-read);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.detail-note-edit textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.detail-note-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
 }
 
 /* An ingredient line in a hanging quantity column: bold amounts right-aligned

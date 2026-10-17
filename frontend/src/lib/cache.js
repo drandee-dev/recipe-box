@@ -32,6 +32,7 @@ export const cacheKeys = {
   recipes: (userId) => `recipes:${userId}`,
   plan: (userId, weekISO) => `plan:${userId}:${weekISO}`,
   shopping: (userId, weekISO) => `shopping:${userId}:${weekISO}`,
+  cooklog: (userId) => `cooklog:${userId}`,
 }
 
 function readCache(key) {

@@ -13,14 +13,20 @@ const stored = localRows('recipebox:recipes')
 const COLS =
   'id,title,source_url,source_type,image_url,image_thumb_url,image_blur,description,' +
   'ingredients,instructions,prep_min,cook_min,total_min,servings,tags,favorite,' +
-  'created_at,updated_at'
+  'notes,created_at,updated_at'
 
 const SOURCE_TYPES = new Set(['web', 'tiktok', 'instagram', 'manual'])
 
 // Extraction output may omit fields, and the DB check constraint rejects
 // unknown source_type values — shape every write to match supabase/schema.sql.
-function toRow(recipe) {
+export function toRow(recipe) {
   return {
+    // Notes are the one column a write may not know about: a recipe object read
+    // before the column existed (an old offline copy) has no `notes` key at all,
+    // and writing null for it would erase notes saved from another device. An
+    // upsert leaves an omitted column alone, so it is left out unless the object
+    // actually carries it (null means "cleared", and is written).
+    ...(recipe.notes !== undefined && { notes: recipe.notes ? String(recipe.notes).slice(0, 4000) : null }),
     id: recipe.id || crypto.randomUUID(),
     title: recipe.title || 'Untitled recipe',
     source_url: recipe.source_url || null,

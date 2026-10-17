@@ -6,6 +6,8 @@ import { makeStore, migrateLocalRecipes } from './lib/store.js'
 import { makePlanStore, migrateLocalPlan } from './lib/plan.js'
 import { KEEP_WEEKS, makeShoppingStore, migrateLocalShopping } from './lib/shopping.js'
 import { makePrefsStore, migrateLocalPrefs } from './lib/prefs.js'
+import { makeCookStore, migrateLocalCookLog } from './lib/cooklog.js'
+import { cookStats as statsOf } from './lib/cooked.js'
 import { cacheKeys, seedRecipes, withMirror } from './lib/cache.js'
 import { MIRROR_CONCURRENCY, mirrorSource, needsGlyphRepair, needsMirror } from './lib/images.js'
 import { addDays, fromISODate, startOfWeek, toISODate, weekRangeLabel } from './lib/dates.js'
@@ -166,6 +168,7 @@ export default function App() {
   const planStore = useMemo(() => makePlanStore(userId), [userId])
   const shoppingStore = useMemo(() => makeShoppingStore(userId), [userId])
   const prefsStore = useMemo(() => makePrefsStore(userId), [userId])
+  const cookStore = useMemo(() => makeCookStore(userId), [userId])
 
   // Recipes this session has already handed to the mirror, successfully or not.
   // Success needs it because the list re-renders and reloads constantly and the
@@ -238,6 +241,10 @@ export default function App() {
 
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [plan, setPlan] = useState([])
+  // Every time a recipe was cooked (cook_log), whole: it is one small row per
+  // cook, and the count, last date and sorts all derive from it.
+  const [cookLog, setCookLog] = useState([])
+  const cookStats = useMemo(() => statsOf(cookLog), [cookLog])
   // Checks and hand-added items. The list itself is derived from the plan.
   const [overlay, setOverlay] = useState([])
 
@@ -392,6 +399,33 @@ export default function App() {
     }
   }, [authReady, userId, loadPlan, loadOverlay])
 
+  // The cooked log is not week-scoped, so it loads once per account rather than
+  // with the plan. Declared after the recipes effect on purpose: it waits on the
+  // same migration ref, since cook_log.recipe_id is a foreign key into recipes.
+  const loadCookLog = useCallback(
+    () => withMirror(userId && cacheKeys.cooklog(userId), () => cookStore.list()),
+    [cookStore, userId],
+  )
+
+  useEffect(() => {
+    if (!authReady) return
+    let cancelled = false
+    ;(async () => {
+      try {
+        if (recipesMigratedRef.current) await recipesMigratedRef.current
+        if (userId) await migrateLocalCookLog(userId)
+        const logged = await loadCookLog()
+        if (!cancelled) setCookLog(logged.rows)
+      } catch {
+        // Display only: without it the counts and the cooked sorts read as
+        // "never cooked" for this visit, and nothing else is affected.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [authReady, userId, loadCookLog])
+
   // Re-read the store without the auth/migrate work the mount effect does.
   // An installed PWA is resumed, not reloaded, so without this it shows the
   // list it fetched the first time it opened — a capture made in the browser
@@ -407,14 +441,17 @@ export default function App() {
       // Both, in parallel: the plan goes stale on resume for exactly the same
       // reason the recipe list does, and a plan row is meaningless without the
       // recipe it points at.
-      const [listed, planned, overlaid] = await Promise.all([
+      const [listed, planned, overlaid, logged] = await Promise.all([
         withMirror(userId && cacheKeys.recipes(userId), () => store.list()),
         loadPlan(),
         loadOverlay(),
+        // A failed read of the log must not fail the refresh: counts are display.
+        loadCookLog().catch(() => null),
       ])
       setRecipes(listed.rows)
       setPlan(planned.rows)
       setOverlay(overlaid.rows)
+      if (logged) setCookLog(logged.rows)
       setOffline(listed.stale || planned.stale || overlaid.stale)
       setError('')
       // Catches anything captured on another device since this one last looked,
@@ -437,7 +474,7 @@ export default function App() {
       refreshingRef.current = false
       setRefreshing(false)
     }
-  }, [store, userId, loadPlan, loadOverlay, mirrorImages])
+  }, [store, userId, loadPlan, loadOverlay, loadCookLog, mirrorImages])
 
   // The gesture and the resume-time refetch, both of which only ever call
   // `refresh`. Gated on authReady: a refetch before then runs against the
@@ -636,6 +673,45 @@ export default function App() {
     return updateRecipe(recipe, { favorite: !recipe.favorite })
   }
 
+  // Log a cook. Optimistic, like the planner: the line on the open recipe should
+  // say "Cooked once" the instant the button is pressed. Returns the row's id so
+  // the sheet can offer to take it back; a failed write removes the row again and
+  // says so, and returns null (never throws, because cook mode's Done calls this
+  // on its way out and must not be stopped by it).
+  async function handleCooked(recipeId) {
+    const row = { id: crypto.randomUUID(), recipe_id: recipeId, cooked_at: new Date().toISOString() }
+    setCookLog((prev) => [...prev, row])
+    try {
+      const saved = await cookStore.add(row)
+      setCookLog((prev) => prev.map((r) => (r.id === row.id ? saved : r)))
+      return saved.id
+    } catch (err) {
+      setCookLog((prev) => prev.filter((r) => r.id !== row.id))
+      setError(writeError(err))
+      return null
+    }
+  }
+
+  async function handleUndoCooked(id) {
+    const before = cookLog
+    setCookLog((prev) => prev.filter((r) => r.id !== id))
+    try {
+      await cookStore.remove(id)
+    } catch (err) {
+      setCookLog(before)
+      setError(writeError(err))
+    }
+  }
+
+  // Notes, like the editor's save and unlike updateRecipe: it throws, so the
+  // sheet keeps the draft and says the note did not save instead of closing on a
+  // lie. Blank clears the note.
+  async function handleSaveNotes(recipe, text) {
+    const notes = text.trim() ? text.trim().slice(0, 4000) : null
+    const saved = await store.save({ ...recipe, notes })
+    setRecipes((prev) => prev.map((r) => (r.id === saved.id ? saved : r)))
+  }
+
   // The editor's save, which is deliberately not updateRecipe: that one is
   // optimistic and swallows its failure into the error strip, which is right for
   // a star and wrong for a form. Here the sheet stays open and shows what went
@@ -707,6 +783,8 @@ export default function App() {
       // so drop them from view without a refetch.
       await planStore.removeByRecipe(id)
       setPlan((prev) => prev.filter((e) => e.recipe_id !== id))
+      await cookStore.removeByRecipe(id)
+      setCookLog((prev) => prev.filter((r) => r.recipe_id !== id))
       if (openId === id) setOpenId(null)
     } catch (err) {
       setError(writeError(err))
@@ -1051,6 +1129,10 @@ export default function App() {
             onToggleFavorite={handleToggleFavorite}
             onAssign={handlePlanFromRecipe}
             onToList={handleAddToList}
+            cookStats={cookStats}
+            onCooked={handleCooked}
+            onUndoCooked={handleUndoCooked}
+            onSaveNotes={handleSaveNotes}
             onEdit={(recipe) => setEditing({ recipe })}
             onWrite={() => setEditing({ recipe: null })}
             onCapture={() => setCaptureOpen(true)}
