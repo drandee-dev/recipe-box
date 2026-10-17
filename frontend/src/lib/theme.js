@@ -38,7 +38,11 @@ function apply() {
   if (current === 'auto') root.removeAttribute('data-theme')
   else root.setAttribute('data-theme', current)
   const dark = current === 'dark' || (current === 'auto' && Boolean(media?.matches))
-  document.querySelector('meta[name="theme-color"]')?.setAttribute('content', dark ? BAR.dark : BAR.light)
+  // Both tags (index.html has one per device scheme): a browser picks the first
+  // whose media matches, so a chosen theme only wins if they agree.
+  document
+    .querySelectorAll('meta[name="theme-color"]')
+    .forEach((tag) => tag.setAttribute('content', dark ? BAR.dark : BAR.light))
 }
 
 export function setTheme(mode) {
