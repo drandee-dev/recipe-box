@@ -119,4 +119,4 @@ Saving/importing recipes, weekly meal planner, shopping list, search/tags/collec
 
 ## Non-goals (for now)
 
-Multi-user sharing/households, nutrition data, recipe scaling, discovery feed, native apps.
+Multi-user sharing/households (a Share button on the shopping list sends a text copy instead), nutrition data, discovery feed, native apps. Recipe scaling has shipped (servings stepper on the recipe sheet), with unit conversion and per-meal servings on the staging branch.

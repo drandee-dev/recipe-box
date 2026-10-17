@@ -60,10 +60,27 @@ function writeCache(key, value) {
 // `stale: true` means the rows came from the mirror and may be behind. The
 // original error is re-thrown when there is no mirror to fall back on, so a
 // first run with no network still reports what went wrong.
-export async function withMirror(key, fetch) {
+//
+// A read that never answers counts as a failed read. Measured 2026-10-17 with a
+// signed-in session and the network failing two ways: refused outright, the
+// client retries each GET with backoff and the banner arrived 7 to 14 seconds
+// late; stalled (a weak bar of signal, a captive portal), the promise never
+// settled, so there was no banner, no error and no fallback, for as long as the
+// app stayed open. That was the "offline banner never appears" bug.
+export const READ_TIMEOUT_MS = 8000
+
+function withTimeout(promise, ms) {
+  let timer
+  const timeout = new Promise((_, reject) => {
+    timer = setTimeout(() => reject(new Error('The connection is too slow to load that.')), ms)
+  })
+  return Promise.race([promise, timeout]).finally(() => clearTimeout(timer))
+}
+
+export async function withMirror(key, fetch, { timeoutMs = READ_TIMEOUT_MS } = {}) {
   if (!key) return { rows: await fetch(), stale: false }
   try {
-    const rows = await fetch()
+    const rows = await withTimeout(fetch(), timeoutMs)
     writeCache(key, rows)
     return { rows, stale: false }
   } catch (err) {

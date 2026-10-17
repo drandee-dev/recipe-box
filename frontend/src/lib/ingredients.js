@@ -386,6 +386,24 @@ export function scaleIngredientText(raw, factor) {
   return `${match[1]}${amount}${scaleBracketed(text.slice(match[0].length), factor)}`
 }
 
+// The amount at the head of a line, and its unit when the word after it is one,
+// split off so the sheet can set it in bold (every comparable app does, and the
+// eye finds "2 cups" before it finds the noun). Nothing is rewritten: the three
+// parts always join back into exactly the input, and a line with no quantity at
+// its head comes back untouched as `rest`, the same rule scaling follows. A
+// bracketed weight ("(200 g)") stays plain: it restates the amount, it is not
+// the amount.
+export function splitAmount(text) {
+  const s = String(text ?? '')
+  const match = s.match(LEADING_AMOUNT)
+  if (!match) return { lead: '', bold: '', rest: s }
+  const lead = match[1]
+  let bold = match[0].slice(lead.length)
+  const after = s.slice(match[0].length).match(/^(\s*)([A-Za-z]+)\.?(?=\s|$|,)/)
+  if (after && unitOf(after[2])) bold += s.slice(match[0].length, match[0].length + after[0].length)
+  return { lead, bold, rest: s.slice(lead.length + bold.length) }
+}
+
 // Recipes that came through the AI structurer already carry item/qty/unit, so
 // use those and skip the parser. qty arrives as a string there.
 function fromStructured(ing) {

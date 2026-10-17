@@ -1475,26 +1475,21 @@ textarea.field {
   cursor: pointer;
 }
 
-.detail-cook {
-  margin-top: var(--sp-4);
-}
-
+/* Start cooking, Add to plan, To list in one row. They size to their labels and
+   share what is left, so the longest label is never squeezed onto two lines; a
+   phone too narrow for all three wraps the last one to a second row instead of
+   clipping it. */
 .detail-actions {
   display: flex;
-  gap: var(--sp-3);
-  margin: var(--sp-3) 0 0;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: var(--sp-4) 0 0;
 }
 
-/* Both stretch, so neither reads as the leftover half of the row. */
 .detail-actions .btn {
-  flex: 1;
-  /* Three across at 390px: a label must not wrap to two lines. */
+  flex: 1 1 auto;
   padding-inline: var(--sp-2);
   white-space: nowrap;
-}
-
-.detail-actions {
-  gap: var(--sp-2);
 }
 
 /* The star is state, not an action, so it takes saffron and no fill — the
@@ -3606,6 +3601,50 @@ textarea.field {
 .planner-entry-meta {
   font-size: var(--fs-2xs);
   color: var(--txt-2);
+}
+
+/* --- Press states -------------------------------------------------------------
+   Nothing in the app acknowledged a touch until the finger lifted, so a tap on a
+   slow screen read as having missed. A press shrinks a control a hair and dims a
+   row. Pointer devices that hover get it too, which costs nothing. The scale is
+   transform-only (no layout), 0.97 is small enough not to look like an error, and
+   a disabled control never moves. */
+.btn:active:not(:disabled),
+.planner-chip:active,
+.capture-route:active,
+.detail-serving-step:active:not(:disabled),
+.shopping-strip-x:active {
+  transform: scale(0.97);
+}
+
+.recipes-cell:has(.recipes-cell-toggle:active),
+.planner-entry-open:active,
+.shopping-item label:active,
+.detail-check label:active {
+  opacity: 0.7;
+}
+
+.btn,
+.planner-chip,
+.capture-route,
+.detail-serving-step {
+  transition: transform 0.08s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn:active:not(:disabled),
+  .planner-chip:active,
+  .capture-route:active,
+  .detail-serving-step:active:not(:disabled),
+  .shopping-strip-x:active {
+    transform: none;
+  }
+}
+
+/* The amount on an ingredient line. Weight only: same colour and size, so a
+   ticked row fades and strikes exactly as before. */
+.detail-amount {
+  font-weight: 700;
 }
 
 /* "To list" on the recipe sheet: the plan panel's box, holding checkbox rows. */

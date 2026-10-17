@@ -24,6 +24,7 @@ import { useWakeLock } from '../lib/useWakeLock.js'
 import { SERVINGS_MAX_FACTOR, baseServings, hostOf, metaParts, servingsLabel } from '../lib/recipes.js'
 import UnitsToggle from './UnitsToggle.jsx'
 import { displayIngredient } from '../lib/convert.js'
+import { splitAmount } from '../lib/ingredients.js'
 import { useUnits } from '../lib/useUnits.js'
 import { SLOTS, addDays, dayName, shortDate, toISODate } from '../lib/dates.js'
 
@@ -39,6 +40,20 @@ const SLOT_LABELS = {
 // yesterday on a Wednesday and hide next Monday all week.
 const PLAN_DAYS = 7
 
+// An ingredient line with its amount in bold. The parts always join back into the
+// line (splitAmount), so this only changes weight, never wording.
+function Amount({ text }) {
+  const { lead, bold, rest } = splitAmount(text)
+  if (!bold) return <span>{text}</span>
+  return (
+    <span>
+      {lead}
+      <strong className="detail-amount">{bold}</strong>
+      {rest}
+    </span>
+  )
+}
+
 function planDayLabel(date, offset) {
   if (offset === 0) return 'Today'
   if (offset === 1) return 'Tomorrow'
@@ -49,7 +64,7 @@ function planDayLabel(date, offset) {
 // the common case: opening the original page, and deleting. Delete is in here
 // rather than in the row of buttons because it was previously one tap away from
 // Edit with nothing between them.
-function OverflowMenu({ recipe, onDelete, onClose }) {
+function OverflowMenu({ recipe, onEdit, onDelete, onClose }) {
   const menuRef = useRef(null)
 
   useEffect(() => {
@@ -86,6 +101,16 @@ function OverflowMenu({ recipe, onDelete, onClose }) {
   // of links and buttons that Tab already reaches.
   return (
     <div className="detail-menu-pop" ref={menuRef}>
+      <button
+        type="button"
+        className="detail-menu-item"
+        onClick={() => {
+          onClose()
+          onEdit(recipe)
+        }}
+      >
+        Edit recipe
+      </button>
       {recipe.source_url && (
         <a
           className="detail-menu-item"
@@ -284,7 +309,7 @@ export default function RecipeDetail({
               <span aria-hidden="true">⋯</span>
             </button>
             {menuOpen && (
-              <OverflowMenu recipe={recipe} onClose={() => setMenuOpen(false)} onDelete={onDelete} />
+              <OverflowMenu recipe={recipe} onClose={() => setMenuOpen(false)} onEdit={onEdit} onDelete={onDelete} />
             )}
           </span>
         </>
@@ -377,17 +402,19 @@ export default function RecipeDetail({
           Add to plan does — one filled accent per region. A recipe with no steps
           (a link card, or one still being filled in by hand) has nothing to cook
           from, and offering the button would open an empty screen. */}
-      {recipe.instructions.length > 0 && (
-        <button
-          type="button"
-          className={planOpen ? 'btn btn-secondary btn-block detail-cook' : 'btn btn-primary btn-block detail-cook'}
-          onClick={() => setCooking(true)}
-        >
-          Start cooking
-        </button>
-      )}
-
       <div className="detail-actions">
+        {/* One row, not a full-width button above a row of three: the ingredients
+            are what a person came for and they were starting at y=709 of 844 at
+            390px. Edit moved into the ⋯ menu to make the room. */}
+        {recipe.instructions.length > 0 && (
+          <button
+            type="button"
+            className={planOpen || listOpen ? 'btn btn-secondary' : 'btn btn-primary'}
+            onClick={() => setCooking(true)}
+          >
+            Start cooking
+          </button>
+        )}
         {/* Secondary once the panel is open. It has become the disclosure that
             opened the thing, and the accent belongs on the one button that
             actually commits — one filled accent per region, or "how important is
@@ -409,9 +436,6 @@ export default function RecipeDetail({
             To list
           </button>
         )}
-        <button type="button" className="btn btn-secondary" onClick={() => onEdit(recipe)}>
-          Edit
-        </button>
       </div>
 
       {/* Inline rather than a second sheet stacked on this one. The recipe you
@@ -467,7 +491,7 @@ export default function RecipeDetail({
               <li key={n}>
                 <label>
                   <input type="checkbox" checked={listPicked.has(n)} onChange={() => toggleListed(n)} />
-                  <span>{displayIngredient(ing.raw, { factor, units })}</span>
+                  <Amount text={displayIngredient(ing.raw, { factor, units })} />
                 </label>
               </li>
             ))}
@@ -500,7 +524,7 @@ export default function RecipeDetail({
         <>
           {recipe.description && <p className="recipes-caption">{recipe.description}</p>}
           <p className="detail-meta">
-            No recipe was readable from this post. Fill it in by hand with Edit above, or open the
+            No recipe was readable from this post. Fill it in by hand with Edit recipe in the ⋯ menu, or open the
             source and paste the text into the + button's Paste recipe text.
           </p>
         </>
@@ -521,7 +545,7 @@ export default function RecipeDetail({
                       written — the same rule the shopping list follows, and the
                       reason a scaled recipe can't produce a number the recipe
                       never gave. */}
-                  <span>{displayIngredient(ing.raw, { factor, units })}</span>
+                  <Amount text={displayIngredient(ing.raw, { factor, units })} />
                 </label>
               </li>
             ))}
@@ -542,7 +566,7 @@ export default function RecipeDetail({
           {recipe.instructions.length === 0 ? (
             <p className="detail-meta">
               The source listed ingredients but no method, usually because the steps are only in
-              the video. Add them with Edit below, or paste them into the + button&rsquo;s Paste
+              the video. Add them with Edit recipe in the ⋯ menu, or paste them into the + button&rsquo;s Paste
               recipe text.
             </p>
           ) : (

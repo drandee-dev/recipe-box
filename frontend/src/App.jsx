@@ -956,6 +956,8 @@ export default function App() {
             <TimersButton />
             <Account
               session={session}
+              recipes={recipes}
+              exportReady={!loading && !offline}
               onWhatsNew={() => setNewsSheet('whatsnew')}
               onFeedback={() => setNewsSheet('feedback')}
             />
@@ -967,7 +969,7 @@ export default function App() {
           equally, and the shopping tab is where it matters most. */}
       {offline && (
         <p className="rb-offline" role="status">
-          <span>Offline. Showing the copy saved on this device.</span>
+          <span>No connection. Showing the copy saved on this device.</span>
           <button
             type="button"
             className="btn btn-quiet rb-offline-retry"
@@ -1052,6 +1054,7 @@ export default function App() {
             onToList={handleAddToList}
             onEdit={(recipe) => setEditing({ recipe })}
             onWrite={() => setEditing({ recipe: null })}
+            onCapture={() => setCaptureOpen(true)}
           />
         </main>
       )}
@@ -1164,7 +1167,13 @@ export default function App() {
 
       {/* One card at a time: the install card waits until the news is closed,
           or the Recipes tab opens with a notice at each end of the list. */}
-      <InstallPrompt ready={recipes.length > 0 && newsClosed} />
+      {/* Shown on the Recipes tab only. The card pins above the tab bar while
+          there is more below it, which on the planner and the shopping list meant
+          it sat over the rows being read or ticked (measured at 390px, iOS UA).
+          It stays MOUNTED on every tab, though: Chrome fires beforeinstallprompt
+          once per page load, and an unmounted card has no listener to catch it
+          (found in review). */}
+      <InstallPrompt ready={tab === 'recipes' && recipes.length > 0 && newsClosed} />
 
       {/* After every other sheet in the tree, so the list opens on top of a
           recipe or cook mode rather than behind it. */}
