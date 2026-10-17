@@ -32,11 +32,15 @@
      floor stops anything shrinking below legibility. Use these rather than raw
      sizes. --fs-input is a hard 16px because anything smaller makes iOS zoom the
      page on focus and never zoom back. --- */
-  --fs-2xs: max(0.72rem, 11px);
+  /* 12px floor, up from 11: the smallest text in the app is read in a shop, on a
+     phone held at arm's length. */
+  --fs-2xs: max(0.75rem, 12px);
   --fs-xs: max(0.78rem, 12px);
   --fs-sm: max(0.85rem, 13px);
   --fs-base: max(0.95rem, 15px);
   --fs-md: max(1rem, 16px);
+  /* The size recipe text is read at: ingredients and steps. */
+  --fs-read: max(1.125rem, 18px);
   --fs-lg: 1.25rem;
   --fs-xl: 1.5rem;
   --fs-input: 16px;
@@ -62,7 +66,9 @@
   --line-strong: #8f8a7b;
   --txt: #191c18;
   --txt-2: #5f665d;
-  --txt-3: #70776e;
+  /* 4.73:1 on --ground, 5.29:1 on --surface. It was #70776e, 4.09:1 on the
+     ground, under the 4.5:1 floor wherever it was used for small text. */
+  --txt-3: #666d64;
 
   /* Accent is for actions now: buttons, the on-state of a chip, focus. Tags use
      --accent-ink on --accent-soft, which clears 4.5:1 where the accent itself
@@ -178,6 +184,15 @@ a,
 select,
 [role='button'] {
   touch-action: manipulation;
+}
+
+/* Form controls do not inherit the page's typeface by default; the browser gives
+   them its own (Arial on most phones). Cook mode's Back, Next step and
+   Ingredients were rendering in it, measured on the staging build. Family only:
+   every component already sets its own size and weight, and `font: inherit`
+   would reset those. :where() keeps the specificity at zero. */
+:where(button, input, select, textarea) {
+  font-family: inherit;
 }
 
 /* One focus ring for the whole app. Before this only the search field and the
@@ -424,8 +439,8 @@ textarea.field {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-pill);
@@ -542,7 +557,7 @@ textarea.field {
 
 .account-mode {
   flex: 1;
-  min-height: 40px;
+  min-height: 44px;
   border: none;
   border-radius: calc(var(--r-sm) - 2px);
   background: none;
@@ -1019,46 +1034,50 @@ textarea.field {
    other notices: it carries a heading, a sentence and two actions. The close
    button sits in the corner, so the text keeps its right padding clear of it. */
 .rb-news {
-  position: relative;
+  display: flex;
+  align-items: center;
   margin: var(--sp-3) 0 0;
-  padding: var(--sp-3) calc(44px + var(--sp-2)) var(--sp-3) var(--sp-4);
+  padding-left: var(--sp-4);
   border: 1px solid var(--info-line);
   border-radius: var(--r-sm);
   background: var(--info-bg);
   color: var(--info-ink);
 }
 
+/* The whole text is one button (opens What's new). A title over a single line of
+   the body: the body is clamped because the sheet it opens has the rest. */
+.rb-news-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--sp-2) 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .rb-news-title {
-  margin: 0;
-  text-wrap: balance;
   font-family: 'Clash Display', 'Satoshi', sans-serif;
   font-size: var(--fs-md);
   font-weight: 600;
 }
 
 .rb-news-body {
-  margin: var(--sp-1) 0 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
   font-size: var(--fs-sm);
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
-.rb-news-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-2) var(--sp-4);
-  margin-top: var(--sp-3);
-}
-
-.rb-news-link,
 .rb-news-close {
+  flex-shrink: 0;
   color: var(--info-ink);
-}
-
-.rb-news-close {
-  position: absolute;
-  top: 0;
-  right: 0;
 }
 
 .rb-whatsnew {
@@ -1433,16 +1452,15 @@ textarea.field {
   font-variant-numeric: tabular-nums;
 }
 
-/* 40px rather than the 44px floor `.btn` carries: these are a matched pair
-   inside a bordered control and a 44px box each would make the row taller than
-   the buttons under it. The pair is `.btn`-free on purpose — a stepper is not
-   one of the five button roles and giving it one would have meant a sixth. */
+/* 44px, the same floor `.btn` carries (they were 40px). The pair is `.btn`-free
+   on purpose — a stepper is not one of the five button roles and giving it one
+   would have meant a sixth. */
 .detail-serving-step {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
   padding: 0;
   border: 1px solid var(--line-strong);
@@ -1500,8 +1518,8 @@ textarea.field {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
   padding: 0;
   border: 0;
@@ -1641,8 +1659,29 @@ textarea.field {
   min-height: 44px;
   padding: var(--sp-2) 0;
   border-bottom: 1px solid var(--line);
+  /* Reading size: 18px is what Serious Eats, Bon Appetit and NYT Cooking all set
+     recipe text at (measured), and this is read from the counter at arm's
+     length. */
+  font-size: var(--fs-read);
   line-height: 1.45;
   cursor: pointer;
+}
+
+/* The step you are on: the first one not yet ticked, so ticking moves it with no
+   state of its own. A saffron bar and a faint wash, because this is simply true
+   about the recipe (the palette rule: accent is for what you press). The bar is
+   an inset shadow and the row's gutter is bought back with a negative margin, so
+   nothing shifts when the band moves. */
+.detail-check-current {
+  margin-inline: calc(-1 * var(--sp-2));
+  padding-inline: var(--sp-2);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--saffron) 9%, transparent);
+  box-shadow: inset 3px 0 0 var(--saffron);
+}
+
+.detail-check-current label {
+  border-bottom-color: transparent;
 }
 
 .detail-checks li:last-child label {
@@ -1738,9 +1777,9 @@ textarea.field {
   align-items: center;
   gap: 5px;
   flex-shrink: 0;
-  /* Chips are a dense row, so they sit below the 44px target used elsewhere.
-     The generous horizontal padding keeps each one comfortably tappable. */
-  min-height: 34px;
+  /* The 44px target. They were 34px "because it is a dense row"; the row is one
+     line and scrolls sideways, so the extra height costs 10px of scroll. */
+  min-height: 44px;
   padding: 0 12px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-pill);
@@ -2502,11 +2541,14 @@ textarea.field {
    wet hands, so it is the only place in the app that sets type this large. */
 .cook-step {
   margin: 0;
-  font-family: 'Clash Display', 'Satoshi', sans-serif;
-  font-size: max(1.6rem, 25px);
+  /* Satoshi, not the display face: Clash Display is for headings, and running
+     instructions are text. Measured on staging at 25.6px in Clash; this is the
+     body face a notch bigger, which is what a step read from two feet wants. */
+  font-family: inherit;
+  font-size: max(1.75rem, 28px);
   font-weight: 600;
-  line-height: 1.32;
-  letter-spacing: -0.015em;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
 }
 
 /* --- Timers (A1) -----------------------------------------------------------
@@ -2924,6 +2966,40 @@ textarea.field {
   padding: var(--sp-2) 0;
   border-top: 1px solid rgb(243 240 228 / 12%);
   opacity: 0.85;
+}
+
+/* Tablet and up: the step takes the left, the ingredients stay beside it as a
+   panel instead of pushing the step down, and Next runs along the foot. Capped in
+   width so a 1440px window is not a 1400px line of text. */
+@media (min-width: 768px) {
+  .cook-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    grid-template-areas:
+      'step peek'
+      'next next';
+    grid-template-rows: auto 1fr;
+    align-content: start;
+    column-gap: var(--sp-8);
+    width: 100%;
+    max-width: 1040px;
+    margin-inline: auto;
+  }
+
+  .cook-step-block {
+    grid-area: step;
+  }
+
+  .cook-peek {
+    grid-area: peek;
+    align-self: start;
+    margin-top: 0;
+  }
+
+  .cook-next {
+    grid-area: next;
+    align-self: end;
+  }
 }
 
 /* Under a rule at the foot of the screen, because "what am I about to be asked

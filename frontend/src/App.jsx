@@ -989,7 +989,6 @@ export default function App() {
             <NewsBanner
               entry={news}
               onWhatsNew={() => setNewsSheet('whatsnew')}
-              onFeedback={() => setNewsSheet('feedback')}
               onDismiss={(e) => {
                 markNewsSeen(news.id)
                 setNewsClosed(true)

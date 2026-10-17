@@ -25,6 +25,8 @@ import { clearProgress, loadProgress, saveProgress } from '../lib/cookProgress.j
 import { convertTemperatures, displayIngredient } from '../lib/convert.js'
 import { useWakeLock } from '../lib/useWakeLock.js'
 
+const INGREDIENTS_KEY = 'recipebox:cookIngredients'
+
 const SWIPE_SLOP = 8
 const SWIPE_THRESHOLD = 60
 
@@ -44,7 +46,27 @@ export default function CookMode({ recipe, servings, factor = 1, units = 'origin
   const steps = recipe.instructions || []
   // Resumes where you left off if you were mid-cook in the last twelve hours.
   const [index, setIndex] = useState(() => loadProgress(recipe.id, steps.length).step)
-  const [showIngredients, setShowIngredients] = useState(false)
+  // Open by default, and the choice is kept: closed, the middle of every step was
+  // empty ground between a few lines of text and the Next preview (measured at
+  // 390x844), and the ingredients are the thing you reach for mid-step. A person
+  // who hides them keeps them hidden, on this device.
+  const [showIngredients, setShowIngredients] = useState(() => {
+    try {
+      return localStorage.getItem(INGREDIENTS_KEY) !== '0'
+    } catch {
+      return true
+    }
+  })
+
+  function toggleIngredients() {
+    const next = !showIngredients
+    setShowIngredients(next)
+    try {
+      localStorage.setItem(INGREDIENTS_KEY, next ? '1' : '0')
+    } catch {
+      // Then it is open again next time. Not worth more.
+    }
+  }
 
   const gesture = useRef(null)
   const bodyRef = useRef(null)
@@ -64,7 +86,6 @@ export default function CookMode({ recipe, servings, factor = 1, units = 'origin
     const next = Math.min(steps.length - 1, Math.max(0, index + direction))
     setIndex(next)
     saveProgress(recipe.id, { step: next })
-    setShowIngredients(false)
     bodyRef.current?.scrollTo({ top: 0 })
   }
 
@@ -161,7 +182,7 @@ export default function CookMode({ recipe, servings, factor = 1, units = 'origin
               type="button"
               className="cook-peek-toggle"
               aria-expanded={showIngredients}
-              onClick={() => setShowIngredients((v) => !v)}
+              onClick={toggleIngredients}
             >
               {/* The underline is on this span rather than on the button,
                   because text-decoration is drawn by the element that declares
