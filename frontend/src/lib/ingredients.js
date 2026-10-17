@@ -404,6 +404,27 @@ export function splitAmount(text) {
   return { lead, bold, rest: s.slice(lead.length + bold.length) }
 }
 
+// Width, in characters, of the quantity column when a recipe's lines are set in
+// one: the longest bold amount, capped so a freak line ("1 1/2 to 2 tablespoons")
+// cannot take half the screen. 0 when no line has an amount, which is the cue to
+// set the list as plain text with no column at all.
+export const QTY_COLUMN_MAX = 11
+
+export function qtyColumnCh(lines) {
+  let longest = 0
+  for (const line of lines) longest = Math.max(longest, splitAmount(line).bold.trim().length)
+  return Math.min(longest, QTY_COLUMN_MAX)
+}
+
+// A shopping line's sources on one line: the first recipe, then "+N" for the
+// rest. The full list is in the item's sheet; spelling every recipe out is what
+// made each row wrap to three lines.
+export function formatSources(sources) {
+  if (!sources?.length) return ''
+  const first = formatSource(sources[0])
+  return sources.length > 1 ? `${first} +${sources.length - 1}` : first
+}
+
 // Recipes that came through the AI structurer already carry item/qty/unit, so
 // use those and skip the parser. qty arrives as a string there.
 function fromStructured(ing) {

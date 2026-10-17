@@ -38,6 +38,9 @@ const SWIPE_OVERSHOOT = 40
 const LONG_PRESS_MS = 500
 const SWIPE_SLOP = 8
 
+// The slots a day actually has meals in, in the day's order.
+const slotsOf = (entries) => SLOTS.filter((s) => entries.some((e) => e.slot === s))
+
 // Week swipe (finding 20). Smaller threshold than the row's delete swipe —
 // this gesture only has one outcome, not "reveal vs delete".
 const WEEK_SWIPE_THRESHOLD = 56
@@ -287,9 +290,12 @@ export default function Planner({
                 </button>
               </div>
 
-              {SLOTS.filter((s) => dayEntries.some((e) => e.slot === s)).map((s) => (
+              {slotsOf(dayEntries).map((s, _i, all) => (
                 <div key={s} className="planner-slot">
-                  <span className="planner-slot-label">{SLOT_LABELS[s]}</span>
+                  {/* A day with one slot does not need a heading to say which
+                      one: it moves into each meal's own line instead, so the
+                      card loses a row and still says "Dinner". */}
+                  {all.length > 1 && <span className="planner-slot-label">{SLOT_LABELS[s]}</span>}
                   <ul className="planner-entries">
                     {dayEntries
                       .filter((e) => e.slot === s)
@@ -301,6 +307,7 @@ export default function Planner({
                             entry={entry}
                             recipe={recipe}
                             dayLabel={label}
+                            slotLabel={all.length === 1 ? SLOT_LABELS[s] : null}
                             isOpen={openEntryId === entry.id}
                             onOpenChange={(open) => handleEntryOpenChange(entry.id, open)}
                             onRemove={() => removeEntry(entry, label)}
@@ -402,7 +409,7 @@ export default function Planner({
 // button is real and in the DOM at all times, so Tab reaches it regardless
 // of where the row is sitting; focusing it reveals the row the same way a
 // drag would, which is what makes it reachable by keyboard.
-function PlannerEntry({ entry, recipe, dayLabel, isOpen, onOpenChange, onRemove, onOpen }) {
+function PlannerEntry({ entry, recipe, dayLabel, slotLabel, isOpen, onOpenChange, onRemove, onOpen }) {
   const [dragX, setDragX] = useState(0)
   const [dragging, setDragging] = useState(false)
   const gesture = useRef(null)
@@ -540,8 +547,12 @@ function PlannerEntry({ entry, recipe, dayLabel, isOpen, onOpenChange, onRemove,
             <span className={recipe ? 'planner-entry-title' : 'planner-entry-title planner-entry-missing'}>
               {recipe ? recipe.title : 'Recipe no longer saved'}
             </span>
-            {recipe && entry.servings && (
-              <span className="planner-entry-meta">{servingsLabel(recipe, entry.servings)}</span>
+            {recipe && (slotLabel || entry.servings) && (
+              <span className="planner-entry-meta">
+                {[slotLabel, entry.servings ? servingsLabel(recipe, entry.servings) : null]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
             )}
           </span>
         </button>

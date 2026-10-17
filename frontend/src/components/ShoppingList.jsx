@@ -16,6 +16,7 @@ import {
   buildShoppingList,
   formatQuantity,
   formatSource,
+  formatSources,
   groupByAisle,
   shoppingText,
 } from '../lib/ingredients.js'
@@ -43,9 +44,7 @@ function DerivedItem({ item, checked, onToggle, onMore }) {
           ) : (
             item.raw
           )}
-          <span className="shopping-item-from">
-            {item.sources.map(formatSource).join(' · ')}
-          </span>
+          <span className="shopping-item-from">{formatSources(item.sources)}</span>
         </span>
       </label>
       {/* Only a line with a name to remember gets the menu. An unparsed line
@@ -72,6 +71,10 @@ function ItemSheet({ item, prefs, onChangePrefs, onClose }) {
   const isStaple = prefs.staples.includes(item.nameKey)
   return (
     <Sheet title={item.name} closeLabel="Done" onClose={onClose}>
+      {/* The row shows the first recipe and "+N"; the whole list is here. */}
+      <p className="shopping-sheet-from">
+        <strong>On the list for</strong> {item.sources.map(formatSource).join(' · ')}
+      </p>
       <p className="shopping-sheet-note">
         These are remembered for every week. They change where the item is shown, never what
         is on the list.
@@ -389,7 +392,7 @@ export default function ShoppingList({
             ‹
           </button>
           <div className="planner-weeklabel">
-            <strong>{weekRangeLabel(weekStart)}</strong>
+            <strong className="week-label">{weekRangeLabel(weekStart)}</strong>
             {/* Riding beside the thin bar below would drag it up to .btn's
                 44px floor along with it (a real bug caught mid-pass: a fixed
                 --shopping-header-h undershot the actual content and the
@@ -447,7 +450,9 @@ export default function ShoppingList({
         </button>
       </form>
 
-      {(canShare || editable) && (
+      {/* One scrolling bar: the list's two tools, then the recipes behind it. It
+          was two rows (the tools, then the strip), 120px before the first item. */}
+      {(canShare || editable || sourceStrip.length > 0) && (
         <div className="shopping-tools">
           {canShare && (
             <button type="button" className="btn btn-secondary" onClick={share}>
@@ -464,28 +469,27 @@ export default function ShoppingList({
               {shareNote}
             </span>
           )}
+          {sourceStrip.length > 0 && (
+            <ul className="shopping-strip" aria-label="Recipes on this list">
+              {sourceStrip.map((s) => (
+                <li key={s.recipeId} className="shopping-strip-chip">
+                  <span className="shopping-strip-title">
+                    {s.title}
+                    {s.meals > 1 ? ` ×${s.meals}` : ''}
+                  </span>
+                  <button
+                    type="button"
+                    className="shopping-strip-x"
+                    onClick={() => startRemoval({ title: s.title, entryIds: s.entryIds, rowIds: s.rowIds })}
+                    aria-label={`Take ${s.title} off this week`}
+                  >
+                    <span aria-hidden="true">×</span>
+                  </button>
+                </li>
+              ))}
+            </ul>
+          )}
         </div>
-      )}
-
-      {sourceStrip.length > 0 && (
-        <ul className="shopping-strip" aria-label="Recipes on this list">
-          {sourceStrip.map((s) => (
-            <li key={s.recipeId} className="shopping-strip-chip">
-              <span className="shopping-strip-title">
-                {s.title}
-                {s.meals > 1 ? ` ×${s.meals}` : ''}
-              </span>
-              <button
-                type="button"
-                className="shopping-strip-x"
-                onClick={() => startRemoval({ title: s.title, entryIds: s.entryIds, rowIds: s.rowIds })}
-                aria-label={`Take ${s.title} off this week`}
-              >
-                <span aria-hidden="true">×</span>
-              </button>
-            </li>
-          ))}
-        </ul>
       )}
 
       {totalCount === 0 && stapleItems.length === 0 && (
