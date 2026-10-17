@@ -33,6 +33,7 @@ export default function RecipeList({
   onToList,
   onEdit,
   onWrite,
+  onCapture,
 }) {
   // Deleting is the one action here whose failure mode is losing a recipe, so it
   // gets an undo window rather than a confirm dialog — undo costs one tap and
@@ -147,10 +148,14 @@ export default function RecipeList({
 
       {shown.length === 0 && !loading && (
         <p className="rb-empty">
-          <strong>The box is empty</strong>
-          Tap the + button to paste a link, paste recipe text, or write one in.
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onWrite}>
-            Write one yourself
+          <strong>Your recipe box is empty</strong>
+          Save a recipe from a link, a caption, a photo of a page or your own typing. It all
+          lands here, ready to plan and shop from.
+          <button type="button" className="btn btn-primary" onClick={onCapture}>
+            Add your first recipe
+          </button>
+          <button type="button" className="btn btn-quiet btn-sm" onClick={onWrite}>
+            Or write one yourself
           </button>
         </p>
       )}

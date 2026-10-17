@@ -25,6 +25,7 @@ import UnitsToggle from './UnitsToggle.jsx'
 import { setUnits, useUnits } from '../lib/useUnits.js'
 import { getSupabase, supabaseEnabled } from '../lib/supabase.js'
 import { APP_VERSION } from '../lib/news.js'
+import { downloadExport } from '../lib/exportData.js'
 
 const REMEMBER_EMAIL_KEY = 'recipebox:rememberedEmail'
 const REMEMBER_ME_KEY = 'recipebox:rememberMe'
@@ -80,7 +81,37 @@ function UnitsSetting() {
   )
 }
 
-export default function Account({ session, onWhatsNew, onFeedback }) {
+// A copy of every recipe as a file. Offered signed out as well as in: for a
+// signed-out person the only copy lives in this one browser.
+function ExportSetting({ recipes }) {
+  const [note, setNote] = useState('')
+  function save() {
+    try {
+      downloadExport(recipes)
+      setNote(`Saved ${recipes.length} ${recipes.length === 1 ? 'recipe' : 'recipes'} to a file.`)
+    } catch {
+      setNote("Couldn't make the file. Try again.")
+    }
+  }
+  return (
+    <div className="account-units">
+      <p className="account-label">Your recipes</p>
+      <button
+        type="button"
+        className="btn btn-secondary btn-block"
+        onClick={save}
+        disabled={recipes.length === 0}
+      >
+        Download all recipes
+      </button>
+      <p className="account-hint" role="status">
+        {note || 'A JSON file with every recipe, kept as written. Photos are linked, not inside it.'}
+      </p>
+    </div>
+  )
+}
+
+export default function Account({ session, recipes = [], onWhatsNew, onFeedback }) {
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState('signin') // signin | signup | magic | forgot
   const [email, setEmail] = useState(() => localStorage.getItem(REMEMBER_EMAIL_KEY) || '')
@@ -275,6 +306,7 @@ export default function Account({ session, onWhatsNew, onFeedback }) {
             </p>
 
             <UnitsSetting />
+            <ExportSetting recipes={recipes} />
 
             {settingPassword ? (
               <form className="account-form" onSubmit={savePassword}>
@@ -511,6 +543,7 @@ export default function Account({ session, onWhatsNew, onFeedback }) {
             </p>
           </form>
           <UnitsSetting />
+          <ExportSetting recipes={recipes} />
           <p className="rb-whatsnew-version">Version {APP_VERSION}</p>
         </Sheet>
       )}
