@@ -336,3 +336,10 @@ create policy "own cook log" on cook_log
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
 
 create index if not exists cook_log_user_recipe_idx on cook_log (user_id, recipe_id, cooked_at desc);
+
+-- Leftovers in the planner. Additive only: a boolean the live app never selects
+-- or writes. It defaults to false, which is what every existing row and every row
+-- the live app inserts means: a meal that has to be bought for. A planned meal
+-- flagged true is eaten from what was cooked earlier, so the shopping list leaves
+-- it out.
+alter table meal_plan add column if not exists leftover boolean not null default false;

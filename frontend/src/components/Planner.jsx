@@ -77,6 +77,9 @@ export default function Planner({
   // sheet shows in it straight away.
   const [editingId, setEditingId] = useState(null)
   const [slot, setSlot] = useState('dinner')
+  // The picker's "Leftovers" choice: the meal is eaten from what was cooked
+  // earlier, so it is left off the shopping list.
+  const [leftover, setLeftover] = useState(false)
   const [query, setQuery] = useState('')
 
   // Only one row's remove action is ever revealed at a time.
@@ -165,11 +168,12 @@ export default function Planner({
   function openPicker(date) {
     setQuery('')
     setSlot('dinner')
+    setLeftover(false)
     setPicking({ dateISO: toISODate(date), dayLabel: `${dayName(date)}, ${shortDate(date)}` })
   }
 
   function choose(recipeId) {
-    onAssign(recipeId, picking.dateISO, slot)
+    onAssign(recipeId, picking.dateISO, slot, null, leftover)
     setPicking(null)
   }
 
@@ -369,6 +373,21 @@ export default function Planner({
             ))}
           </div>
 
+          {/* Its own row, not a fifth slot: it is not a meal time. */}
+          <div className="planner-slot-chips">
+            <button
+              type="button"
+              className={leftover ? 'planner-chip planner-chip-active' : 'planner-chip'}
+              onClick={() => setLeftover((v) => !v)}
+              aria-pressed={leftover}
+            >
+              Leftovers
+            </button>
+            <span className="planner-leftover-hint">
+              {leftover ? 'Nothing to buy for this meal.' : 'Eating what was cooked earlier? Mark it as leftovers.'}
+            </span>
+          </div>
+
           {recipes.length > 6 && (
             <input
               className="field planner-search"
@@ -547,9 +566,14 @@ function PlannerEntry({ entry, recipe, dayLabel, slotLabel, isOpen, onOpenChange
             <span className={recipe ? 'planner-entry-title' : 'planner-entry-title planner-entry-missing'}>
               {recipe ? recipe.title : 'Recipe no longer saved'}
             </span>
-            {recipe && (slotLabel || entry.servings) && (
+            {recipe && (slotLabel || entry.servings || entry.leftover) && (
               <span className="planner-entry-meta">
-                {[slotLabel, entry.servings ? servingsLabel(recipe, entry.servings) : null]
+                {[
+                  slotLabel,
+                  entry.leftover ? 'Leftovers' : null,
+                  // Servings only mean something for a meal that is bought for.
+                  !entry.leftover && entry.servings ? servingsLabel(recipe, entry.servings) : null,
+                ]
                   .filter(Boolean)
                   .join(' · ')}
               </span>
@@ -585,7 +609,18 @@ function MealSheet({ entry, recipe, days, onUpdate, onOpenRecipe, onRemove, onCl
         </button>
       )}
 
-      {base !== null && (
+      {/* A meal eaten from what was cooked earlier. It stays on the planner and
+          drops off the shopping list; the servings below stop mattering for it. */}
+      <button
+        type="button"
+        className={entry.leftover ? 'btn btn-secondary btn-block planner-leftover-on' : 'btn btn-secondary btn-block'}
+        aria-pressed={Boolean(entry.leftover)}
+        onClick={() => onUpdate(entry.id, { leftover: !entry.leftover })}
+      >
+        {entry.leftover ? 'Leftovers: nothing to buy' : 'Mark as leftovers'}
+      </button>
+
+      {base !== null && !entry.leftover && (
         <>
           <h3 className="shopping-sheet-heading">Cooking for</h3>
           <div className="detail-servings">

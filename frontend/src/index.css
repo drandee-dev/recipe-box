@@ -3951,6 +3951,20 @@ textarea.field {
   white-space: nowrap;
 }
 
+/* The one-line explanation beside the Leftovers chip in the day picker. */
+.planner-leftover-hint {
+  align-self: center;
+  font-size: var(--fs-sm);
+  color: var(--txt-2);
+}
+
+/* The meal sheet's leftovers button when it is on: the accent outline says "set",
+   the label says what it does. */
+.planner-leftover-on {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
 .planner-entry-meta {
   font-size: var(--fs-2xs);
   color: var(--txt-2);

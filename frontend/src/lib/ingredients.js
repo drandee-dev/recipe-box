@@ -455,6 +455,9 @@ export function buildShoppingList(plan, recipes, units = 'original') {
   const merged = new Map()
 
   for (const entry of plan) {
+    // Leftovers are a meal eaten from what was cooked earlier: there is nothing to
+    // buy for them, so they contribute no lines (and no source name).
+    if (entry.leftover) continue
     const recipe = byId.get(entry.recipe_id)
     if (!recipe) continue
     // A meal planned for a different number of servings than the recipe says

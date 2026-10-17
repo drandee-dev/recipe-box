@@ -255,6 +255,9 @@ export default function ShoppingList({
       return byRecipe.get(id)
     }
     for (const entry of thisWeek) {
+      // A leftovers meal puts nothing on this list, so its recipe is not one of
+      // the recipes behind it.
+      if (entry.leftover) continue
       const s = touch(entry.recipe_id)
       s.meals += 1
       s.entryIds.push(entry.id)

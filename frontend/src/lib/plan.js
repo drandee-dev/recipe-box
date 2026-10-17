@@ -11,7 +11,7 @@ import { client, localRows, pickStore, unwrap } from './backend.js'
 import { SLOTS } from './dates.js'
 
 const stored = localRows('recipebox:plan')
-const COLS = 'id,recipe_id,plan_date,slot,servings,created_at'
+const COLS = 'id,recipe_id,plan_date,slot,servings,leftover,created_at'
 
 // The table's check constraint rejects anything else.
 function safeSlot(slot) {
@@ -33,6 +33,9 @@ function toRow(entry) {
     plan_date: entry.plan_date,
     slot: safeSlot(entry.slot),
     servings: safeServings(entry.servings),
+    // Leftovers are eaten, not bought for. False is the default and the only
+    // thing a row written before this existed can mean.
+    leftover: Boolean(entry.leftover),
   }
 }
 
@@ -43,6 +46,7 @@ function toPatch(patch) {
   if ('plan_date' in patch) out.plan_date = patch.plan_date
   if ('slot' in patch) out.slot = safeSlot(patch.slot)
   if ('servings' in patch) out.servings = safeServings(patch.servings)
+  if ('leftover' in patch) out.leftover = Boolean(patch.leftover)
   return out
 }
 
