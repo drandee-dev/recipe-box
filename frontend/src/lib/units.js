@@ -99,16 +99,22 @@ export function metricVolume(ml) {
 export function usMass(grams) {
   const oz = grams / GRAMS.oz
   if (oz >= 16) return { qty: nearestFraction(oz / 16, [0, 1 / 4, 1 / 2, 3 / 4, 1]), unit: 'lb' }
-  if (oz < 4) return { qty: nearestFraction(oz, [0, 1 / 4, 1 / 2, 3 / 4, 1]), unit: 'oz' }
+  // Under a quarter ounce (about 7 g) there is no useful US measure for it: grams
+  // are what a pinch of saffron or salt is weighed in. A quantity of 0 tells the
+  // callers to leave the amount as written. Above that, eighths: yeast and spices
+  // are a few grams, where a quarter is a third out.
+  if (oz < 0.25) return { qty: 0, unit: 'oz' }
+  if (oz < 4) return { qty: nearestFraction(oz), unit: 'oz' }
   return { qty: Math.round(oz * 2) / 2, unit: 'oz' }
 }
 
 // The unit a person would reach for at this size, so 20 ml is a tablespoon and a
 // third and 3 tsp becomes 1 tbsp rather than "3 tsp".
 // Cups in the steps a cup is measured in. A recipe line wants these (500 ml is
-// "2 cups", not "2 1/8"); a shopping total wants eighths, since rounding what to
-// buy down is the wrong way to be wrong.
-export const CUP_STEPS = [0, 1 / 4, 1 / 3, 1 / 2, 2 / 3, 3 / 4, 1]
+// "2 cups", not "2 1/8"); a shopping total uses every eighth, so the rounding
+// error on what to buy stays as small as the measures allow. Both round to the
+// nearest step, so a total can be a few percent either side.
+export const CUP_STEPS = [0, 1 / 4, 1 / 3, 3 / 8, 1 / 2, 5 / 8, 2 / 3, 3 / 4, 7 / 8, 1]
 
 export function usVolume(ml, { coarse = false } = {}) {
   if (ml >= MILLILITRES.quart) {
@@ -129,9 +135,10 @@ export function bestUnit(base, dimension, system, options) {
 //
 // Oven dials move in fives, and recipes use a fixed set of pairs that are not the
 // arithmetic ones (180 C is 356 F; every cookbook says 350). Those pairs first,
-// rounded to five otherwise.
-const F_TO_C = { 200: 95, 225: 110, 250: 120, 275: 140, 300: 150, 325: 165, 350: 175, 375: 190, 400: 200, 425: 220, 450: 230, 475: 245, 500: 260 }
-const C_TO_F = { 100: 200, 110: 225, 120: 250, 130: 265, 140: 275, 150: 300, 160: 325, 170: 340, 175: 350, 180: 350, 190: 375, 200: 400, 210: 410, 220: 425, 230: 450, 240: 465, 245: 475, 250: 480, 260: 500 }
+// rounded to five otherwise. The table starts at a moderate oven: this runs on
+// every temperature in a step, and 100 C is boiling (212 F), not an oven.
+const F_TO_C = { 250: 120, 275: 140, 300: 150, 325: 165, 350: 175, 375: 190, 400: 200, 425: 220, 450: 230, 475: 245, 500: 260 }
+const C_TO_F = { 120: 250, 130: 265, 140: 275, 150: 300, 160: 325, 170: 340, 175: 350, 180: 350, 190: 375, 200: 400, 210: 410, 220: 425, 230: 450, 240: 465, 245: 475, 250: 480, 260: 500 }
 
 export function fahrenheitToCelsius(f) {
   return F_TO_C[f] ?? Math.round((((f - 32) * 5) / 9) / 5) * 5

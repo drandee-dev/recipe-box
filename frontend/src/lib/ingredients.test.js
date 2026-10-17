@@ -279,6 +279,25 @@ test('the US setting writes metric measures in cups, spoons and ounces', () => {
   assert.deepEqual(by.oil, [1, 'tbsp'])
 })
 
+test('a metric total is written as a decimal, never a fraction', () => {
+  // 3 lb is 1.35 kg; a fraction formatter turned it into "1 1/3 kg", 17 g short.
+  const [item] = listFor(['3 lb butter'], 'metric')
+  assert.deepEqual([item.qty, item.unit], [1.35, 'kg'])
+  assert.equal(formatQuantity(item.qty, item.unit), '1.35 kg')
+  assert.equal(formatQuantity(3.84, 'l'), '3.84 l')
+  assert.equal(formatQuantity(450, 'g'), '450 g')
+  assert.equal(formatQuantity(1.5, 'kg'), '1.5 kg')
+  // US amounts still use fractions.
+  assert.equal(formatQuantity(1.5, 'cup'), '1 1/2 cups')
+})
+
+test('an amount too small for the other system keeps its own unit on the list', () => {
+  const [saffron] = listFor(['3 g saffron'], 'us')
+  assert.deepEqual([saffron.qty, saffron.unit], [3, 'g'])
+  const [pinch] = listFor(['1 g salt', '1 g salt'], 'us')
+  assert.deepEqual([pinch.qty, pinch.unit], [2, 'g'])
+})
+
 test('a count of things (cloves, cans) is untouched by any setting', () => {
   for (const units of ['original', 'metric', 'us']) {
     const [item] = listFor(['3 cloves garlic', '2 cloves garlic'], units)

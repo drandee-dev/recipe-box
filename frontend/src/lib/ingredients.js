@@ -280,6 +280,9 @@ export function formatQuantity(qty, unit) {
   else number = String(Math.round(qty * 100) / 100)
 
   if (!unit) return number
+  // A metric amount is a decimal, never a fraction: the fraction match above has a
+  // tolerance, so 1.35 kg printed as "1 1/3 kg", 17 g short of what was asked for.
+  if (systemOf(unit) === 'metric') return `${Math.round(qty * 100) / 100} ${unit}`
   const plural = qty > 1 && UNIT_PLURALS[unit] ? UNIT_PLURALS[unit] : unit
   return `${number} ${UNIT_LABELS[plural] || plural}`
 }
@@ -509,11 +512,15 @@ function writeInDisplayUnits(item, units) {
 
   if (units === 'original') {
     if (!item.mixed) return
-    Object.assign(item, bestUnit(total, item.dimension, majority))
+    const written = bestUnit(total, item.dimension, majority)
+    if (written.qty > 0) Object.assign(item, written)
     return
   }
   if (units === 'metric' && !item.mixed && SPOONS.has(item.unit)) return
-  Object.assign(item, bestUnit(total, item.dimension, units))
+  const written = bestUnit(total, item.dimension, units)
+  // An amount too small to write in the other system (3 g of saffron is 0.1 oz) is
+  // left as the recipes wrote it rather than printed as "0 oz".
+  if (written.qty > 0) Object.assign(item, written)
 }
 
 // A source line names the recipe, nothing else: "Pasta", or "Pasta ×2" when

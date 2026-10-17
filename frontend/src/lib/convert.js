@@ -47,9 +47,9 @@ const DRY = [
   [/\b(?:brown sugar)\b/, 213],
   [/\b(?:powdered|icing|confectioners'?|confectioner's) sugar\b/, 120],
   [/\b(?:granulated |caster |white )?sugar\b/, 200, /coconut|maple|palm|vanilla|cinnamon|syrup|snap/],
-  [/\bflour\b/, 125, /almond|coconut|oat|rice|chickpea|buckwheat|corn|potato|tapioca|cassava|rye|spelt|gluten|semolina|masa|besan/],
-  [/\b(?:rolled |old[- ]fashioned |quick )?oats\b/, 90],
-  [/\brice\b/, 185, /flour|vinegar|milk|noodle|cooked|wine|krispies|paper|cake|syrup/],
+  [/\bflour\b/, 125, /almond|coconut|oat|rice|chickpea|buckwheat|corn|potato|tapioca|cassava|rye|spelt|gluten|semolina|masa|besan|tortilla|wrap|bread|pasta/],
+  [/\b(?:rolled |old[- ]fashioned |quick )?oats\b/, 90, /steel[- ]?cut|groats/],
+  [/\brice\b/, 185, /flour|vinegar|milk|noodle|cooked|wine|krispies|paper|cake|syrup|cauliflower|broccoli|pudding|cracker/],
 ]
 const BUTTER = /\bbutter\b/
 const NOT_BUTTER = /peanut|almond|nut|cashew|shea|cocoa|buttermilk|butterscotch|apple|bean|squash/
@@ -152,7 +152,9 @@ export function convertLine(text, mode) {
   }
 
   const to = target(low, unit, mode, rest)
-  if (!to) return text
+  // A pinch of saffron is 3 g and 0.1 oz, and "0 oz saffron" has lost the amount.
+  // When the answer would round to nothing the line is left as written.
+  if (!to || !(to.qty > 0)) return text
 
   // The high end is brought into the low end's unit, so a range never reads
   // "2 cups to 1 quart". An approximate conversion scales the low end's answer by

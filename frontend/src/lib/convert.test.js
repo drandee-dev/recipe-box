@@ -102,6 +102,22 @@ test('a bullet, fractions and plural units survive', () => {
   assert.equal(us('1000 ml water'), '1 quart water')
 })
 
+test('an amount too small to write in the other system is left as written, never "0 oz"', () => {
+  assert.equal(us('1 g saffron'), '1 g saffron')
+  assert.equal(us('3 g salt'), '3 g salt')
+  assert.equal(us('2 g cinnamon'), '2 g cinnamon')
+  // Just big enough to be written.
+  assert.equal(us('10 g yeast'), '1/3 oz yeast')
+  assert.equal(us('1/8 tsp saffron'), '1/8 tsp saffron')
+})
+
+test('look-alikes of the density staples are not marked approximate', () => {
+  assert.equal(metric('1 cup flour tortillas'), '1 cup flour tortillas')
+  assert.equal(metric('1 cup cauliflower rice'), '1 cup cauliflower rice')
+  assert.equal(metric('1 cup steel cut oats'), '1 cup steel cut oats')
+  assert.equal(metric('1 cup bread flour'), '1 cup bread flour')
+})
+
 test('lines with no measure are returned exactly as written', () => {
   for (const line of ['3 cloves garlic', '2 eggs', 'salt to taste', '1 can tomatoes', '', 'a handful of basil']) {
     assert.equal(metric(line), line)
@@ -134,6 +150,12 @@ test('oven temperatures convert, in fives', () => {
   assert.equal(convertTemperatures('Heat to 190ºC.', 'us'), 'Heat to 375°F.')
   // Off the table, nearest five.
   assert.equal(convertTemperatures('Heat to 165°C.', 'us'), 'Heat to 330°F.')
+})
+
+test('a temperature that is not an oven is not forced onto an oven pair', () => {
+  // 100 C is boiling water (212 F), not 200 F.
+  assert.equal(convertTemperatures('Bring to 100°C.', 'us'), 'Bring to 210°F.')
+  assert.equal(convertTemperatures('Cook the syrup to 110°C.', 'us'), 'Cook the syrup to 230°F.')
 })
 
 test('a range of temperatures converts both ends', () => {
