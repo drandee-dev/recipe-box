@@ -242,6 +242,10 @@ export function TimersProvider({ children }) {
 
     function onFirstTap() {
       if (stopped) return
+      // Once: left in place, every later tap would restart the loop from its
+      // first beep.
+      document.removeEventListener('pointerup', onFirstTap)
+      document.removeEventListener('click', onFirstTap)
       // This tap is the gesture, so the element is made and played for real here,
       // not through the muted unlock in unlockAudio (which would pause it again).
       if (!elementRef.current) {
