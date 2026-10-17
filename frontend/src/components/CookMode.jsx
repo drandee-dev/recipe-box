@@ -22,7 +22,7 @@ import Sheet from './Sheet.jsx'
 import StepText from './StepText.jsx'
 import { TimerTray } from './Timers.jsx'
 import { clearProgress, loadProgress, saveProgress } from '../lib/cookProgress.js'
-import { scaleIngredientText } from '../lib/ingredients.js'
+import { convertTemperatures, displayIngredient } from '../lib/convert.js'
 import { useWakeLock } from '../lib/useWakeLock.js'
 
 const SWIPE_SLOP = 8
@@ -40,7 +40,7 @@ function stepLabel(n) {
   return ORDINALS[n - 1] || String(n)
 }
 
-export default function CookMode({ recipe, servings, factor = 1, onClose }) {
+export default function CookMode({ recipe, servings, factor = 1, units = 'original', onClose }) {
   const steps = recipe.instructions || []
   // Resumes where you left off if you were mid-cook in the last twelve hours.
   const [index, setIndex] = useState(() => loadProgress(recipe.id, steps.length).step)
@@ -146,7 +146,7 @@ export default function CookMode({ recipe, servings, factor = 1, onClose }) {
           </span>
           <p className="cook-eyebrow">Step {stepLabel(index + 1)}</p>
           <p className="cook-step">
-            <StepText text={step} recipe={recipe} step={index} />
+            <StepText text={step} recipe={recipe} step={index} units={units} />
           </p>
         </div>
 
@@ -176,7 +176,7 @@ export default function CookMode({ recipe, servings, factor = 1, onClose }) {
             {showIngredients && (
               <ul className="cook-peek-list">
                 {recipe.ingredients.map((ing, n) => (
-                  <li key={n}>{scaleIngredientText(ing.raw, factor)}</li>
+                  <li key={n}>{displayIngredient(ing.raw, { factor, units })}</li>
                 ))}
               </ul>
             )}
@@ -186,7 +186,7 @@ export default function CookMode({ recipe, servings, factor = 1, onClose }) {
         {!atLast && (
           <div className="cook-next">
             <p className="cook-next-label">Next</p>
-            <p className="cook-next-text">{steps[index + 1]}</p>
+            <p className="cook-next-text">{convertTemperatures(steps[index + 1], units)}</p>
           </div>
         )}
       </div>

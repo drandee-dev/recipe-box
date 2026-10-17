@@ -21,6 +21,8 @@
 
 import { useState } from 'react'
 import Sheet from './Sheet.jsx'
+import UnitsToggle from './UnitsToggle.jsx'
+import { setUnits, useUnits } from '../lib/useUnits.js'
 import { getSupabase, supabaseEnabled } from '../lib/supabase.js'
 import { APP_VERSION } from '../lib/news.js'
 
@@ -60,6 +62,22 @@ const EMAIL_FIELD = {
   autoCorrect: 'off',
   spellCheck: false,
   placeholder: 'your@email.com',
+}
+
+// A setting for this device, so it is offered signed out as well as in. It only
+// changes how amounts are shown; no saved recipe is ever rewritten.
+function UnitsSetting() {
+  const units = useUnits()
+  return (
+    <div className="account-units">
+      <p className="account-label">Measurements</p>
+      <UnitsToggle value={units} onChange={setUnits} label="Measurements" />
+      <p className="account-hint">
+        Shows recipes and the shopping list in metric or US measures. Cups of flour and
+        sugar are converted to grams, marked with ≈, since they are only approximate.
+      </p>
+    </div>
+  )
 }
 
 export default function Account({ session, onWhatsNew, onFeedback }) {
@@ -255,6 +273,8 @@ export default function Account({ session, onWhatsNew, onFeedback }) {
               Recipes, plans and lists sync to this account on every device you sign in
               on.
             </p>
+
+            <UnitsSetting />
 
             {settingPassword ? (
               <form className="account-form" onSubmit={savePassword}>
@@ -490,6 +510,7 @@ export default function Account({ session, onWhatsNew, onFeedback }) {
               </button>
             </p>
           </form>
+          <UnitsSetting />
           <p className="rb-whatsnew-version">Version {APP_VERSION}</p>
         </Sheet>
       )}

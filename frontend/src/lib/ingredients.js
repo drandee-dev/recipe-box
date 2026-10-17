@@ -8,6 +8,8 @@
 // The rule throughout: never lose information. Anything that cannot be parsed
 // is carried to the list verbatim and simply doesn't merge with anything.
 
+import { DIMENSION, MEASURE_ALIASES, bestUnit, systemOf, toBase } from './units.js'
+
 const VULGAR = {
   '½': 0.5, '⅓': 1 / 3, '⅔': 2 / 3, '¼': 0.25, '¾': 0.75,
   '⅕': 0.2, '⅖': 0.4, '⅗': 0.6, '⅘': 0.8,
@@ -15,20 +17,10 @@ const VULGAR = {
 }
 
 // Canonical unit to the spellings seen in real recipes. Merging happens on the
-// canonical form, so "2 tablespoons" and "1 tbsp" add up.
+// canonical form, so "2 tablespoons" and "1 tbsp" add up. The measures (cups,
+// spoons, grams...) live in units.js, which is also where they convert.
 const UNIT_ALIASES = {
-  cup: ['cup', 'cups', 'c'],
-  tbsp: ['tbsp', 'tbsps', 'tbs', 'tb', 'tablespoon', 'tablespoons'],
-  tsp: ['tsp', 'tsps', 'teaspoon', 'teaspoons'],
-  oz: ['oz', 'ounce', 'ounces'],
-  lb: ['lb', 'lbs', 'pound', 'pounds'],
-  g: ['g', 'gr', 'gram', 'grams'],
-  kg: ['kg', 'kilogram', 'kilograms'],
-  ml: ['ml', 'milliliter', 'milliliters', 'millilitre', 'millilitres'],
-  l: ['l', 'liter', 'liters', 'litre', 'litres'],
-  quart: ['quart', 'quarts', 'qt'],
-  pint: ['pint', 'pints', 'pt'],
-  gallon: ['gallon', 'gallons', 'gal'],
+  ...MEASURE_ALIASES,
   clove: ['clove', 'cloves'],
   can: ['can', 'cans'],
   jar: ['jar', 'jars'],
@@ -188,7 +180,14 @@ function takeQuantity(text) {
   return [null, rest]
 }
 
+// "fl oz" is two words, and a lone "oz" is weight: reading "8 fl oz milk" as 8
+// ounces of weight would put a mass on a volume and merge it with the wrong
+// thing. Checked first so the "fl" is never taken as part of the name.
+const FLUID_OUNCE = /^(?:fl\.?\s*oz\.?|fluid\s+ounces?)\s+/i
+
 function takeUnit(text) {
+  const fluid = text.match(FLUID_OUNCE)
+  if (fluid) return ['floz', text.slice(fluid[0].length)]
   const match = text.match(/^([a-zA-Z]+)\.?\s+/)
   if (!match) return [null, text]
   const canonical = UNIT_LOOKUP.get(match[1].toLowerCase())
@@ -281,8 +280,25 @@ export function formatQuantity(qty, unit) {
   else number = String(Math.round(qty * 100) / 100)
 
   if (!unit) return number
+  // A metric amount is a decimal, never a fraction: the fraction match above has a
+  // tolerance, so 1.35 kg printed as "1 1/3 kg", 17 g short of what was asked for.
+  if (systemOf(unit) === 'metric') return `${Math.round(qty * 100) / 100} ${unit}`
   const plural = qty > 1 && UNIT_PLURALS[unit] ? UNIT_PLURALS[unit] : unit
-  return `${number} ${plural}`
+  return `${number} ${UNIT_LABELS[plural] || plural}`
+}
+
+// Canonical keys that are not what a person writes.
+const UNIT_LABELS = { floz: 'fl oz' }
+
+// The canonical unit a word names ("tablespoons" -> 'tbsp'), or undefined.
+export function unitOf(word) {
+  return UNIT_LOOKUP.get(String(word).toLowerCase().replace(/\.$/, ''))
+}
+
+// A unit as written beside a quantity: plural past one, "fl oz" for floz.
+export function unitLabel(unit, qty) {
+  const plural = qty > 1 && UNIT_PLURALS[unit] ? UNIT_PLURALS[unit] : unit
+  return UNIT_LABELS[plural] || plural
 }
 
 // --- Scaling (finding 12) --------------------------------------------------
@@ -302,7 +318,7 @@ export function formatQuantity(qty, unit) {
 
 // One quantity token, in the same forms takeQuantity accepts and in the same
 // order, longest first: "1 1/2", "1½", "1/2", "½", "1.5".
-const AMOUNT = '(?:\\d+\\s+\\d+\\s*/\\s*\\d+|\\d+\\s*[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|\\d+\\s*/\\s*\\d+|[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|\\d+(?:\\.\\d+)?)'
+export const AMOUNT = '(?:\\d+\\s+\\d+\\s*/\\s*\\d+|\\d+\\s*[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|\\d+\\s*/\\s*\\d+|[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|\\d+(?:\\.\\d+)?)'
 
 // Group 1 is any bullet the line was written with, group 2 the amount, group 3
 // the separator of a range and group 4 its high end. A range is matched whole so
@@ -311,7 +327,7 @@ const AMOUNT = '(?:\\d+\\s+\\d+\\s*/\\s*\\d+|\\d+\\s*[½⅓⅔¼¾⅕⅖⅗⅘�
 // one number, but a recipe on screen has no reason to.
 const LEADING_AMOUNT = new RegExp(`^([-*•\\s]*)(${AMOUNT})(?:(\\s*(?:-|–|—|to)\\s*)(${AMOUNT}))?`)
 
-function amountValue(token) {
+export function amountValue(token) {
   const [value] = takeQuantity(token.trim())
   return value
 }
@@ -390,7 +406,9 @@ export function readIngredient(ing) {
 
 // Collapses the week's planned recipes into merged lines, grouped by aisle.
 // Lines that could not be parsed are kept verbatim and never merged.
-export function buildShoppingList(plan, recipes) {
+// `units` is the person's setting: 'original' keeps what the recipes said, 'metric'
+// and 'us' write the list in that system.
+export function buildShoppingList(plan, recipes, units = 'original') {
   const byId = new Map(recipes.map((r) => [r.id, r]))
   const merged = new Map()
 
@@ -402,16 +420,30 @@ export function buildShoppingList(plan, recipes) {
       if (!parsed) continue
 
       // Unparsed lines get a key unique to their text so they stand alone.
-      // Units are part of the key on purpose: 1 cup milk and 200 ml milk are
-      // not added together, because converting between them invites the kind
-      // of quiet arithmetic error you only notice in the shop.
+      //
+      // Within a dimension the unit is NOT part of the key: 1 tsp and 1 tbsp of
+      // salt, or 500 g and 1 kg of flour, are one line, because converting between
+      // units of the same dimension is exact arithmetic (units.js). That reverses
+      // the old rule, which kept every unit apart. What is still never added
+      // together is volume and weight (1 cup milk with 200 g milk): that is not
+      // arithmetic, it depends on the ingredient, and a quiet error there is only
+      // found in the shop.
+      const dimension = parsed.parsed ? DIMENSION[parsed.unit] : undefined
       const key = parsed.parsed
-        ? `${normalizeName(parsed.name)}|${parsed.unit || ''}`
+        ? `${normalizeName(parsed.name)}|${dimension || parsed.unit || ''}`
         : `raw:${parsed.raw.toLowerCase()}`
 
       const existing = merged.get(key)
       if (existing) {
-        if (parsed.qty !== null) existing.qty = (existing.qty ?? 0) + parsed.qty
+        if (parsed.qty !== null) {
+          if (dimension && parsed.unit !== existing.unit) existing.mixed = true
+          existing.qty = (existing.qty ?? 0) + parsed.qty
+          if (dimension) {
+            existing.total += toBase(parsed.qty, parsed.unit)
+            const system = systemOf(parsed.unit)
+            existing.systems[system] = (existing.systems[system] || 0) + 1
+          }
+        }
         // Per-recipe contributions, so a merged total stays traceable to what
         // asked for it. A recipe planned twice in the week contributes twice,
         // which is correct but looks wrong without the count, hence `times`.
@@ -428,6 +460,7 @@ export function buildShoppingList(plan, recipes) {
           })
         }
       } else {
+        const measured = Boolean(dimension) && parsed.qty !== null
         merged.set(key, {
           key,
           name: parsed.name,
@@ -438,16 +471,60 @@ export function buildShoppingList(plan, recipes) {
           aisle: aisleFor(parsed.name),
           base: baseFor(parsed.name),
           sources: [{ title: recipe.title, qty: parsed.qty, unit: parsed.unit, times: 1 }],
+          // Only for a measure: the running total in grams or millilitres, whether
+          // the recipes disagreed about the unit, and which system each used.
+          dimension: measured ? dimension : null,
+          total: measured ? toBase(parsed.qty, parsed.unit) : null,
+          mixed: false,
+          systems: measured ? { [systemOf(parsed.unit)]: 1 } : {},
         })
       }
     }
   }
 
-  return [...merged.values()].sort(
+  const items = [...merged.values()]
+  for (const item of items) writeInDisplayUnits(item, units)
+  return items.sort(
     (a, b) =>
       AISLE_ORDER.indexOf(a.aisle) - AISLE_ORDER.indexOf(b.aisle) ||
       a.name.localeCompare(b.name),
   )
+}
+
+// Spoons stay spoons in a metric kitchen: "1 tsp salt" is as metric as it gets,
+// and "5 ml salt" is nobody's idea of a recipe.
+const SPOONS = new Set(['tsp', 'tbsp'])
+
+// Decides the unit a merged measure is shown in. When the recipes agreed on one
+// unit and the person has not asked for another system, it is left exactly as the
+// recipes wrote it. Otherwise the total is rewritten at the size a person reads:
+// 3 tsp as 1 tbsp, 1500 g as 1.5 kg.
+function writeInDisplayUnits(item, units) {
+  const total = item.total
+  delete item.total
+  if (!item.dimension) return
+  // The system most of the recipes used; on a tie, the first recipe's, since the
+  // plan runs in the order the person laid it out.
+  const majority = Object.entries(item.systems).reduce(
+    (best, entry) => (entry[1] > best[1] ? entry : best),
+    ['metric', 0],
+  )[0]
+
+  if (units === 'original') {
+    if (!item.mixed) return
+    const written = bestUnit(total, item.dimension, majority)
+    // Mixed units, so there is nothing "as written" to keep if it is too small.
+    Object.assign(item, written.qty > 0 ? written : bestUnit(total, item.dimension, 'metric'))
+    return
+  }
+  if (units === 'metric' && !item.mixed && SPOONS.has(item.unit)) return
+  const written = bestUnit(total, item.dimension, units)
+  // An amount too small to write in the other system (3 g of saffron is 0.1 oz) is
+  // left as the recipes wrote it rather than printed as "0 oz". If the recipes
+  // disagreed about the unit there is no "as written" to fall back to (the raw sum
+  // is in mixed units), so the total goes in grams or millilitres instead.
+  if (written.qty > 0) Object.assign(item, written)
+  else if (item.mixed) Object.assign(item, bestUnit(total, item.dimension, 'metric'))
 }
 
 // A source line names the recipe, nothing else: "Pasta", or "Pasta ×2" when

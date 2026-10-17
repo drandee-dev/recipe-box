@@ -6,16 +6,22 @@
 // recipe's own sentence.
 
 import { Fragment } from 'react'
+import { convertTemperatures } from '../lib/convert.js'
 import { formatClock, splitDurations } from '../lib/cook.js'
 import { isDue, secondsLeft } from '../lib/timers.js'
 import { useTimers } from '../lib/useTimers.jsx'
 
-export default function StepText({ text, recipe, step }) {
+export default function StepText({ text, recipe, step, units = 'original' }) {
   const { timers, now, start, stop, full } = useTimers()
   let nth = 0
 
+  // Oven temperatures are converted in the plain text between the timer chips. A
+  // temperature is never split by a duration, so doing it piece by piece is the
+  // same as doing it on the whole step.
   return splitDurations(text).map((piece, i) => {
-    if (piece.seconds === undefined) return <Fragment key={i}>{piece.text}</Fragment>
+    if (piece.seconds === undefined) {
+      return <Fragment key={i}>{convertTemperatures(piece.text, units)}</Fragment>
+    }
 
     // Which duration in this step it is, so two chips in one step are two timers.
     const key = `${recipe.id}:${step}:${nth}`
