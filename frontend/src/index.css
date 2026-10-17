@@ -81,6 +81,10 @@
      deep green and red; the dark theme lifts both fills, so the ink goes dark. */
   --on-accent: #fff;
   --on-danger: #fff;
+  /* Dark ink on a saffron fill in both themes: white on saffron is 3.8:1, and the
+     light text colour the dark theme uses for --txt is 2:1 on it. Not overridden
+     in the dark blocks on purpose. */
+  --on-saffron: #191c18;
   /* A translucent card behind a glyph that sits on a photo. */
   --surface-glass: rgb(255 253 247 / 92%);
   /* How much of a fallback tile's tint shows. Full on the light ground, a trace
@@ -2700,7 +2704,7 @@ textarea.field {
 .step-time-ringing {
   border-bottom-color: var(--saffron);
   background: var(--saffron);
-  color: var(--txt);
+  color: var(--on-saffron);
   animation: cook-pulse 1s ease-in-out infinite;
 }
 
@@ -2883,7 +2887,7 @@ textarea.field {
    12px label. */
 .timer-tray-ringing {
   background: var(--saffron);
-  color: var(--txt);
+  color: var(--on-saffron);
   animation: cook-pulse 1s ease-in-out infinite;
 }
 
@@ -2915,7 +2919,7 @@ textarea.field {
   padding: 0 4px;
   border-radius: 8px;
   background: var(--saffron);
-  color: var(--txt);
+  color: var(--on-saffron);
   font-size: 11px;
   font-weight: 700;
   line-height: 16px;
