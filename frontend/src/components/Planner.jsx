@@ -9,6 +9,7 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePendingCommit } from '../lib/usePendingCommit.js'
+import { SWIPE_SLOP, useWeekSwipe } from '../lib/useWeekSwipe.js'
 import { SERVINGS_MAX_FACTOR, baseServings, servingsLabel } from '../lib/recipes.js'
 import RecipeThumb from './RecipeThumb.jsx'
 import Sheet from './Sheet.jsx'
@@ -36,20 +37,15 @@ const SWIPE_REVEAL = 72
 const SWIPE_DELETE = 132
 const SWIPE_OVERSHOOT = 40
 const LONG_PRESS_MS = 500
-const SWIPE_SLOP = 8
 
 // The slots a day actually has meals in, in the day's order.
 const slotsOf = (entries) => SLOTS.filter((s) => entries.some((e) => e.slot === s))
 
-// Week swipe (finding 20). Smaller threshold than the row's delete swipe —
-// this gesture only has one outcome, not "reveal vs delete".
-const WEEK_SWIPE_THRESHOLD = 56
-
-// Both gestures in this file decide their axis the same way: ignore everything
-// inside a slop, then commit once and for all to horizontal or vertical. Only
-// the horizontal half is ours, and `preventDefault` is deliberately left to the
-// caller — it must not fire until after the decision, or a vertical drag stops
-// scrolling the page.
+// The row swipe decides its axis the way the week swipe (lib/useWeekSwipe) does:
+// ignore everything inside a slop, then commit once and for all to horizontal or
+// vertical. Only the horizontal half is ours, and `preventDefault` is
+// deliberately left to the caller — it must not fire until after the decision,
+// or a vertical drag stops scrolling the page.
 //
 // Returns the axis just decided, or null while still inside the slop. `g.axis`
 // having a value already means the decision was made on an earlier move.
@@ -106,57 +102,16 @@ export default function Planner({
     startRemoval({ entry, label })
   }
 
-  // Week swipe state. slideDir only drives the entrance animation of the new
-  // week's content — the dragged-out old content isn't animated separately,
-  // the key change below remounts straight into the new week.
-  const [slideDir, setSlideDir] = useState(null)
-  const [weekDragX, setWeekDragX] = useState(0)
-  const [weekDragging, setWeekDragging] = useState(false)
-  const weekGesture = useRef(null)
-  const weekDragXRef = useRef(0)
-
-  function goWeek(direction) {
-    setSlideDir(direction > 0 ? 'right' : direction < 0 ? 'left' : null)
-    onWeekChange(direction)
-  }
-
-  function setWeekDrag(x) {
-    weekDragXRef.current = x
-    setWeekDragX(x)
-  }
-
-  function handleWeekPointerDown(e) {
-    if (e.target.closest('.planner-entry-swipe, button, a, input')) return
-    weekGesture.current = { startX: e.clientX, startY: e.clientY, axis: null }
-  }
-
-  function handleWeekPointerMove(e) {
-    const g = weekGesture.current
-    if (!g) return
-    const dx = e.clientX - g.startX
-    const dy = e.clientY - g.startY
-    if (g.axis === null) {
-      if (lockAxis(g, dx, dy) !== 'horizontal') return
-      setWeekDragging(true)
-    }
-    if (g.axis !== 'horizontal') return
-    e.preventDefault()
-    setWeekDrag(dx)
-  }
-
-  function endWeekGesture() {
-    const g = weekGesture.current
-    weekGesture.current = null
-    if (g && g.axis === 'horizontal') {
-      setWeekDragging(false)
-      if (weekDragXRef.current <= -WEEK_SWIPE_THRESHOLD) {
-        goWeek(1)
-      } else if (weekDragXRef.current >= WEEK_SWIPE_THRESHOLD) {
-        goWeek(-1)
-      }
-    }
-    setWeekDrag(0)
-  }
+  // Swiping the screen changes the week (lib/useWeekSwipe, shared with the
+  // shopping list). It covers the whole planner, not only the rows: an empty day
+  // is a button and the space under a short week used to be dead.
+  const {
+    goWeek,
+    slideDir,
+    dragX: weekDragX,
+    dragging: weekDragging,
+    swipeProps,
+  } = useWeekSwipe(onWeekChange)
 
   const today = new Date()
   const days = weekDays(weekStart)
@@ -191,7 +146,7 @@ export default function Planner({
     .join(' ')
 
   return (
-    <div className="planner">
+    <div className="planner" {...swipeProps}>
       <div className="planner-weeknav">
         <button
           type="button"
@@ -233,10 +188,6 @@ export default function Planner({
         key={toISODate(weekStart)}
         className={weekBodyClass}
         style={weekDragging ? { transform: `translateX(${weekDragX}px)` } : undefined}
-        onPointerDown={handleWeekPointerDown}
-        onPointerMove={handleWeekPointerMove}
-        onPointerUp={endWeekGesture}
-        onPointerCancel={endWeekGesture}
       >
         {days.map((date) => {
           const dateISO = toISODate(date)
