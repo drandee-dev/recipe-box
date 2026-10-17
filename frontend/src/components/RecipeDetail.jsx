@@ -526,7 +526,11 @@ export default function RecipeDetail({
           </p>
         </>
       ) : (
-        <>
+        // One column on a phone. From 900px the ingredients stay on the left
+        // (sticky) while the steps scroll beside them, which is how a recipe is
+        // read at a laptop or on a propped tablet.
+        <div className="detail-cols">
+          <div className="detail-col-ing">
           <h3 className="detail-heading">Ingredients</h3>
           <ul className="detail-checks">
             {recipe.ingredients.map((ing, n) => (
@@ -547,7 +551,9 @@ export default function RecipeDetail({
               </li>
             ))}
           </ul>
+          </div>
 
+          <div className="detail-col-steps">
           <h3 className="detail-heading">Steps</h3>
           {recipe.instructions.length > 0 && (
             <p className="detail-awake">
@@ -596,7 +602,8 @@ export default function RecipeDetail({
               ))}
             </ol>
           )}
-        </>
+          </div>
+        </div>
       )}
 
       {/* Opens over this sheet rather than replacing it, so closing cook mode

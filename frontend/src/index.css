@@ -177,6 +177,27 @@
   --z-toast: 2000;
 }
 
+/* --- The page column ------------------------------------------------------------
+   640px on a phone, wider on a tablet and a laptop. Only the Recipes tab uses the
+   extra width (a grid of three or four photos across); the planner and the
+   shopping list are text lists and stay 640px in the middle of it, and the tab
+   bar stays 640px too. The recipe sheet widens separately, from 900px. --- */
+:root {
+  --col-w: 640px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --col-w: 920px;
+  }
+}
+
+@media (min-width: 1200px) {
+  :root {
+    --col-w: 1160px;
+  }
+}
+
 /* --- Dark theme ---------------------------------------------------------------
    The same tokens, redefined. Every colour in the app already reads a token, so
    this is the whole of the theme. It applies when the device prefers dark and the
@@ -454,7 +475,7 @@ textarea.field {
 }
 
 .rb-app {
-  max-width: 640px;
+  max-width: var(--col-w);
   margin: 0 auto;
   padding: 16px;
   /* The tab bar is fixed, so it reserves no space of its own. Without this the
@@ -886,7 +907,7 @@ textarea.field {
   z-index: var(--z-nav);
   display: flex;
   justify-content: flex-end;
-  max-width: 640px;
+  max-width: var(--col-w);
   margin: 0 auto;
   padding: 0 var(--sp-4);
   pointer-events: none;
@@ -1350,6 +1371,28 @@ textarea.field {
      its own photo, so the vertical space has to say "this text belongs to that
      picture, not the one below it" while the horizontal only separates. */
   gap: 18px 13px;
+}
+
+/* Three across on a tablet, four on a laptop: the cell stays about 270px wide, a
+   photo-led size, instead of one 450px photo per half of a stretched phone. */
+@media (min-width: 768px) {
+  .recipes-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1200px) {
+  .recipes-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* The planner and the list are text; they keep a phone's width in the middle of a
+   wide column rather than stretching their rows across it. */
+.planner,
+.shopping {
+  max-width: 640px;
+  margin-inline: auto;
 }
 
 /* A ruled label, not a heading — see the comment in RecipeList.jsx. The rule is
@@ -2475,6 +2518,57 @@ textarea.field {
   height: 94vh;
   height: 94dvh;
   max-height: none;
+}
+
+/* The recipe at a laptop or a propped tablet: a wider sheet, the ingredients on
+   the left (they stay in view while the steps scroll) and the steps beside them.
+   Everything above the two columns keeps a phone's measure. Below 900px none of
+   this applies and the sheet is the one column it always was. */
+@media (min-width: 900px) {
+  .sheet-tall {
+    max-width: 960px;
+  }
+
+  .detail-cols {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    column-gap: var(--sp-8);
+    align-items: start;
+  }
+
+  .detail-col-ing {
+    position: sticky;
+    /* Clears the sheet's own sticky head (title row, about 64px). */
+    top: 76px;
+    /* A long ingredient list scrolls inside its column: a sticky box taller than
+       the sheet would otherwise leave its last lines out of reach. */
+    max-height: calc(94dvh - 100px);
+    overflow-y: auto;
+    /* Any overflow other than visible clips both axes, and the checkbox sits at
+       the column's left edge: its 2px focus ring (2px offset) was cut off on every
+       ingredient. The padding gives the ring room; the negative margin gives the
+       space back so nothing moves. */
+    padding: 6px;
+    margin: -6px;
+  }
+
+  .detail-cols .detail-heading {
+    margin-top: var(--sp-4);
+  }
+
+  /* At 960px wide a 16:9 photo is 540px tall and the ingredients start below the
+     fold on a laptop. A letterbox crop keeps the picture and the ingredients on
+     the same screen. */
+  .detail-hero .recipes-thumb-hero {
+    aspect-ratio: 3 / 1;
+    max-height: 240px;
+  }
+
+  .detail-servings,
+  .detail-units,
+  .detail-actions {
+    max-width: 480px;
+  }
 }
 
 .sheet:focus {
