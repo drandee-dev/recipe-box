@@ -83,7 +83,7 @@ function UnitsSetting() {
 
 // A copy of every recipe as a file. Offered signed out as well as in: for a
 // signed-out person the only copy lives in this one browser.
-function ExportSetting({ recipes }) {
+function ExportSetting({ recipes, ready }) {
   const [note, setNote] = useState('')
   function save() {
     try {
@@ -100,18 +100,23 @@ function ExportSetting({ recipes }) {
         type="button"
         className="btn btn-secondary btn-block"
         onClick={save}
-        disabled={recipes.length === 0}
+        disabled={recipes.length === 0 || !ready}
       >
         Download all recipes
       </button>
+      {/* Not while the list is still loading or is the offline copy: the file
+          would be a stale or partial one and nothing in it says so. */}
       <p className="account-hint" role="status">
-        {note || 'A JSON file with every recipe, kept as written. Photos are linked, not inside it.'}
+        {note ||
+          (ready
+            ? 'A JSON file with every recipe, kept as written. Photos are linked, not inside it.'
+            : 'Available once your recipes have finished loading and you are connected.')}
       </p>
     </div>
   )
 }
 
-export default function Account({ session, recipes = [], onWhatsNew, onFeedback }) {
+export default function Account({ session, recipes = [], exportReady = true, onWhatsNew, onFeedback }) {
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState('signin') // signin | signup | magic | forgot
   const [email, setEmail] = useState(() => localStorage.getItem(REMEMBER_EMAIL_KEY) || '')
