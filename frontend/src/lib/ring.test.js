@@ -27,12 +27,18 @@ function samples(b) {
   return out
 }
 
-test('the ring is audible, three beeps long, and starts and ends silent', () => {
+test('the alarm is audible, four beeps then a pause, and loops without a click', () => {
   const b = ringWavBytes()
   const s = samples(b)
   const rate = new DataView(b.buffer).getUint32(24, true)
-  assert.ok(Math.max(...s.map(Math.abs)) > 0.4, 'peak is audible')
+  assert.ok(Math.max(...s.map(Math.abs)) > 0.6, 'peak is loud')
   assert.ok(Math.max(...s.map(Math.abs)) < 0.95, 'and does not clip')
+  // A loop must join silence to silence, or every cycle starts with a click.
+  assert.equal(s[0], 0)
+  assert.ok(Math.abs(s[s.length - 1]) < 0.001)
+  // A long gap at the end, so it reads as bursts and not a continuous drone.
+  const tail = s.slice(Math.round(s.length - 0.5 * new DataView(b.buffer).getUint32(24, true)))
+  assert.ok(Math.max(...tail.map(Math.abs)) < 0.001, 'the end of the cycle is silent')
   assert.equal(s[0], 0)
   assert.ok(Math.abs(s[s.length - 1]) < 0.001)
   // Count beeps by the loud windows: 10 ms blocks above a threshold, grouped.
@@ -44,5 +50,5 @@ test('the ring is audible, three beeps long, and starts and ends silent', () => 
     if (loud && !inBeep) beeps += 1
     inBeep = loud
   }
-  assert.equal(beeps, 3)
+  assert.equal(beeps, 4)
 })

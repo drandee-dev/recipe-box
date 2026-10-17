@@ -9,9 +9,12 @@ is sent to the user's push subscriptions as a Declarative Web Push, which iOS
 
 Three properties matter more than the rest:
 
-* **Claim before send.** A due row is claimed with one conditional update
-  (`sent_at is null`), and only the caller that got the row back sends. Two
-  overlapping cron runs cannot both send the same alert.
+* **Claim before send.** A due row is claimed with one conditional update (its
+  `notify_count` must still be what the caller read), and only the caller that got
+  the row back sends. Two overlapping cron runs cannot both send the same alert.
+* **Repeats until answered.** A banner is easy to miss and a push cannot ring on
+  its own, so a finished timer is sent again every thirty seconds, up to six
+  times, until the app deletes the row (opening it or dismissing the timer).
 * **Late is dropped, not replayed.** A row more than `STALE_SECONDS` past due is
   claimed and not sent: a timer alert ten minutes late is noise, and it bounds
   how long a broken send can keep retrying.
@@ -39,6 +42,14 @@ log = logging.getLogger("recipe.push")
 TIMEOUT = 5.0
 BATCH = 50
 STALE_SECONDS = 600
+# A banner is easy to miss, and a web push cannot ring until it is answered, so a
+# finished timer is sent again every REPEAT_SECONDS until the app acknowledges it
+# (opening the app or dismissing the timer deletes the row) or it has been sent
+# MAX_NOTIFICATIONS times in all. Six at thirty seconds is about two and a half
+# minutes of nagging, not an alarm that runs all night on an empty kitchen.
+# supabase/push-cron.sql repeats both numbers.
+REPEAT_SECONDS = 30
+MAX_NOTIFICATIONS = 6
 # A row whose sends all failed is given back for the next tick only while it is
 # this fresh. A failing row would otherwise be retried every ten seconds for the
 # whole stale window and hold a place in every batch behind it.
@@ -114,10 +125,16 @@ def _due_params(now: dt.datetime) -> dict:
     # "+00:00", and a raw "+" in a query string is read as a space by PostgREST,
     # which then rejects the timestamp. The query failed on every tick and no
     # alert could ever fire. usage.py gets this right the same way.
+    #
+    # Due means finished and either never sent, or sent at least REPEAT_SECONDS ago
+    # and not yet sent MAX_NOTIFICATIONS times. supabase/push-cron.sql asks the same
+    # question to decide whether to call at all, so the two must be kept in step.
+    again = _iso(now - dt.timedelta(seconds=REPEAT_SECONDS))
     return {
-        "sent_at": "is.null",
         "ends_at": f"lte.{_iso(now)}",
-        "select": "id,user_id,client_id,label,recipe_title,open_url,ends_at",
+        "notify_count": f"lt.{MAX_NOTIFICATIONS}",
+        "or": f"(sent_at.is.null,sent_at.lte.{again})",
+        "select": "id,user_id,client_id,label,recipe_title,open_url,ends_at,sent_at,notify_count",
         "order": "ends_at.asc",
         "limit": str(BATCH),
     }
@@ -133,23 +150,47 @@ def _due_rows(now: dt.datetime) -> list[dict]:
     return rows if isinstance(rows, list) else []
 
 
-def _claim(row_id: str, now: dt.datetime) -> bool:
-    """True only for the caller that flipped `sent_at` from null."""
-    target = _rest(f"cook_timers?id=eq.{row_id}&sent_at=is.null")
+def _claim(row: dict, now: dt.datetime) -> bool:
+    """True only for the caller that moves `notify_count` on from the value it read.
+
+    One conditional update, so two overlapping runs cannot both send the same
+    alert: the loser's filter no longer matches and it gets no row back.
+    """
+    count = int(row.get("notify_count") or 0)
+    target = _rest(f"cook_timers?id=eq.{row['id']}&notify_count=eq.{count}")
     if target is None:
         return False
     headers = {**target[1], "Prefer": "return=representation"}
-    resp = httpx.patch(target[0], headers=headers, json={"sent_at": _iso(now)}, timeout=TIMEOUT)
+    resp = httpx.patch(
+        target[0],
+        headers=headers,
+        json={"sent_at": _iso(now), "notify_count": count + 1},
+        timeout=TIMEOUT,
+    )
     resp.raise_for_status()
     body = resp.json()
     return isinstance(body, list) and len(body) == 1
 
 
-def _release(row_id: str) -> None:
-    """Give a row back so the next run retries it (every send failed)."""
-    target = _rest(f"cook_timers?id=eq.{row_id}")
+def _release(row: dict) -> None:
+    """Give a row back, as it was before the claim, so the next run retries it."""
+    target = _rest(f"cook_timers?id=eq.{row['id']}")
     if target is not None:
-        httpx.patch(target[0], headers=target[1], json={"sent_at": None}, timeout=TIMEOUT)
+        httpx.patch(
+            target[0],
+            headers=target[1],
+            json={"sent_at": row.get("sent_at"), "notify_count": int(row.get("notify_count") or 0)},
+            timeout=TIMEOUT,
+        )
+
+
+def _exhaust(row: dict) -> None:
+    """Mark a row as having used all its sends, so it is never sent or repeated."""
+    target = _rest(f"cook_timers?id=eq.{row['id']}")
+    if target is not None:
+        httpx.patch(
+            target[0], headers=target[1], json={"notify_count": MAX_NOTIFICATIONS}, timeout=TIMEOUT
+        )
 
 
 def _subscriptions(user_id: str) -> list[dict]:
@@ -206,13 +247,22 @@ def payload_for(row: dict) -> str:
     cannot revoke the subscription for a missed display."""
     label = (row.get("label") or "Timer").strip()
     recipe = (row.get("recipe_title") or "").strip()
+    count = int(row.get("notify_count") or 0)
+    body = f"{label} · {recipe}" if recipe else label
     notification = {
         "title": "Time's up",
-        "body": f"{label} · {recipe}" if recipe else label,
+        # A repeat says so, so a stack of banners reads as one alarm still going
+        # and not as several different timers.
+        "body": f"Still ringing: {body}" if count else body,
         "silent": False,
     }
     if row.get("client_id"):
-        notification["tag"] = str(row["client_id"])[:80]
+        # The first send keeps the bare id (the worker and the declarative path
+        # then agree and a browser that does both shows one). Each repeat gets its
+        # own tag so it is a new banner that makes the sound again, rather than a
+        # silent replacement of the last one.
+        tag = str(row["client_id"])
+        notification["tag"] = (f"{tag}:{count}" if count else tag)[:80]
     url = row.get("open_url") or ""
     # Only a plain https link back into the app. The column is user-written, and
     # while it can only ever reach that user's own phone, a payload should not be
@@ -240,12 +290,22 @@ def fire_due(now: dt.datetime | None = None) -> dict:
         if per_user[row["user_id"]] > MAX_ROWS_PER_USER:
             out["deferred"] += 1
             continue
-        if not _claim(row["id"], now):
+        if not _claim(row, now):
             continue  # another run has it
+        first = int(row.get("notify_count") or 0) == 0
         due_at = dt.datetime.fromisoformat(row["ends_at"].replace("Z", "+00:00"))
         age = (now - due_at).total_seconds()
-        if age > STALE_SECONDS:
+        # Only a first send can be too late to be worth sending: a repeat is, by
+        # construction, minutes after the due time and is exactly what is wanted.
+        if first and age > STALE_SECONDS:
             out["stale"] += 1
+            # Dropped for good. Left at a count of one it would come due again in
+            # thirty seconds as a "repeat" and send the very alert it was too late
+            # for, up to five times, after an outage.
+            try:
+                _exhaust(row)
+            except Exception:  # noqa: BLE001
+                log.exception("could not close out a stale row")
             continue
         # Anything that goes wrong after the claim must hand the row back, or it
         # is claimed, unsent and forgotten, and the rest of the batch with it.
@@ -257,8 +317,10 @@ def fire_due(now: dt.datetime | None = None) -> dict:
         if delivered is False or delivered is None:
             if delivered is False:
                 out["failed"] += 1
-            if age <= RETRY_WINDOW_SECONDS:
-                _release(row["id"])
+            # Only a first send is handed back. A repeat that failed simply
+            # waits for its next turn, since the count moves on either way.
+            if first and age <= RETRY_WINDOW_SECONDS:
+                _release(row)
     return out
 
 
