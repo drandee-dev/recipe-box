@@ -298,6 +298,13 @@ test('an amount too small for the other system keeps its own unit on the list', 
   assert.deepEqual([pinch.qty, pinch.unit], [2, 'g'])
 })
 
+test('two tiny amounts in different units total in grams, not a raw sum under one label', () => {
+  // 1/8 oz and 1 g are about 4.5 g; in US they are too small for an oz measure.
+  const [item] = listFor(['1/8 oz saffron', '1 g saffron'], 'us')
+  assert.equal(item.unit, 'g')
+  assert.ok(item.qty > 3 && item.qty < 6, `got ${item.qty}`)
+})
+
 test('a count of things (cloves, cans) is untouched by any setting', () => {
   for (const units of ['original', 'metric', 'us']) {
     const [item] = listFor(['3 cloves garlic', '2 cloves garlic'], units)

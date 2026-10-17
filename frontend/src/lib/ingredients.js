@@ -513,14 +513,18 @@ function writeInDisplayUnits(item, units) {
   if (units === 'original') {
     if (!item.mixed) return
     const written = bestUnit(total, item.dimension, majority)
-    if (written.qty > 0) Object.assign(item, written)
+    // Mixed units, so there is nothing "as written" to keep if it is too small.
+    Object.assign(item, written.qty > 0 ? written : bestUnit(total, item.dimension, 'metric'))
     return
   }
   if (units === 'metric' && !item.mixed && SPOONS.has(item.unit)) return
   const written = bestUnit(total, item.dimension, units)
   // An amount too small to write in the other system (3 g of saffron is 0.1 oz) is
-  // left as the recipes wrote it rather than printed as "0 oz".
+  // left as the recipes wrote it rather than printed as "0 oz". If the recipes
+  // disagreed about the unit there is no "as written" to fall back to (the raw sum
+  // is in mixed units), so the total goes in grams or millilitres instead.
   if (written.qty > 0) Object.assign(item, written)
+  else if (item.mixed) Object.assign(item, bestUnit(total, item.dimension, 'metric'))
 }
 
 // A source line names the recipe, nothing else: "Pasta", or "Pasta ×2" when
