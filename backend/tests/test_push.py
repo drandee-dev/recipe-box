@@ -241,6 +241,30 @@ class FireDue(unittest.TestCase):
         self.assertEqual(sent, [])
         self.assertEqual(out["stale"], 1)
 
+    def test_a_dropped_late_alert_is_closed_out_so_it_cannot_become_a_repeat(self):
+        closed = []
+        with patch.object(push, "_due_rows", return_value=[row(seconds_ago=push.STALE_SECONDS + 5)]), patch.object(
+            push, "_claim", return_value=True
+        ), patch.object(push, "_exhaust", side_effect=lambda r: closed.append(r["id"])), patch.object(
+            push, "_send"
+        ) as send:
+            push.fire_due(NOW)
+        self.assertEqual(closed, ["t1"])
+        send.assert_not_called()
+
+    def test_closing_out_sets_the_count_to_the_cap(self):
+        sent = {}
+
+        def fake_patch(url, headers=None, json=None, timeout=None):
+            sent["url"], sent["json"] = url, json
+
+        with patch.dict(os.environ, {"SUPABASE_URL": "https://p.supabase.co", "SUPABASE_SERVICE_ROLE_KEY": "k"}), patch.object(
+            push.httpx, "patch", side_effect=fake_patch
+        ):
+            push._exhaust(row())
+        self.assertIn("id=eq.t1", sent["url"])
+        self.assertEqual(sent["json"], {"notify_count": push.MAX_NOTIFICATIONS})
+
     def test_no_subscription_is_reported_not_sent(self):
         out, sent, _, _ = self.run_fire([row()], subs=())
         self.assertEqual(out["no_subscription"], 1)

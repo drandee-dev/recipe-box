@@ -250,4 +250,8 @@ create trigger cook_timers_cap before insert on cook_timers
 -- MAX_NOTIFICATIONS, and supabase/push-cron.sql.
 alter table cook_timers add column if not exists notify_count integer not null default 0;
 
+-- Rows the server already sent before this column existed have a count of 0 and
+-- would look like unsent first sends. Close them out so none is sent again.
+update cook_timers set notify_count = 6 where sent_at is not null and notify_count = 0;
+
 create index if not exists cook_timers_active_idx on cook_timers (ends_at) where notify_count < 6;

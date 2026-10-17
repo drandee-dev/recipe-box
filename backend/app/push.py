@@ -184,6 +184,15 @@ def _release(row: dict) -> None:
         )
 
 
+def _exhaust(row: dict) -> None:
+    """Mark a row as having used all its sends, so it is never sent or repeated."""
+    target = _rest(f"cook_timers?id=eq.{row['id']}")
+    if target is not None:
+        httpx.patch(
+            target[0], headers=target[1], json={"notify_count": MAX_NOTIFICATIONS}, timeout=TIMEOUT
+        )
+
+
 def _subscriptions(user_id: str) -> list[dict]:
     target = _rest(f"push_subscriptions?user_id=eq.{user_id}&select=id,endpoint,p256dh,auth")
     if target is None:
@@ -290,6 +299,13 @@ def fire_due(now: dt.datetime | None = None) -> dict:
         # construction, minutes after the due time and is exactly what is wanted.
         if first and age > STALE_SECONDS:
             out["stale"] += 1
+            # Dropped for good. Left at a count of one it would come due again in
+            # thirty seconds as a "repeat" and send the very alert it was too late
+            # for, up to five times, after an outage.
+            try:
+                _exhaust(row)
+            except Exception:  # noqa: BLE001
+                log.exception("could not close out a stale row")
             continue
         # Anything that goes wrong after the claim must hand the row back, or it
         # is claimed, unsent and forgotten, and the rest of the batch with it.

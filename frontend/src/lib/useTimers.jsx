@@ -70,6 +70,8 @@ export function TimersProvider({ children }) {
   const [now, setNow] = useState(() => Date.now())
   const audioRef = useRef(null)
   const elementRef = useRef(null)
+  // Timers whose server row has already been deleted because they were seen.
+  const unmirrored = useRef(new Set())
 
   useEffect(() => {
     saveTimers(timers)
@@ -211,6 +213,10 @@ export function TimersProvider({ children }) {
     let tones = null
 
     const oscillatorLoop = () => {
+      // Checked because this runs from a promise: a dismiss that lands while
+      // play() is still pending rejects it, and without this the fallback would
+      // start after the cleanup had run and nothing would ever stop it.
+      if (stopped) return
       const ctx = audioRef.current
       if (!ctx || tones) return
       const once = () =>
@@ -227,7 +233,10 @@ export function TimersProvider({ children }) {
       if (!el) return false
       el.loop = true
       el.currentTime = 0
-      el.play().catch(oscillatorLoop)
+      // An AbortError is our own pause() (the alarm was dismissed), not a refusal.
+      el.play().catch((e) => {
+        if (e?.name !== 'AbortError') oscillatorLoop()
+      })
       return true
     }
 
@@ -247,8 +256,11 @@ export function TimersProvider({ children }) {
 
     if (!play()) {
       // No element yet (a reload): wait for a tap, which is also what lets iOS
-      // play it. The tray and the pulsing chips are the alert until then.
-      document.addEventListener('pointerdown', onFirstTap, { once: true })
+      // play it. The tray and the pulsing chips are the alert until then. Listens
+      // for the END of the touch: in WebKit a touch counts as a user gesture when
+      // it is released, not when it lands, so `pointerdown` would be refused there.
+      document.addEventListener('pointerup', onFirstTap)
+      document.addEventListener('click', onFirstTap)
     }
     // Android only, and only once the page has had a tap, or Chrome logs an
     // intervention. On iOS the pulsing tray is the alert that is guaranteed.
@@ -256,7 +268,8 @@ export function TimersProvider({ children }) {
 
     return () => {
       stopped = true
-      document.removeEventListener('pointerdown', onFirstTap)
+      document.removeEventListener('pointerup', onFirstTap)
+      document.removeEventListener('click', onFirstTap)
       clearInterval(tones)
       const el = elementRef.current
       if (el) {
@@ -271,14 +284,22 @@ export function TimersProvider({ children }) {
   // already overdue after a reload or a wake. `rang` is stored with the timer, so
   // it is not announced again, while the timer itself stays until dismissed.
   useEffect(() => {
+    // A finished timer in front of the person is answered: the server stops
+    // sending it, whether it came due while the page was open or while it was away
+    // and the app was only just opened from a banner. Once per timer, not once per
+    // tick, so this is not a delete every quarter second.
+    if (document.visibilityState === 'visible') {
+      timers
+        .filter((t) => isDue(t, now) && !unmirrored.current.has(t.id))
+        .forEach((t) => {
+          unmirrored.current.add(t.id)
+          unmirrorTimer(t.id)
+        })
+    }
     const fresh = timers.filter((t) => !t.rang && isDue(t, now))
     if (fresh.length === 0) return
     const ids = new Set(fresh.map((t) => t.id))
     setTimers((prev) => prev.map((t) => (ids.has(t.id) ? { ...t, rang: true } : t)))
-    // Rung in the page, so it must not also arrive as a push a few seconds later.
-    // Only when the page is actually in view: a hidden page that was somehow
-    // still running is exactly the case the push exists for.
-    if (document.visibilityState === 'visible') fresh.forEach((t) => unmirrorTimer(t.id))
   }, [timers, now])
 
   useEffect(
