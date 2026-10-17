@@ -450,12 +450,12 @@ export default function ShoppingList({
       {(canShare || editable) && (
         <div className="shopping-tools">
           {canShare && (
-            <button type="button" className="btn btn-secondary btn-sm" onClick={share}>
+            <button type="button" className="btn btn-secondary" onClick={share}>
               Share list
             </button>
           )}
           {editable && (
-            <button type="button" className="btn btn-quiet btn-sm" onClick={() => setOrderOpen(true)}>
+            <button type="button" className="btn btn-quiet" onClick={() => setOrderOpen(true)}>
               Aisle order
             </button>
           )}

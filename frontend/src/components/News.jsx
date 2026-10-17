@@ -21,21 +21,17 @@ function longDate(iso) {
   return fromISODate(iso).toLocaleDateString(undefined, { month: 'long', day: 'numeric', year: 'numeric' })
 }
 
-export function NewsBanner({ entry, onWhatsNew, onFeedback, onDismiss }) {
+// One slim row: the whole text is the button that opens What's new, and the
+// close is the other control. It was a heading, a paragraph and two buttons
+// (182px at 390, pushing the first photo to y=434); the full text and the
+// feedback button live in the What's new sheet, one tap away.
+export function NewsBanner({ entry, onWhatsNew, onDismiss }) {
   return (
-    <section className="rb-news" aria-labelledby="rb-news-title">
-      <h2 id="rb-news-title" className="rb-news-title">{entry.title}</h2>
-      {entry.body && <p className="rb-news-body">{entry.body}</p>}
-      <div className="rb-news-actions">
-        {entry.kind === 'upcoming' && (
-          <button type="button" className="btn btn-secondary" onClick={onFeedback}>
-            Send feedback
-          </button>
-        )}
-        <button type="button" className="btn btn-quiet rb-news-link" onClick={onWhatsNew}>
-          What's new
-        </button>
-      </div>
+    <section className="rb-news" aria-label="News">
+      <button type="button" className="rb-news-main" onClick={onWhatsNew}>
+        <span className="rb-news-title">{entry.title}</span>
+        {entry.body && <span className="rb-news-body">{entry.body}</span>}
+      </button>
       <button
         type="button"
         className="btn btn-quiet btn-icon rb-news-close"

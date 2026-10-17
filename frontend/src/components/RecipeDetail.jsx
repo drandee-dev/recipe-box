@@ -197,6 +197,10 @@ export default function RecipeDetail({
   const today = new Date()
   const planDays = Array.from({ length: PLAN_DAYS }, (_, i) => addDays(today, i))
 
+  // The step you are on: the first not ticked. Derived, so ticking moves it and
+  // nothing else has to be kept in step. -1 once every step is ticked.
+  const currentStep = recipe.instructions.findIndex((_, n) => !done.has(n))
+
   const host = hostOf(recipe.source_url)
   const tags = recipe.tags || []
   const empty = recipe.ingredients.length === 0 && recipe.instructions.length === 0
@@ -572,7 +576,17 @@ export default function RecipeDetail({
           ) : (
             <ol className="detail-checks detail-steps">
               {recipe.instructions.map((step, n) => (
-                <li key={n} className={done.has(n) ? 'detail-check detail-check-on' : 'detail-check'}>
+                <li
+                  key={n}
+                  aria-current={n === currentStep ? 'step' : undefined}
+                  className={
+                    done.has(n)
+                      ? 'detail-check detail-check-on'
+                      : n === currentStep
+                        ? 'detail-check detail-check-current'
+                        : 'detail-check'
+                  }
+                >
                   <label>
                     <input type="checkbox" checked={done.has(n)} onChange={() => toggle('done', n)} />
                     {/* The number is drawn rather than left to the <ol> marker,
