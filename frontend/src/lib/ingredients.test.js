@@ -213,11 +213,85 @@ test('the same ingredient in two recipes merges and sums', () => {
   )
 })
 
-test('the same ingredient in different units stays on separate lines', () => {
-  // Converting invites the kind of quiet arithmetic error only found in a shop.
-  const recipes = [recipe('r1', 'A', ['1 cup milk']), recipe('r2', 'B', ['200 ml milk'])]
-  const list = buildShoppingList([planned('r1'), planned('r2')], recipes)
-  assert.equal(list.length, 2)
+// Phase B reversed the old "units stay apart" rule: within a dimension the
+// arithmetic is exact (units.js), so spoons add to spoons and grams to kilograms.
+// Volume and weight still never merge, since that is not arithmetic.
+function listFor(lines, units) {
+  const recipes = lines.map((line, i) => recipe(`r${i}`, `R${i}`, [line]))
+  return buildShoppingList(lines.map((_, i) => planned(`r${i}`)), recipes, units)
+}
+
+test('teaspoons and tablespoons of one thing are one line, at a readable size', () => {
+  const [item, ...rest] = listFor(['3 tsp salt', '1 tbsp salt'])
+  assert.equal(rest.length, 0)
+  // 15 ml + 15 ml is 2 tbsp, not "6 tsp".
+  assert.deepEqual([item.qty, item.unit], [2, 'tbsp'])
+})
+
+test('grams and kilograms merge and are written as the bigger unit', () => {
+  const [item] = listFor(['500 g flour', '1 kg flour'])
+  assert.deepEqual([item.qty, item.unit], [1.5, 'kg'])
+})
+
+test('a cup and a metric volume of the same thing merge', () => {
+  const list = listFor(['1 cup milk', '200 ml milk'])
+  assert.equal(list.length, 1)
+  // 240 ml + 200 ml = 440 ml; the first recipe was US so it reads in cups.
+  assert.equal(list[0].unit, 'cup')
+  assert.equal(list[0].qty, 1.875)
+})
+
+test('volume and weight of the same thing never merge', () => {
+  assert.equal(listFor(['1 cup milk', '200 g milk']).length, 2)
+  assert.equal(listFor(['8 fl oz milk', '8 oz milk']).length, 2)
+})
+
+test('the same unit twice keeps the recipes\' own unit and spelling', () => {
+  const [item] = listFor(['450 g flour', '450 g flour'])
+  assert.deepEqual([item.qty, item.unit], [900, 'g'])
+  const [cups] = listFor(['2 cups flour', '1 cup flour'])
+  assert.deepEqual([cups.qty, cups.unit], [3, 'cup'])
+})
+
+test('fl oz is a volume and a lone oz is a weight', () => {
+  const [fluid] = listFor(['8 fl oz milk'])
+  assert.equal(fluid.unit, 'floz')
+  assert.equal(fluid.name, 'milk')
+  const [weight] = listFor(['8 oz cheddar'])
+  assert.equal(weight.unit, 'oz')
+  // Different dimensions, so a fluid ounce and an ounce of one thing stay apart.
+  assert.equal(listFor(['8 fl oz cream', '8 oz cream']).length, 2)
+})
+
+test('the metric setting writes US measures in grams and millilitres, but leaves spoons', () => {
+  const list = listFor(['1 cup milk', '8 oz butter', '1 tsp salt'], 'metric')
+  const by = Object.fromEntries(list.map((i) => [i.name, [i.qty, i.unit]]))
+  assert.deepEqual(by.milk, [240, 'ml'])
+  assert.deepEqual(by.butter, [225, 'g'])
+  assert.deepEqual(by.salt, [1, 'tsp'])
+})
+
+test('the US setting writes metric measures in cups, spoons and ounces', () => {
+  const list = listFor(['240 ml milk', '200 g cheddar', '15 ml oil'], 'us')
+  const by = Object.fromEntries(list.map((i) => [i.name, [i.qty, i.unit]]))
+  assert.deepEqual(by.milk, [1, 'cup'])
+  assert.deepEqual(by.cheddar, [7, 'oz'])
+  assert.deepEqual(by.oil, [1, 'tbsp'])
+})
+
+test('a count of things (cloves, cans) is untouched by any setting', () => {
+  for (const units of ['original', 'metric', 'us']) {
+    const [item] = listFor(['3 cloves garlic', '2 cloves garlic'], units)
+    assert.deepEqual([item.qty, item.unit], [5, 'clove'])
+  }
+})
+
+test('merge keys for measures name the dimension, so a tick survives a unit change', () => {
+  // The check rows in the database are keyed by this string.
+  const [item] = listFor(['1 cup milk'])
+  assert.equal(item.key, 'milk|volume')
+  assert.equal(listFor(['200 g flour'])[0].key, 'flour|mass')
+  assert.equal(listFor(['3 cloves garlic'])[0].key, 'garlic|clove')
 })
 
 test('a recipe planned twice in a week counts twice', () => {

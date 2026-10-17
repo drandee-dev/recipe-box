@@ -7,6 +7,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { buildShoppingList, formatQuantity, formatSource, groupByAisle } from '../lib/ingredients.js'
 import { addDays, toISODate, weekRangeLabel } from '../lib/dates.js'
+import { useUnits } from '../lib/useUnits.js'
 
 function DerivedItem({ item, checked, onToggle }) {
   return (
@@ -61,7 +62,10 @@ export default function ShoppingList({
   )
   const rows = useMemo(() => overlay.filter((r) => r.week_start === week), [overlay, week])
 
-  const derived = useMemo(() => buildShoppingList(thisWeek, recipes), [thisWeek, recipes])
+  // The list is written in the standing unit setting (account sheet). Per-recipe
+  // flips on the recipe sheet do not reach it: a shopping list is one list.
+  const units = useUnits()
+  const derived = useMemo(() => buildShoppingList(thisWeek, recipes, units), [thisWeek, recipes, units])
   const groups = useMemo(() => groupByAisle(derived), [derived])
 
   const checkedKeys = useMemo(() => {

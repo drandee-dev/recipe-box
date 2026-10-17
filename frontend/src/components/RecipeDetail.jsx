@@ -22,7 +22,9 @@ import StepText from './StepText.jsx'
 import { loadProgress, saveProgress } from '../lib/cookProgress.js'
 import { useWakeLock } from '../lib/useWakeLock.js'
 import { baseServings, hostOf, metaParts, servingsLabel } from '../lib/recipes.js'
-import { scaleIngredientText } from '../lib/ingredients.js'
+import UnitsToggle from './UnitsToggle.jsx'
+import { displayIngredient } from '../lib/convert.js'
+import { useUnits } from '../lib/useUnits.js'
 import { SLOTS, addDays, dayName, shortDate, toISODate } from '../lib/dates.js'
 
 const SLOT_LABELS = {
@@ -157,6 +159,11 @@ export default function RecipeDetail({
   // careful not to invent.
   const base = baseServings(recipe)
   const [servings, setServings] = useState(base)
+
+  // Starts as the standing setting (account sheet) and can be flipped for this
+  // one recipe without changing it. Per opening and unstored, like the scale.
+  const standingUnits = useUnits()
+  const [units, setLocalUnits] = useState(standingUnits)
   const factor = base && servings ? servings / base : 1
 
   const today = new Date()
@@ -312,6 +319,15 @@ export default function RecipeDetail({
         </div>
       )}
 
+      {/* Units for this recipe only. Beside the servings stepper because both change
+          what the lines below say, and Original is the first choice so the recipe
+          opens as it was written unless the person has asked otherwise. */}
+      {recipe.ingredients.length > 0 && (
+        <div className="detail-units">
+          <UnitsToggle value={units} onChange={setLocalUnits} label="Measurements for this recipe" />
+        </div>
+      )}
+
       {/* The one verb this screen exists for, so it gets the width and the fill.
           It drops to secondary while the plan panel is open for the same reason
           Add to plan does — one filled accent per region. A recipe with no steps
@@ -425,7 +441,7 @@ export default function RecipeDetail({
                       written — the same rule the shopping list follows, and the
                       reason a scaled recipe can't produce a number the recipe
                       never gave. */}
-                  <span>{scaleIngredientText(ing.raw, factor)}</span>
+                  <span>{displayIngredient(ing.raw, { factor, units })}</span>
                 </label>
               </li>
             ))}
@@ -462,7 +478,7 @@ export default function RecipeDetail({
                       {n + 1}
                     </span>
                     <span>
-                      <StepText text={step} recipe={recipe} step={n} />
+                      <StepText text={step} recipe={recipe} step={n} units={units} />
                     </span>
                   </label>
                 </li>
@@ -480,6 +496,7 @@ export default function RecipeDetail({
           recipe={recipe}
           servings={base === null ? null : servingsLabel(recipe, servings)}
           factor={factor}
+          units={units}
           onClose={() => setCooking(false)}
         />
       )}
