@@ -677,9 +677,6 @@ export default function RecipeDetail({
         </div>
       )}
 
-      {/* Opens over this sheet rather than replacing it, so closing cook mode
-          puts you back on the recipe you were reading. That is the stacking case
-          `Sheet`'s depth counter exists for. */}
       {/* What you learned cooking it. Below the method, because you read it after
           cooking and before the next time; searchable from the list. Plain text,
           shown exactly as typed. */}
@@ -727,6 +724,9 @@ export default function RecipeDetail({
         )}
       </section>
 
+      {/* Opens over this sheet rather than replacing it, so closing cook mode
+          puts you back on the recipe you were reading. That is the stacking case
+          `Sheet`'s depth counter exists for. */}
       {cooking && (
         <CookMode
           recipe={recipe}

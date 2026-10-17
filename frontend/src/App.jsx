@@ -8,7 +8,7 @@ import { KEEP_WEEKS, makeShoppingStore, migrateLocalShopping } from './lib/shopp
 import { makePrefsStore, migrateLocalPrefs } from './lib/prefs.js'
 import { makeCookStore, migrateLocalCookLog } from './lib/cooklog.js'
 import { cookStats as statsOf } from './lib/cooked.js'
-import { cacheKeys, seedRecipes, withMirror } from './lib/cache.js'
+import { cacheKeys, seedRecipes, updateMirror, withMirror } from './lib/cache.js'
 import { MIRROR_CONCURRENCY, mirrorSource, needsGlyphRepair, needsMirror } from './lib/images.js'
 import { addDays, fromISODate, startOfWeek, toISODate, weekRangeLabel } from './lib/dates.js'
 import { setBusy } from './lib/pwa.js'
@@ -410,12 +410,31 @@ export default function App() {
   useEffect(() => {
     if (!authReady) return
     let cancelled = false
+    // A different account (or none) starts from an empty log: the merge below
+    // keeps rows already in state, which must not be the last account's.
+    setCookLog([])
     ;(async () => {
       try {
         if (recipesMigratedRef.current) await recipesMigratedRef.current
-        if (userId) await migrateLocalCookLog(userId)
+        if (userId) {
+          // On its own: a failed upload (the local key survives, so it retries
+          // next visit) must not stop the log that is already in the cloud loading.
+          try {
+            await migrateLocalCookLog(userId)
+          } catch {
+            // Retried on the next load; the local rows are untouched.
+          }
+        }
         const logged = await loadCookLog()
-        if (!cancelled) setCookLog(logged.rows)
+        // Merged, not assigned: a cook logged while this load was in flight is
+        // already in state and not yet in what came back, and replacing the list
+        // would drop it from the counts until the next refresh.
+        if (!cancelled) {
+          setCookLog((prev) => {
+            const have = new Set(logged.rows.map((r) => r.id))
+            return [...logged.rows, ...prev.filter((r) => !have.has(r.id))]
+          })
+        }
       } catch {
         // Display only: without it the counts and the cooked sorts read as
         // "never cooked" for this visit, and nothing else is affected.
@@ -451,7 +470,9 @@ export default function App() {
       setRecipes(listed.rows)
       setPlan(planned.rows)
       setOverlay(overlaid.rows)
-      if (logged) setCookLog(logged.rows)
+      // Not when it came from the mirror: a failed read serves the last copy, and
+      // that would replace a log this session has already added to or taken from.
+      if (logged && !logged.stale) setCookLog(logged.rows)
       setOffline(listed.stale || planned.stale || overlaid.stale)
       setError('')
       // Catches anything captured on another device since this one last looked,
@@ -684,6 +705,7 @@ export default function App() {
     try {
       const saved = await cookStore.add(row)
       setCookLog((prev) => prev.map((r) => (r.id === row.id ? saved : r)))
+      updateMirror(userId && cacheKeys.cooklog(userId), (rows) => [...rows, saved])
       return saved.id
     } catch (err) {
       setCookLog((prev) => prev.filter((r) => r.id !== row.id))
@@ -697,6 +719,7 @@ export default function App() {
     setCookLog((prev) => prev.filter((r) => r.id !== id))
     try {
       await cookStore.remove(id)
+      updateMirror(userId && cacheKeys.cooklog(userId), (rows) => rows.filter((r) => r.id !== id))
     } catch (err) {
       setCookLog(before)
       setError(writeError(err))
@@ -785,6 +808,7 @@ export default function App() {
       setPlan((prev) => prev.filter((e) => e.recipe_id !== id))
       await cookStore.removeByRecipe(id)
       setCookLog((prev) => prev.filter((r) => r.recipe_id !== id))
+      updateMirror(userId && cacheKeys.cooklog(userId), (rows) => rows.filter((r) => r.recipe_id !== id))
       if (openId === id) setOpenId(null)
     } catch (err) {
       setError(writeError(err))
