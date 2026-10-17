@@ -76,8 +76,8 @@ export function mirrorSource(recipe) {
 //
 // `box` is a number of CSS pixels for the fixed boxes (card thumb, picker row),
 // or a ready-made `sizes` string for one that isn't fixed — the detail sheet's
-// hero is as wide as the sheet, which is the viewport up to 640px, and there is
-// no single number that describes it.
+// hero is as wide as the sheet, which is the viewport up to 640px (960px on a
+// laptop), and there is no single number that describes it.
 export function thumbSources(recipe, box) {
   const full = recipe?.image_url
   const small = recipe?.image_thumb_url

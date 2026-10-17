@@ -2544,6 +2544,12 @@ textarea.field {
        the sheet would otherwise leave its last lines out of reach. */
     max-height: calc(94dvh - 100px);
     overflow-y: auto;
+    /* Any overflow other than visible clips both axes, and the checkbox sits at
+       the column's left edge: its 2px focus ring (2px offset) was cut off on every
+       ingredient. The padding gives the ring room; the negative margin gives the
+       space back so nothing moves. */
+    padding: 6px;
+    margin: -6px;
   }
 
   .detail-cols .detail-heading {
