@@ -21,7 +21,7 @@ import Sheet from './Sheet.jsx'
 import StepText from './StepText.jsx'
 import { loadProgress, saveProgress } from '../lib/cookProgress.js'
 import { useWakeLock } from '../lib/useWakeLock.js'
-import { baseServings, hostOf, metaParts, servingsLabel } from '../lib/recipes.js'
+import { SERVINGS_MAX_FACTOR, baseServings, hostOf, metaParts, servingsLabel } from '../lib/recipes.js'
 import UnitsToggle from './UnitsToggle.jsx'
 import { displayIngredient } from '../lib/convert.js'
 import { useUnits } from '../lib/useUnits.js'
@@ -38,12 +38,6 @@ const SLOT_LABELS = {
 // is asked about the days ahead of you; a Sunday-anchored week would offer
 // yesterday on a Wednesday and hide next Monday all week.
 const PLAN_DAYS = 7
-
-// Four times what the recipe says is already past the point where the tin, the
-// pan and the oven stop cooperating, and halving is the only direction anyone
-// goes below one batch. The floor is one serving rather than zero, since zero
-// servings of anything is not a thing to cook.
-const SERVINGS_MAX_FACTOR = 4
 
 function planDayLabel(date, offset) {
   if (offset === 0) return 'Today'
@@ -124,6 +118,7 @@ export default function RecipeDetail({
   onDelete,
   onToggleFavorite,
   onAssign,
+  onToList,
 }) {
   // Sets of indices. Ingredients are a gathering list, steps are a progress
   // marker, and they are separate because ticking off the flour has nothing to
@@ -140,6 +135,14 @@ export default function RecipeDetail({
   const [planDate, setPlanDate] = useState(() => toISODate(new Date()))
   const [planSlot, setPlanSlot] = useState('dinner')
   const [planned, setPlanned] = useState(null)
+
+  // "To list": put some of this recipe's ingredients on the shopping list without
+  // planning a meal. Which lines are chosen is held by index, and starts as every
+  // line you have not already ticked off as gathered.
+  const [listOpen, setListOpen] = useState(false)
+  const [listPicked, setListPicked] = useState(() => new Set())
+  const [listSending, setListSending] = useState(false)
+  const [listed, setListed] = useState(null)
 
   const [cooking, setCooking] = useState(false)
 
@@ -194,9 +197,50 @@ export default function RecipeDetail({
   }
 
   function addToPlan() {
-    onAssign(recipe.id, planDate, planSlot)
+    // A recipe scaled on this sheet is planned at that scale: the stepper says
+    // how many you are cooking for, and the shopping list should buy for it.
+    // Untouched, it is null, which means "as the recipe says".
+    onAssign(recipe.id, planDate, planSlot, factor !== 1 ? servings : null)
     setPlanned(`${chosenLabel} ${SLOT_LABELS[planSlot].toLowerCase()}`)
     setPlanOpen(false)
+  }
+
+  function openList() {
+    setPlanOpen(false)
+    setPlanned(null)
+    setListed(null)
+    if (!listOpen) {
+      setListPicked(new Set(recipe.ingredients.map((_, n) => n).filter((n) => !gathered.has(n))))
+    }
+    setListOpen((v) => !v)
+  }
+
+  function toggleListed(n) {
+    setListPicked((prev) => {
+      const next = new Set(prev)
+      if (next.has(n)) next.delete(n)
+      else next.add(n)
+      return next
+    })
+  }
+
+  // The lines go on as written on screen, scaled and in the units shown, since
+  // that is what the person was looking at when they chose them.
+  async function addToList() {
+    const lines = recipe.ingredients
+      .map((ing, n) => (listPicked.has(n) ? displayIngredient(ing.raw, { factor, units }) : null))
+      .filter(Boolean)
+    if (lines.length === 0 || listSending) return
+    setListSending(true)
+    try {
+      const weekLabel = await onToList(recipe, lines)
+      setListed(`${lines.length} ${lines.length === 1 ? 'line' : 'lines'} added to the list for ${weekLabel}.`)
+      setListOpen(false)
+    } catch {
+      setListed("Couldn't add them. Try again.")
+    } finally {
+      setListSending(false)
+    }
   }
 
   return (
@@ -354,11 +398,17 @@ export default function RecipeDetail({
           aria-expanded={planOpen}
           onClick={() => {
             setPlanned(null)
+            setListOpen(false)
             setPlanOpen((v) => !v)
           }}
         >
           Add to plan
         </button>
+        {recipe.ingredients.length > 0 && (
+          <button type="button" className="btn btn-secondary" aria-expanded={listOpen} onClick={openList}>
+            To list
+          </button>
+        )}
         <button type="button" className="btn btn-secondary" onClick={() => onEdit(recipe)}>
           Edit
         </button>
@@ -410,9 +460,39 @@ export default function RecipeDetail({
         </div>
       )}
 
+      {listOpen && (
+        <div className="detail-plan">
+          <ul className="detail-tolist-lines">
+            {recipe.ingredients.map((ing, n) => (
+              <li key={n}>
+                <label>
+                  <input type="checkbox" checked={listPicked.has(n)} onChange={() => toggleListed(n)} />
+                  <span>{displayIngredient(ing.raw, { factor, units })}</span>
+                </label>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="btn btn-primary btn-block"
+            disabled={listPicked.size === 0 || listSending}
+            onClick={addToList}
+          >
+            {listPicked.size === 0
+              ? 'Choose lines to add'
+              : `Add ${listPicked.size} to this week's list`}
+          </button>
+        </div>
+      )}
+
       {planned && (
         <p className="detail-planned" role="status">
           Added to {planned}.
+        </p>
+      )}
+      {listed && (
+        <p className="detail-planned" role="status">
+          {listed}
         </p>
       )}
 

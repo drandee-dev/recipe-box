@@ -1488,6 +1488,13 @@ textarea.field {
 /* Both stretch, so neither reads as the leftover half of the row. */
 .detail-actions .btn {
   flex: 1;
+  /* Three across at 390px: a label must not wrap to two lines. */
+  padding-inline: var(--sp-2);
+  white-space: nowrap;
+}
+
+.detail-actions {
+  gap: var(--sp-2);
 }
 
 /* The star is state, not an action, so it takes saffron and no fill — the
@@ -3409,6 +3416,220 @@ textarea.field {
 
 .shopping-item-done .shopping-item-from {
   text-decoration: none;
+}
+
+/* --- Pass C: staples, aisle choices, share, the recipe strip ----------------
+   The ⋯ on a derived row is the same quiet icon button the manual row's × is. It
+   sits outside the <label>, so a tap on it never toggles the tick. */
+.shopping-more {
+  flex-shrink: 0;
+  color: var(--txt-2);
+}
+
+/* Under the add form, above the first aisle. Not part of the sticky header: its
+   height feeds --shopping-header-h, and a row that scrolls away has no business
+   in that measurement. */
+.shopping-tools {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: calc(-1 * var(--sp-2)) 0 var(--sp-3);
+}
+
+.shopping-tools-note {
+  font-size: var(--fs-sm);
+  color: var(--ok-ink);
+}
+
+/* Which recipes are behind this list. One scrolling row like the filter chips:
+   a chip cut at the edge is the cue that there are more. */
+.shopping-strip {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-4);
+  padding: 0;
+  list-style: none;
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.shopping-strip::-webkit-scrollbar {
+  display: none;
+}
+
+.shopping-strip-chip {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: 70vw;
+  min-height: 44px;
+  padding-left: var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  font-size: var(--fs-sm);
+}
+
+.shopping-strip-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The × is the whole 44px end of the chip, so the target is the chip's height
+   and not a 14px glyph. */
+.shopping-strip-x {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--txt-2);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Staples fold away under the aisles. A native <details>: the disclosure state
+   is the browser's, so there is nothing to keep in step. */
+.shopping-staples {
+  margin-bottom: var(--sp-6);
+  border: 1px solid var(--line);
+  border-radius: var(--r);
+  background: var(--surface);
+}
+
+.shopping-staples > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 44px;
+  padding: 0 var(--sp-4);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--txt-2);
+  cursor: pointer;
+}
+
+.shopping-staples-count {
+  font-variant-numeric: tabular-nums;
+}
+
+.shopping-staples > ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--sp-4) var(--sp-1);
+}
+
+.shopping-staples .shopping-item:last-child {
+  border-bottom: none;
+}
+
+.shopping-sheet-note {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--txt-2);
+}
+
+.shopping-sheet-heading {
+  margin: var(--sp-4) 0 var(--sp-2);
+  font-size: var(--fs-base);
+}
+
+.shopping-aisle-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.shopping-order {
+  list-style: none;
+  margin: 0 0 var(--sp-3);
+  padding: 0;
+}
+
+.shopping-order li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  border-bottom: 1px solid var(--line);
+}
+
+.shopping-order li span {
+  flex: 1;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+/* --- Pass C: the planner row is a photo, a title and a tap target ------------ */
+.planner-entry-open {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--sp-1) 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.planner-entry-open .recipes-thumb {
+  flex-shrink: 0;
+}
+
+.planner-entry-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.planner-entry-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.planner-entry-meta {
+  font-size: var(--fs-2xs);
+  color: var(--txt-2);
+}
+
+/* "To list" on the recipe sheet: the plan panel's box, holding checkbox rows. */
+.detail-tolist-lines {
+  list-style: none;
+  margin: 0 0 var(--sp-3);
+  padding: 0;
+}
+
+.detail-tolist-lines label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  min-height: 44px;
+  padding: var(--sp-2) 0;
+  cursor: pointer;
+}
+
+.detail-tolist-lines input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
 }
 
 /* --- Pull to refresh -------------------------------------------------------

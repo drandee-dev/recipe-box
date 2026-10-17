@@ -9,6 +9,7 @@
 // is carried to the list verbatim and simply doesn't merge with anything.
 
 import { DIMENSION, MEASURE_ALIASES, bestUnit, systemOf, toBase } from './units.js'
+import { baseServings } from './recipes.js'
 
 const VULGAR = {
   '½': 0.5, '⅓': 1 / 3, '⅔': 2 / 3, '¼': 0.25, '¾': 0.75,
@@ -415,9 +416,17 @@ export function buildShoppingList(plan, recipes, units = 'original') {
   for (const entry of plan) {
     const recipe = byId.get(entry.recipe_id)
     if (!recipe) continue
+    // A meal planned for a different number of servings than the recipe says
+    // scales what it asks the list for. No stored servings, or a recipe whose
+    // own count can't be read, means 1: the list never invents a ratio. Only the
+    // quantity moves; the merge key below is built from name and dimension, so
+    // a tick on a line means the same thing at any servings.
+    const base = baseServings(recipe)
+    const factor = entry.servings && base ? entry.servings / base : 1
     for (const ing of recipe.ingredients || []) {
-      const parsed = readIngredient(ing)
-      if (!parsed) continue
+      const read = readIngredient(ing)
+      if (!read) continue
+      const parsed = factor === 1 || read.qty === null ? read : { ...read, qty: read.qty * factor }
 
       // Unparsed lines get a key unique to their text so they stand alone.
       //
@@ -468,6 +477,10 @@ export function buildShoppingList(plan, recipes, units = 'original') {
           unit: parsed.unit,
           raw: parsed.raw,
           parsed: parsed.parsed,
+          // What shopping_prefs files staples and moved aisles under. Null for a
+          // line that could not be parsed: it merges with nothing, so there is no
+          // "item" to remember a choice about.
+          nameKey: parsed.parsed ? normalizeName(parsed.name) : null,
           aisle: aisleFor(parsed.name),
           base: baseFor(parsed.name),
           sources: [{ title: recipe.title, qty: parsed.qty, unit: parsed.unit, times: 1 }],
@@ -539,14 +552,14 @@ export function formatSource(source) {
 // Aisle sections, each holding a mix of standalone items and variant groups.
 // A base only earns a heading when two or more variants of it are present;
 // a lone "2 chicken breasts" reads better as an ordinary line.
-export function groupByAisle(items) {
+export function groupByAisle(items, order = AISLE_ORDER) {
   const byAisle = new Map()
   for (const item of items) {
     if (!byAisle.has(item.aisle)) byAisle.set(item.aisle, [])
     byAisle.get(item.aisle).push(item)
   }
 
-  return AISLE_ORDER.filter((aisle) => byAisle.has(aisle)).map((aisle) => {
+  return order.filter((aisle) => byAisle.has(aisle)).map((aisle) => {
     const aisleItems = byAisle.get(aisle)
 
     const counts = new Map()
@@ -578,4 +591,44 @@ export function groupByAisle(items) {
       entries: entries.sort((a, b) => a.sortName.localeCompare(b.sortName)),
     }
   })
+}
+
+// Lays the person's shopping_prefs over the derived lines: an item they moved
+// goes to the aisle they chose, and a staple is flagged so the list can fold it
+// away. `defaultAisle` keeps what the keyword list said, which is what "put it
+// back" compares against. Nothing here touches `key`, so ticks are unaffected.
+export function applyPrefs(items, prefs) {
+  const staples = new Set(prefs?.staples || [])
+  const moved = prefs?.aisle_map || {}
+  return items.map((item) => ({
+    ...item,
+    defaultAisle: item.aisle,
+    aisle: (item.nameKey && moved[item.nameKey]) || item.aisle,
+    staple: Boolean(item.nameKey) && staples.has(item.nameKey),
+  }))
+}
+
+// One line as the list shows it, for sharing as text.
+function lineText(item) {
+  if (!item.parsed) return item.raw
+  return [formatQuantity(item.qty, item.unit), item.name].filter(Boolean).join(' ')
+}
+
+// The list as plain text for the share sheet or the clipboard. It is what is
+// still to buy: picked lines and staples are left out, since whoever is at the
+// shop has no use for either. Aisle headings keep the order the list shows.
+export function shoppingText({ label, groups, manual, isPicked }) {
+  const out = []
+  for (const { aisle, entries } of groups) {
+    const lines = []
+    for (const entry of entries) {
+      const items = entry.type === 'group' ? entry.items : [entry.item]
+      for (const item of items) if (!item.staple && !isPicked(item.key)) lines.push(`- ${lineText(item)}`)
+    }
+    if (lines.length) out.push(aisle, ...lines, '')
+  }
+  const own = manual.filter((row) => !row.checked)
+  if (own.length) out.push('Added by you', ...own.map((row) => `- ${row.name}`), '')
+  if (out.length === 0) return ''
+  return [label, '', ...out].join('\n').trimEnd()
 }

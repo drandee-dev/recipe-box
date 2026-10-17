@@ -30,6 +30,7 @@ export default function RecipeList({
   onDelete,
   onToggleFavorite,
   onAssign,
+  onToList,
   onEdit,
   onWrite,
 }) {
@@ -230,6 +231,7 @@ export default function RecipeList({
           onDelete={() => startDelete(open)}
           onToggleFavorite={onToggleFavorite}
           onAssign={onAssign}
+          onToList={onToList}
         />
       )}
 
