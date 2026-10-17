@@ -2015,10 +2015,6 @@ textarea.field {
 /* A real button now (finding 20): tapping the range itself jumps back to the
    current week, same as the "This week" link beside it. Same face the old
    <strong> had — becoming interactive shouldn't make it look like a link. */
-.week-label {
-  cursor: default;
-}
-
 .planner-weeklabel-btn,
 .week-label {
   border: 0;
@@ -2030,6 +2026,12 @@ textarea.field {
   font-weight: 600;
   letter-spacing: -0.01em;
   cursor: pointer;
+}
+
+/* Declared after the shared rule above, or its pointer wins. On Shopping the
+   label is text, not a control. */
+.week-label {
+  cursor: default;
 }
 
 /* --- The week body ----------------------------------------------------
