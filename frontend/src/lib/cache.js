@@ -32,6 +32,7 @@ export const cacheKeys = {
   recipes: (userId) => `recipes:${userId}`,
   plan: (userId, weekISO) => `plan:${userId}:${weekISO}`,
   shopping: (userId, weekISO) => `shopping:${userId}:${weekISO}`,
+  cooklog: (userId) => `cooklog:${userId}`,
 }
 
 function readCache(key) {
@@ -88,6 +89,18 @@ export async function withMirror(key, fetch, { timeoutMs = READ_TIMEOUT_MS } = {
     if (!cached) throw err
     return { rows: cached, stale: true }
   }
+}
+
+// Keep a mirror in step with a write the app has just made. withMirror only
+// writes when a READ succeeds, so without this a cook logged (or taken back) and
+// then a failed refresh would serve the mirror as it was before the write: the
+// cook gone from the counts, an undone one back. No mirror yet is left alone,
+// since a mirror made only from a write would claim to be a full copy.
+export function updateMirror(key, update) {
+  if (!key) return
+  const current = readCache(key)
+  if (!current) return
+  writeCache(key, update(current))
 }
 
 export function rememberUser(userId) {

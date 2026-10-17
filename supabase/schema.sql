@@ -301,3 +301,38 @@ alter table shopping_prefs enable row level security;
 drop policy if exists "own shopping prefs" on shopping_prefs;
 create policy "own shopping prefs" on shopping_prefs
   for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Notes and the cooked log. Additive only: a nullable column the live app never
+-- selects, and a new table it never reads.
+--
+-- recipes.notes: what you learned cooking it ("used half the sugar"). Searchable
+-- from the client; the steps deliberately are not (SPEC 5a). Capped so one field
+-- cannot fill the free tier.
+alter table recipes add column if not exists notes text;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'recipes_notes_check') then
+    alter table recipes
+      add constraint recipes_notes_check check (notes is null or char_length(notes) <= 4000);
+  end if;
+end $$;
+
+-- cook_log: one dated row per time a recipe was cooked, rather than a counter.
+-- The count, the last date and the "Recently cooked" and "Most cooked" sorts all
+-- come from the same rows, and a mistaken tap is one row deleted. Deleting a
+-- recipe deletes its log.
+create table if not exists cook_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  recipe_id uuid not null references recipes (id) on delete cascade,
+  cooked_at timestamptz not null default now()
+);
+
+alter table cook_log enable row level security;
+
+drop policy if exists "own cook log" on cook_log;
+create policy "own cook log" on cook_log
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create index if not exists cook_log_user_recipe_idx on cook_log (user_id, recipe_id, cooked_at desc);

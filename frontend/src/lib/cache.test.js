@@ -31,7 +31,7 @@ class MemoryStorage {
 }
 globalThis.localStorage = new MemoryStorage()
 
-const { withMirror } = await import('./cache.js')
+const { updateMirror, withMirror } = await import('./cache.js')
 const never = () => new Promise(() => {})
 
 test('a fetch that never answers falls back to the saved copy, marked stale', async () => {
@@ -53,6 +53,23 @@ test('a prompt answer is fresh, is saved, and is not cut off by the timer', asyn
   await new Promise((r) => setTimeout(r, 60))
   const again = await withMirror('k3', never, { timeoutMs: 30 })
   assert.deepEqual(again.rows, [{ id: 2 }])
+})
+
+test('a write is carried into the mirror, so a failed read serves it, not the old copy', async () => {
+  localStorage.clear()
+  await withMirror('log', async () => [{ id: 'a' }])
+  updateMirror('log', (rows) => [...rows, { id: 'b' }])
+  const got = await withMirror('log', never, { timeoutMs: 30 })
+  assert.deepEqual(got, { rows: [{ id: 'a' }, { id: 'b' }], stale: true })
+  updateMirror('log', (rows) => rows.filter((r) => r.id !== 'a'))
+  assert.deepEqual((await withMirror('log', never, { timeoutMs: 30 })).rows, [{ id: 'b' }])
+})
+
+test('updating a mirror that does not exist, or with no key, creates nothing', async () => {
+  localStorage.clear()
+  updateMirror('none', (rows) => [...rows, { id: 'x' }])
+  updateMirror(null, (rows) => rows)
+  await assert.rejects(withMirror('none', never, { timeoutMs: 30 }), /too slow/)
 })
 
 test('signed out (no key) is not timed: localStorage is the source', async () => {

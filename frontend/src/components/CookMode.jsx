@@ -44,7 +44,7 @@ function stepLabel(n) {
   return ORDINALS[n - 1] || String(n)
 }
 
-export default function CookMode({ recipe, servings, factor = 1, units = 'original', onClose }) {
+export default function CookMode({ recipe, servings, factor = 1, units = 'original', onFinished, onClose }) {
   const steps = recipe.instructions || []
   // Resumes where you left off if you were mid-cook in the last twelve hours.
   const [index, setIndex] = useState(() => loadProgress(recipe.id, steps.length).step)
@@ -94,6 +94,8 @@ export default function CookMode({ recipe, servings, factor = 1, units = 'origin
   // Reaching Done is the end of this cook: nothing is left to resume.
   function finish() {
     clearProgress(recipe.id)
+    // Reaching Done is a cook: the recipe sheet logs it (cook_log).
+    onFinished?.()
     onClose()
   }
 

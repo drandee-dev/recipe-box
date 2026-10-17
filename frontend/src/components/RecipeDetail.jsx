@@ -25,6 +25,7 @@ import { SERVINGS_MAX_FACTOR, baseServings, hostOf, metaParts, servingsLabel } f
 import UnitsToggle from './UnitsToggle.jsx'
 import { displayIngredient } from '../lib/convert.js'
 import { qtyColumnCh } from '../lib/ingredients.js'
+import { cookedLabel } from '../lib/cooked.js'
 import IngredientLine from './IngredientLine.jsx'
 import { useUnits } from '../lib/useUnits.js'
 import { SLOTS, addDays, dayName, shortDate, toISODate } from '../lib/dates.js'
@@ -132,6 +133,10 @@ export default function RecipeDetail({
   onToggleFavorite,
   onAssign,
   onToList,
+  cookStat,
+  onCooked,
+  onUndoCooked,
+  onSaveNotes,
 }) {
   // Sets of indices. Ingredients are a gathering list, steps are a progress
   // marker, and they are separate because ticking off the flour has nothing to
@@ -143,6 +148,18 @@ export default function RecipeDetail({
   const [gathered, setGathered] = useState(() => new Set(saved.gathered))
   const [done, setDone] = useState(() => new Set(saved.done))
   const [menuOpen, setMenuOpen] = useState(false)
+
+  // The cook logged from this open sheet, if any, so it can be taken back; and
+  // whether a log request is in flight, so a double tap is one cook.
+  const [lastCookId, setLastCookId] = useState(null)
+  const [cookBusy, setCookBusy] = useState(false)
+
+  // Notes. The draft is kept in state until a save succeeds, so a failed write
+  // never costs the typing (the same rule the editor follows).
+  const [noteOpen, setNoteOpen] = useState(false)
+  const [noteDraft, setNoteDraft] = useState('')
+  const [noteError, setNoteError] = useState('')
+  const [noteSaving, setNoteSaving] = useState(false)
 
   const [planOpen, setPlanOpen] = useState(false)
   const [planDate, setPlanDate] = useState(() => toISODate(new Date()))
@@ -225,6 +242,43 @@ export default function RecipeDetail({
     onAssign(recipe.id, planDate, planSlot, factor !== 1 ? servings : null)
     setPlanned(`${chosenLabel} ${SLOT_LABELS[planSlot].toLowerCase()}`)
     setPlanOpen(false)
+  }
+
+  async function markCooked() {
+    if (cookBusy) return
+    setCookBusy(true)
+    try {
+      setLastCookId(await onCooked(recipe.id))
+    } finally {
+      setCookBusy(false)
+    }
+  }
+
+  async function undoCooked() {
+    const id = lastCookId
+    setLastCookId(null)
+    if (id) await onUndoCooked(id)
+  }
+
+  function openNote() {
+    setNoteDraft(recipe.notes || '')
+    setNoteError('')
+    setNoteOpen(true)
+  }
+
+  async function saveNote() {
+    if (noteSaving) return
+    setNoteSaving(true)
+    setNoteError('')
+    try {
+      await onSaveNotes(recipe, noteDraft)
+      setNoteOpen(false)
+    } catch {
+      // The draft stays exactly as typed.
+      setNoteError("Couldn't save the note. Your text is still here, try again.")
+    } finally {
+      setNoteSaving(false)
+    }
   }
 
   function openList() {
@@ -334,6 +388,23 @@ export default function RecipeDetail({
           </Fragment>
         ))}
       </p>
+
+      {/* The cooked log, said in one line, and the one tap that adds to it. Cook
+          mode's Done logs a cook by itself; this is for a meal made without it.
+          Undo is offered for the cook logged from this open sheet only: a mistaken
+          tap is one row to take back, and an old cook is not something a stray
+          tap here should be able to erase. */}
+      <div className="detail-cooked">
+        {cookedLabel(cookStat) && <span className="detail-cooked-label">{cookedLabel(cookStat)}</span>}
+        <button type="button" className="btn btn-quiet" onClick={markCooked} disabled={cookBusy}>
+          I cooked this
+        </button>
+        {lastCookId && (
+          <button type="button" className="btn btn-quiet" onClick={undoCooked}>
+            Undo
+          </button>
+        )}
+      </div>
 
       {/* Read-only (finding 15). Every tag used to carry a remove cross and an
           "Add a tag" field sat open underneath, so reading a recipe put you one
@@ -606,6 +677,53 @@ export default function RecipeDetail({
         </div>
       )}
 
+      {/* What you learned cooking it. Below the method, because you read it after
+          cooking and before the next time; searchable from the list. Plain text,
+          shown exactly as typed. */}
+      <section className="detail-notes" aria-labelledby="detail-notes-title">
+        <h3 id="detail-notes-title" className="detail-heading">
+          Notes
+        </h3>
+        {noteOpen ? (
+          <div className="detail-note-edit">
+            <textarea
+              className="field"
+              rows={4}
+              maxLength={4000}
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              placeholder="Used half the sugar, baked 5 minutes longer…"
+              aria-label="Notes on this recipe"
+              autoFocus
+            />
+            {noteError && (
+              <p className="rb-error" role="alert">
+                {noteError}
+              </p>
+            )}
+            <div className="detail-note-actions">
+              <button type="button" className="btn btn-quiet" onClick={() => setNoteOpen(false)} disabled={noteSaving}>
+                Cancel
+              </button>
+              <button type="button" className="btn btn-primary" onClick={saveNote} disabled={noteSaving}>
+                {noteSaving ? 'Saving…' : 'Save note'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {recipe.notes ? (
+              <p className="detail-note-text">{recipe.notes}</p>
+            ) : (
+              <p className="detail-meta">Nothing yet. Write down what you would change next time.</p>
+            )}
+            <button type="button" className="btn btn-secondary" onClick={openNote}>
+              {recipe.notes ? 'Edit note' : 'Add a note'}
+            </button>
+          </>
+        )}
+      </section>
+
       {/* Opens over this sheet rather than replacing it, so closing cook mode
           puts you back on the recipe you were reading. That is the stacking case
           `Sheet`'s depth counter exists for. */}
@@ -615,6 +733,7 @@ export default function RecipeDetail({
           servings={base === null ? null : servingsLabel(recipe, servings)}
           factor={factor}
           units={units}
+          onFinished={markCooked}
           onClose={() => setCooking(false)}
         />
       )}
