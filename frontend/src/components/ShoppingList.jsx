@@ -23,6 +23,7 @@ import {
 import { addDays, toISODate, weekRangeLabel } from '../lib/dates.js'
 import { useUnits } from '../lib/useUnits.js'
 import { usePendingCommit } from '../lib/usePendingCommit.js'
+import { useWeekSwipe } from '../lib/useWeekSwipe.js'
 import { effectiveAisleOrder, moveAisle, setAisle, toggleStaple } from '../lib/prefs.js'
 import Sheet from './Sheet.jsx'
 
@@ -175,6 +176,15 @@ export default function ShoppingList({
   onRemoveManual,
   onUnassign,
 }) {
+  // Swiping the screen changes the week, the same gesture as the planner.
+  const {
+    goWeek,
+    slideDir,
+    dragX: weekDragX,
+    dragging: weekDragging,
+    swipeProps,
+  } = useWeekSwipe(onWeekChange)
+
   const [draft, setDraft] = useState('')
   const [itemOpen, setItemOpen] = useState(null)
   const [orderOpen, setOrderOpen] = useState(false)
@@ -379,7 +389,7 @@ export default function ShoppingList({
   }
 
   return (
-    <div className="shopping">
+    <div className="shopping" {...swipeProps}>
       {/* Sticky (finding 23): pinned at the top of the scroll rather than
           scrolling away with the list, the same treatment .recipes-filters
           uses — the header above it isn't itself sticky, so this just takes
@@ -389,7 +399,7 @@ export default function ShoppingList({
           <button
             type="button"
             className="btn btn-quiet btn-icon"
-            onClick={() => onWeekChange(-1)}
+            onClick={() => goWeek(-1)}
             aria-label="Previous week"
           >
             ‹
@@ -415,7 +425,7 @@ export default function ShoppingList({
           <button
             type="button"
             className="btn btn-quiet btn-icon"
-            onClick={() => onWeekChange(1)}
+            onClick={() => goWeek(1)}
             aria-label="Next week"
           >
             ›
@@ -439,6 +449,22 @@ export default function ShoppingList({
         )}
       </div>
 
+      {/* Everything under the sticky header is the week's content: it follows the
+          finger and the next week slides in, keyed so it remounts. The header, the
+          toast and the sheets stay outside it, since a transform would turn their
+          sticky and fixed positioning into positioning against this box. */}
+      <div
+        key={week}
+        className={[
+          'shopping-week-body',
+          weekDragging && 'dragging',
+          !weekDragging && slideDir === 'right' && 'planner-week-in-right',
+          !weekDragging && slideDir === 'left' && 'planner-week-in-left',
+        ]
+          .filter(Boolean)
+          .join(' ')}
+        style={weekDragging ? { transform: `translateX(${weekDragX}px)` } : undefined}
+      >
       <form className="shopping-add" onSubmit={submitManual}>
         <input
           className="field"
@@ -582,6 +608,7 @@ export default function ShoppingList({
           </ul>
         </details>
       )}
+      </div>
 
       {pendingRemoval && (
         <div className="rb-toast" role="status">

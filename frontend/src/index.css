@@ -1393,6 +1393,21 @@ textarea.field {
 .shopping {
   max-width: 640px;
   margin-inline: auto;
+  /* These two screens change the week when you swipe them (lib/useWeekSwipe).
+     `pan-y` hands vertical scrolling to the browser and every sideways drag to the
+     page, buttons included: a touch-action on a child is intersected with its
+     ancestors', so the `manipulation` every button carries cannot take it back.
+     The height is what makes the empty space under a short week part of the
+     target. The page reserves room under its content for the fixed tab bar, so the
+     box is padded down into that reserve and the same amount is taken back with a
+     negative margin: it is touchable all the way to the tab bar and the layout is
+     what it was. Measured: a short list and the planner keep their scroll height;
+     a long shopping list grows by about 24px of quiet space above the tab bar. */
+  --swipe-reach: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 40px);
+  touch-action: pan-y;
+  min-height: calc(100dvh - 240px + var(--swipe-reach));
+  padding-bottom: var(--swipe-reach);
+  margin-bottom: calc(-1 * var(--swipe-reach));
 }
 
 /* A ruled label, not a heading — see the comment in RecipeList.jsx. The rule is
