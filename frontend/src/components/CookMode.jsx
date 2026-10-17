@@ -23,6 +23,8 @@ import StepText from './StepText.jsx'
 import { TimerTray } from './Timers.jsx'
 import { clearProgress, loadProgress, saveProgress } from '../lib/cookProgress.js'
 import { convertTemperatures, displayIngredient } from '../lib/convert.js'
+import { qtyColumnCh } from '../lib/ingredients.js'
+import IngredientLine from './IngredientLine.jsx'
 import { useWakeLock } from '../lib/useWakeLock.js'
 
 const INGREDIENTS_KEY = 'recipebox:cookIngredients'
@@ -129,6 +131,10 @@ export default function CookMode({ recipe, servings, factor = 1, units = 'origin
 
   const progress = steps.length > 1 ? ((index + 1) / steps.length) * 100 : 100
 
+  // The peek list in one hanging quantity column, same as the recipe sheet.
+  const ingLines = (recipe.ingredients || []).map((ing) => displayIngredient(ing.raw, { factor, units }))
+  const qtyCh = qtyColumnCh(ingLines)
+
   return (
     <Sheet
       className="sheet-cook"
@@ -196,8 +202,10 @@ export default function CookMode({ recipe, servings, factor = 1, units = 'origin
             </button>
             {showIngredients && (
               <ul className="cook-peek-list">
-                {recipe.ingredients.map((ing, n) => (
-                  <li key={n}>{displayIngredient(ing.raw, { factor, units })}</li>
+                {recipe.ingredients.map((_, n) => (
+                  <li key={n}>
+                    <IngredientLine text={ingLines[n]} ch={qtyCh} />
+                  </li>
                 ))}
               </ul>
             )}

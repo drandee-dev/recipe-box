@@ -5,7 +5,7 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
 
-import { splitAmount } from './ingredients.js'
+import { QTY_COLUMN_MAX, formatSources, qtyColumnCh, splitAmount } from './ingredients.js'
 
 const cases = [
   ['2 cups all-purpose flour, sifted', '2 cups'],
@@ -37,4 +37,31 @@ test('a bracketed weight stays out of the bold part', () => {
 test('a word that only looks like a unit is not taken', () => {
   // "gallery" starts with a unit-looking letter run but is not one.
   assert.equal(splitAmount('2 gallery tiles').bold, '2')
+})
+
+test('the quantity column is as wide as the longest amount, capped', () => {
+  assert.equal(qtyColumnCh(['2 onions', '1 1/2 tbsp salt', 'Pepper, to taste']), '1 1/2 tbsp'.length)
+  assert.equal(qtyColumnCh(['1 to 2 tablespoons or maybe more olive oil']), Math.min(QTY_COLUMN_MAX, splitAmount('1 to 2 tablespoons or maybe more olive oil').bold.trim().length))
+  assert.ok(qtyColumnCh(['1 1/2 to 2 1/2 tablespoons oil']) <= QTY_COLUMN_MAX)
+})
+
+test('spelled-out units that are on most recipes fit the column uncut', () => {
+  // These are the common lines a density pass must not turn into two rows.
+  assert.equal(qtyColumnCh(['2 tablespoons olive oil']), '2 tablespoons'.length)
+  assert.equal(qtyColumnCh(['1 teaspoon salt', '2 tablespoons oil']), '2 tablespoons'.length)
+  assert.ok(QTY_COLUMN_MAX >= '2 tablespoons'.length)
+})
+
+test('no amounts anywhere means no column at all', () => {
+  assert.equal(qtyColumnCh(['Salt, to taste', 'Pepper']), 0)
+  assert.equal(qtyColumnCh([]), 0)
+})
+
+test('shopping sources fit on one line: the first recipe, then +N', () => {
+  const s = (title, times = 1) => ({ title, times })
+  assert.equal(formatSources([s('Pasta')]), 'Pasta')
+  assert.equal(formatSources([s('Pasta', 2)]), 'Pasta ×2')
+  assert.equal(formatSources([s('Pasta'), s('Soup'), s('Salad')]), 'Pasta +2')
+  assert.equal(formatSources([]), '')
+  assert.equal(formatSources(undefined), '')
 })

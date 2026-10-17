@@ -24,7 +24,8 @@ import { useWakeLock } from '../lib/useWakeLock.js'
 import { SERVINGS_MAX_FACTOR, baseServings, hostOf, metaParts, servingsLabel } from '../lib/recipes.js'
 import UnitsToggle from './UnitsToggle.jsx'
 import { displayIngredient } from '../lib/convert.js'
-import { splitAmount } from '../lib/ingredients.js'
+import { qtyColumnCh } from '../lib/ingredients.js'
+import IngredientLine from './IngredientLine.jsx'
 import { useUnits } from '../lib/useUnits.js'
 import { SLOTS, addDays, dayName, shortDate, toISODate } from '../lib/dates.js'
 
@@ -40,19 +41,6 @@ const SLOT_LABELS = {
 // yesterday on a Wednesday and hide next Monday all week.
 const PLAN_DAYS = 7
 
-// An ingredient line with its amount in bold. The parts always join back into the
-// line (splitAmount), so this only changes weight, never wording.
-function Amount({ text }) {
-  const { lead, bold, rest } = splitAmount(text)
-  if (!bold) return <span>{text}</span>
-  return (
-    <span>
-      {lead}
-      <strong className="detail-amount">{bold}</strong>
-      {rest}
-    </span>
-  )
-}
 
 function planDayLabel(date, offset) {
   if (offset === 0) return 'Today'
@@ -201,6 +189,11 @@ export default function RecipeDetail({
   // nothing else has to be kept in step. -1 once every step is ticked.
   const currentStep = recipe.instructions.findIndex((_, n) => !done.has(n))
 
+  // The lines as shown (scaled, in the chosen units) and the width of the one
+  // quantity column they share. Both lists on this sheet use the same two.
+  const ingLines = recipe.ingredients.map((ing) => displayIngredient(ing.raw, { factor, units }))
+  const qtyCh = qtyColumnCh(ingLines)
+
   const host = hostOf(recipe.source_url)
   const tags = recipe.tags || []
   const empty = recipe.ingredients.length === 0 && recipe.instructions.length === 0
@@ -257,7 +250,7 @@ export default function RecipeDetail({
   // that is what the person was looking at when they chose them.
   async function addToList() {
     const lines = recipe.ingredients
-      .map((ing, n) => (listPicked.has(n) ? displayIngredient(ing.raw, { factor, units }) : null))
+      .map((_, n) => (listPicked.has(n) ? ingLines[n] : null))
       .filter(Boolean)
     if (lines.length === 0 || listSending) return
     setListSending(true)
@@ -495,7 +488,7 @@ export default function RecipeDetail({
               <li key={n}>
                 <label>
                   <input type="checkbox" checked={listPicked.has(n)} onChange={() => toggleListed(n)} />
-                  <Amount text={displayIngredient(ing.raw, { factor, units })} />
+                  <IngredientLine text={ingLines[n]} ch={qtyCh} />
                 </label>
               </li>
             ))}
@@ -549,7 +542,7 @@ export default function RecipeDetail({
                       written — the same rule the shopping list follows, and the
                       reason a scaled recipe can't produce a number the recipe
                       never gave. */}
-                  <Amount text={displayIngredient(ing.raw, { factor, units })} />
+                  <IngredientLine text={ingLines[n]} ch={qtyCh} />
                 </label>
               </li>
             ))}
