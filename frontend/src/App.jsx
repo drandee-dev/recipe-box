@@ -4,10 +4,11 @@ import { PhotoError, readPhoto } from './lib/photo.js'
 import { getSupabase, supabaseEnabled } from './lib/supabase.js'
 import { makeStore, migrateLocalRecipes } from './lib/store.js'
 import { makePlanStore, migrateLocalPlan } from './lib/plan.js'
-import { makeShoppingStore, migrateLocalShopping } from './lib/shopping.js'
+import { KEEP_WEEKS, makeShoppingStore, migrateLocalShopping } from './lib/shopping.js'
+import { makePrefsStore, migrateLocalPrefs } from './lib/prefs.js'
 import { cacheKeys, seedRecipes, withMirror } from './lib/cache.js'
 import { MIRROR_CONCURRENCY, mirrorSource, needsGlyphRepair, needsMirror } from './lib/images.js'
-import { addDays, fromISODate, startOfWeek, toISODate } from './lib/dates.js'
+import { addDays, fromISODate, startOfWeek, toISODate, weekRangeLabel } from './lib/dates.js'
 import { setBusy } from './lib/pwa.js'
 import { useSession } from './lib/useSession.js'
 import { PULL_MIN_SPIN, PULL_TRIGGER, usePullToRefresh } from './lib/usePullToRefresh.js'
@@ -164,6 +165,7 @@ export default function App() {
   const store = useMemo(() => makeStore(userId), [userId])
   const planStore = useMemo(() => makePlanStore(userId), [userId])
   const shoppingStore = useMemo(() => makeShoppingStore(userId), [userId])
+  const prefsStore = useMemo(() => makePrefsStore(userId), [userId])
 
   // Recipes this session has already handed to the mirror, successfully or not.
   // Success needs it because the list re-renders and reloads constantly and the
@@ -238,6 +240,57 @@ export default function App() {
   const [plan, setPlan] = useState([])
   // Checks and hand-added items. The list itself is derived from the plan.
   const [overlay, setOverlay] = useState([])
+
+  // Staples, moved aisles and aisle order (lib/prefs.js). Null until they have
+  // loaded, and the list offers no way to change them while null: saving is an
+  // upsert of the whole object, so editing a copy that failed to load would
+  // overwrite the real one with nearly nothing.
+  const [prefs, setPrefs] = useState(null)
+  const prefsQueue = useRef(Promise.resolve())
+
+  useEffect(() => {
+    if (!authReady) return
+    let cancelled = false
+    setPrefs(null)
+    ;(async () => {
+      try {
+        if (userId) await migrateLocalPrefs(userId)
+        const loaded = await prefsStore.load()
+        if (!cancelled) setPrefs(loaded)
+      } catch {
+        // Display-only, so a failed read costs the staples and aisle choices
+        // for this visit, not the list. The controls stay off (prefs stays null).
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [authReady, userId, prefsStore])
+
+  // Saves go one after another: two quick taps are two upserts of the whole
+  // object, and the later one must land last or the earlier tap wins.
+  function handleChangePrefs(next) {
+    setPrefs(next)
+    prefsQueue.current = prefsQueue.current
+      .then(() => prefsStore.save(next))
+      .catch(async (err) => {
+        setError(writeError(err))
+        try {
+          setPrefs(await prefsStore.load())
+        } catch {
+          setPrefs(null)
+        }
+      })
+  }
+
+  // Shopping rows for weeks long gone (AUDIT 10), once per visit. Ticks and
+  // hand-added items are only read for the week on screen. Quiet on failure:
+  // housekeeping is not worth an error banner.
+  useEffect(() => {
+    if (!authReady || !navigator.onLine) return
+    const cutoff = toISODate(addDays(startOfWeek(new Date()), -7 * KEEP_WEEKS))
+    shoppingStore.prune(cutoff).catch(() => {})
+  }, [authReady, shoppingStore])
 
   // The recipe migration, published for the plan effect to wait on. Both load
   // effects fire in the same tick, so the ordering the foreign key needs cannot
@@ -665,12 +718,15 @@ export default function App() {
     setWeekStart((prev) => (direction === 0 ? startOfWeek(new Date()) : addDays(prev, direction * 7)))
   }
 
-  async function handleAssign(recipeId, dateISO, slot) {
+  // `servings` is how many the meal is for; null/undefined means "as the recipe
+  // says". It only moves the quantities the shopping list gathers.
+  async function handleAssign(recipeId, dateISO, slot, servings = null) {
     const entry = {
       id: crypto.randomUUID(),
       recipe_id: recipeId,
       plan_date: dateISO,
       slot,
+      servings,
       created_at: new Date().toISOString(),
     }
     // Optimistic: the sheet closes on tap, so waiting on the round trip would
@@ -696,9 +752,60 @@ export default function App() {
   // After the write, not before: the week change is what `loadPlan` keys off,
   // and a refetch that beat the insert would come back without the new row and
   // replace the optimistic copy with nothing.
-  async function handlePlanFromRecipe(recipeId, dateISO, slot) {
-    const added = await handleAssign(recipeId, dateISO, slot)
+  async function handlePlanFromRecipe(recipeId, dateISO, slot, servings) {
+    const added = await handleAssign(recipeId, dateISO, slot, servings)
     if (added) setWeekStart(startOfWeek(fromISODate(dateISO)))
+  }
+
+  // Change a planned meal's day, slot or servings. Optimistic, and put back
+  // exactly as it was if the write fails.
+  async function handleUpdateEntry(id, patch) {
+    const before = plan.find((e) => e.id === id)
+    if (!before) return
+    setPlan((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)))
+    try {
+      const saved = await planStore.update(id, patch)
+      if (saved) setPlan((prev) => prev.map((e) => (e.id === id ? saved : e)))
+    } catch (err) {
+      setPlan((prev) => prev.map((e) => (e.id === id ? before : e)))
+      setError(writeError(err))
+    }
+  }
+
+  // The planner row's "Open recipe". Filters are cleared for the same reason the
+  // timer jump clears them: the list only opens a recipe it is showing.
+  function handleOpenRecipe(id) {
+    setTab('recipes')
+    clearFilters()
+    setOpenId(id)
+  }
+
+  // "To list" on the recipe sheet: ingredient lines added as hand-style items to
+  // the week on screen, each remembering which recipe it came from. Throws on a
+  // failed write (after taking the optimistic rows back out) so the sheet can say
+  // so, and resolves to the week's label for its confirmation.
+  async function handleAddToList(recipe, lines) {
+    const week = toISODate(weekStart)
+    const rows = lines.slice(0, 80).map((text) => ({
+      id: crypto.randomUUID(),
+      recipe_id: recipe.id,
+      week_start: week,
+      name: text.slice(0, 200),
+      kind: 'manual',
+      checked: false,
+      created_at: new Date().toISOString(),
+    }))
+    setOverlay((prev) => [...prev, ...rows])
+    try {
+      const saved = await Promise.all(rows.map((row) => shoppingStore.add(row)))
+      const byId = new Map(saved.map((s, i) => [rows[i].id, s]))
+      setOverlay((prev) => prev.map((r) => byId.get(r.id) || r))
+      return weekRangeLabel(weekStart)
+    } catch (err) {
+      const ids = new Set(rows.map((r) => r.id))
+      setOverlay((prev) => prev.filter((r) => !ids.has(r.id)))
+      throw err
+    }
   }
 
   // Ticking a derived line writes a check row the first time and updates it
@@ -942,6 +1049,7 @@ export default function App() {
             onDelete={handleDelete}
             onToggleFavorite={handleToggleFavorite}
             onAssign={handlePlanFromRecipe}
+            onToList={handleAddToList}
             onEdit={(recipe) => setEditing({ recipe })}
             onWrite={() => setEditing({ recipe: null })}
           />
@@ -958,6 +1066,8 @@ export default function App() {
             onWeekChange={changeWeek}
             onAssign={handleAssign}
             onUnassign={handleUnassign}
+            onUpdate={handleUpdateEntry}
+            onOpenRecipe={handleOpenRecipe}
           />
           {error && (
             <p className="rb-error" role="alert">
@@ -974,11 +1084,14 @@ export default function App() {
             plan={plan}
             recipes={recipes}
             overlay={overlay}
+            prefs={prefs}
+            onChangePrefs={handleChangePrefs}
             onWeekChange={changeWeek}
             onToggleDerived={handleToggleDerived}
             onToggleManual={handleToggleManual}
             onAddManual={handleAddManual}
             onRemoveManual={handleRemoveManual}
+            onUnassign={handleUnassign}
           />
           {error && (
             <p className="rb-error" role="alert">

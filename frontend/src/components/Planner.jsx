@@ -9,11 +9,13 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePendingCommit } from '../lib/usePendingCommit.js'
+import { SERVINGS_MAX_FACTOR, baseServings, servingsLabel } from '../lib/recipes.js'
 import RecipeThumb from './RecipeThumb.jsx'
 import Sheet from './Sheet.jsx'
 import {
   SLOTS,
   dayName,
+  fromISODate,
   isSameDay,
   shortDate,
   toISODate,
@@ -62,9 +64,15 @@ export default function Planner({
   onWeekChange,
   onAssign,
   onUnassign,
+  onUpdate,
+  onOpenRecipe,
 }) {
   // { dateISO, dayLabel } while the picker is open, null otherwise.
   const [picking, setPicking] = useState(null)
+  // The planned meal whose sheet is open (servings, day, open the recipe). Held
+  // as an id and looked up from `plan` each render, so a change made in the
+  // sheet shows in it straight away.
+  const [editingId, setEditingId] = useState(null)
   const [slot, setSlot] = useState('dinner')
   const [query, setQuery] = useState('')
 
@@ -296,6 +304,7 @@ export default function Planner({
                             isOpen={openEntryId === entry.id}
                             onOpenChange={(open) => handleEntryOpenChange(entry.id, open)}
                             onRemove={() => removeEntry(entry, label)}
+                            onOpen={() => setEditingId(entry.id)}
                           />
                         )
                       })}
@@ -315,6 +324,28 @@ export default function Planner({
           </button>
         </div>
       )}
+
+      {editingId && (() => {
+        const entry = plan.find((e) => e.id === editingId && e.id !== pendingRemoval?.entry.id)
+        if (!entry) return null
+        return (
+          <MealSheet
+            entry={entry}
+            recipe={byId.get(entry.recipe_id)}
+            days={days}
+            onUpdate={onUpdate}
+            onOpenRecipe={(id) => {
+              setEditingId(null)
+              onOpenRecipe(id)
+            }}
+            onRemove={() => {
+              setEditingId(null)
+              removeEntry(entry, dayName(fromISODate(entry.plan_date)))
+            }}
+            onClose={() => setEditingId(null)}
+          />
+        )
+      })()}
 
       {picking && (
         <Sheet title={picking.dayLabel} onClose={() => setPicking(null)}>
@@ -371,11 +402,16 @@ export default function Planner({
 // button is real and in the DOM at all times, so Tab reaches it regardless
 // of where the row is sitting; focusing it reveals the row the same way a
 // drag would, which is what makes it reachable by keyboard.
-function PlannerEntry({ entry, recipe, dayLabel, isOpen, onOpenChange, onRemove }) {
+function PlannerEntry({ entry, recipe, dayLabel, isOpen, onOpenChange, onRemove, onOpen }) {
   const [dragX, setDragX] = useState(0)
   const [dragging, setDragging] = useState(false)
   const gesture = useRef(null)
   const dragXRef = useRef(0)
+  // The title is a real button, so a tap reaches it as a click. A swipe or a
+  // long press must not also open the meal when the finger lifts over it: the
+  // gesture marks itself here and the click reads the mark. Cleared on the next
+  // pointerdown.
+  const wasGesture = useRef(false)
 
   useEffect(() => {
     if (!dragging) {
@@ -399,10 +435,12 @@ function PlannerEntry({ entry, recipe, dayLabel, isOpen, onOpenChange, onRemove 
 
   function handlePointerDown(e) {
     if (e.pointerType === 'mouse' && e.button !== 0) return
+    wasGesture.current = false
     const baseX = isOpen ? -SWIPE_REVEAL : 0
     gesture.current = { startX: e.clientX, startY: e.clientY, axis: null, baseX }
     gesture.current.longPressTimer = setTimeout(() => {
       if (gesture.current && gesture.current.axis === null) {
+        wasGesture.current = true
         gesture.current.axis = 'longpress'
         setDragging(false)
         setDrag(-SWIPE_REVEAL)
@@ -423,6 +461,7 @@ function PlannerEntry({ entry, recipe, dayLabel, isOpen, onOpenChange, onRemove 
       // long-press timer must not also fire.
       clearLongPress()
       if (axis !== 'horizontal') return
+      wasGesture.current = true
       setDragging(true)
     }
     if (g.axis !== 'horizontal') return
@@ -444,7 +483,9 @@ function PlannerEntry({ entry, recipe, dayLabel, isOpen, onOpenChange, onRemove 
       }
       onOpenChange(dragXRef.current <= -SWIPE_REVEAL / 2)
     } else if (g.axis === null && isOpen) {
-      // A plain tap on an already-open row closes it.
+      // A plain tap on an already-open row closes it, and only that: the click
+      // that follows must not also open the meal.
+      wasGesture.current = true
       onOpenChange(false)
     }
   }
@@ -483,11 +524,126 @@ function PlannerEntry({ entry, recipe, dayLabel, isOpen, onOpenChange, onRemove 
       >
         {/* A plan row can outlive its recipe if the recipe was deleted on
             another device before this one refetched. Show the gap rather
-            than crashing. */}
-        <span className={recipe ? '' : 'planner-entry-missing'}>
-          {recipe ? recipe.title : 'Recipe no longer saved'}
-        </span>
+            than crashing. A tap opens the meal's sheet (servings, day, open
+            the recipe); the sheet is where the rarer controls live, so the row
+            stays a row. */}
+        <button
+          type="button"
+          className="planner-entry-open"
+          onClick={(e) => {
+            // detail 0 is a keyboard activation, which has no gesture before it.
+            if (e.detail === 0 || !wasGesture.current) onOpen()
+          }}
+        >
+          {recipe && <RecipeThumb recipe={recipe} size="sm" />}
+          <span className="planner-entry-text">
+            <span className={recipe ? 'planner-entry-title' : 'planner-entry-title planner-entry-missing'}>
+              {recipe ? recipe.title : 'Recipe no longer saved'}
+            </span>
+            {recipe && entry.servings && (
+              <span className="planner-entry-meta">{servingsLabel(recipe, entry.servings)}</span>
+            )}
+          </span>
+        </button>
       </div>
     </li>
+  )
+}
+
+// One planned meal, opened. This is where the things a row has no room for live:
+// open the recipe, change how many it is for (which feeds the shopping list), and
+// move it to another day or slot. Moving stays inside the week on screen, since
+// that is the week these chips can name.
+function MealSheet({ entry, recipe, days, onUpdate, onOpenRecipe, onRemove, onClose }) {
+  const base = recipe ? baseServings(recipe) : null
+  const servings = entry.servings || base
+  const max = base ? Math.round(base * SERVINGS_MAX_FACTOR) : 0
+
+  function step(by) {
+    const next = Math.max(1, Math.min(max, servings + by))
+    // Back at the recipe's own number is "as the recipe says", stored as null, so
+    // a later edit to the recipe's servings is followed rather than overridden.
+    onUpdate(entry.id, { servings: next === base ? null : next })
+  }
+
+  return (
+    <Sheet title={recipe ? recipe.title : 'Planned meal'} closeLabel="Done" onClose={onClose}>
+      {recipe && (
+        <button type="button" className="btn btn-primary btn-block" onClick={() => onOpenRecipe(recipe.id)}>
+          Open recipe
+        </button>
+      )}
+
+      {base !== null && (
+        <>
+          <h3 className="shopping-sheet-heading">Cooking for</h3>
+          <div className="detail-servings">
+            <button
+              type="button"
+              className="detail-serving-step"
+              onClick={() => step(-1)}
+              disabled={servings <= 1}
+              aria-label="One fewer serving"
+            >
+              <span aria-hidden="true">−</span>
+            </button>
+            <span className="detail-serving-count" aria-live="polite">
+              {servingsLabel(recipe, servings)}
+            </span>
+            <button
+              type="button"
+              className="detail-serving-step"
+              onClick={() => step(1)}
+              disabled={servings >= max}
+              aria-label="One more serving"
+            >
+              <span aria-hidden="true">+</span>
+            </button>
+            {entry.servings && (
+              <button type="button" className="detail-serving-reset" onClick={() => onUpdate(entry.id, { servings: null })}>
+                Reset
+              </button>
+            )}
+          </div>
+          <p className="shopping-sheet-note">The shopping list buys for this many.</p>
+        </>
+      )}
+
+      <h3 className="shopping-sheet-heading">Day</h3>
+      <div className="planner-slot-chips">
+        {days.map((date) => {
+          const iso = toISODate(date)
+          return (
+            <button
+              key={iso}
+              type="button"
+              className={iso === entry.plan_date ? 'planner-chip planner-chip-active' : 'planner-chip'}
+              aria-pressed={iso === entry.plan_date}
+              onClick={() => iso !== entry.plan_date && onUpdate(entry.id, { plan_date: iso })}
+            >
+              {dayName(date).slice(0, 3)}
+              <span className="detail-plan-date"> {date.getDate()}</span>
+            </button>
+          )
+        })}
+      </div>
+      <div className="planner-slot-chips">
+        {SLOTS.map((s) => (
+          <button
+            key={s}
+            type="button"
+            className={s === entry.slot ? 'planner-chip planner-chip-active' : 'planner-chip'}
+            aria-pressed={s === entry.slot}
+            onClick={() => s !== entry.slot && onUpdate(entry.id, { slot: s })}
+          >
+            {SLOT_LABELS[s]}
+          </button>
+        ))}
+      </div>
+
+      <button type="button" className="btn btn-quiet" onClick={onRemove}>
+        Remove from the plan
+      </button>
+    </Sheet>
   )
 }

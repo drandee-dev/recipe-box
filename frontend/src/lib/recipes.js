@@ -97,6 +97,12 @@ export function isOvernight(recipe) {
 // stepper, rather than one anchored to a number nobody wrote. The high end of a
 // range is deliberately ignored: stepping from the low end means the count on
 // screen is a promise the recipe already made.
+// Four times what the recipe says is already past the point where the tin, the
+// pan and the oven stop cooperating, and halving is the only direction anyone
+// goes below one batch. The floor is one serving rather than zero. Shared by the
+// recipe sheet's scaler and the planner's per-meal servings so they agree.
+export const SERVINGS_MAX_FACTOR = 4
+
 export function baseServings(recipe) {
   const match = String(recipe?.servings ?? '').match(/\d+(?:\.\d+)?/)
   if (!match) return null

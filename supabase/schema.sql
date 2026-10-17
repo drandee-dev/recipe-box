@@ -255,3 +255,49 @@ alter table cook_timers add column if not exists notify_count integer not null d
 update cook_timers set notify_count = 6 where sent_at is not null and notify_count = 0;
 
 create index if not exists cook_timers_active_idx on cook_timers (ends_at) where notify_count < 6;
+
+-- Pass C (planner and shopping list). Additive only: a nullable column the live
+-- app never selects, and a new table it never reads.
+--
+-- meal_plan.servings: how many servings this planned meal is for. Null means "as
+-- the recipe says", which is every row that exists today, so nothing changes for
+-- them. It scales the quantities the shopping list gathers from this meal and
+-- touches nothing else: the list's merge keys (name|dimension) are unchanged, so
+-- the ticks stored in shopping_items keep meaning what they meant.
+alter table meal_plan add column if not exists servings smallint;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'meal_plan_servings_check') then
+    alter table meal_plan
+      add constraint meal_plan_servings_check check (servings is null or servings between 1 and 500);
+  end if;
+end $$;
+
+-- shopping_prefs: one row per person. Display-only choices about the list, kept
+-- apart from shopping_items on purpose: they decide where a line is shown and
+-- whether it is collapsed, never what the line's merge key is.
+--   staples      normalised item names kept in a collapsed "Staples" section
+--   aisle_map    normalised item name -> the aisle you moved it to
+--   aisle_order  your shop's aisle order (empty = the built-in order)
+-- The size checks stop a bad client filling the free tier through one row.
+create table if not exists shopping_prefs (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  staples text[] not null default '{}',
+  aisle_map jsonb not null default '{}',
+  aisle_order text[] not null default '{}',
+  updated_at timestamptz not null default now(),
+  constraint shopping_prefs_size check (
+    cardinality(staples) <= 400
+    and cardinality(aisle_order) <= 20
+    and jsonb_typeof(aisle_map) = 'object'
+    and pg_column_size(staples) < 32768
+    and pg_column_size(aisle_map) < 65536
+  )
+);
+
+alter table shopping_prefs enable row level security;
+
+drop policy if exists "own shopping prefs" on shopping_prefs;
+create policy "own shopping prefs" on shopping_prefs
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);

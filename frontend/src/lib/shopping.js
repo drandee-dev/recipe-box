@@ -12,11 +12,14 @@
 import { client, localRows, pickStore, unwrap } from './backend.js'
 
 const stored = localRows('recipebox:shopping')
-const COLS = 'id,week_start,name,quantity,checked,kind,created_at'
+const COLS = 'id,recipe_id,week_start,name,quantity,checked,kind,created_at'
 
 function toRow(item) {
   return {
     id: item.id || crypto.randomUUID(),
+    // Set on lines that came from "To list" on a recipe, so the list can say
+    // where they came from. The column has always existed; nothing wrote it.
+    recipe_id: item.recipe_id || null,
     week_start: item.week_start,
     name: item.name,
     quantity: item.quantity || null,
@@ -44,6 +47,9 @@ const localStore = {
   },
   async remove(id) {
     stored.write(stored.read().filter((r) => r.id !== id))
+  },
+  async prune(beforeISO) {
+    stored.write(stored.read().filter((r) => !(r.week_start && r.week_start < beforeISO)))
   },
 }
 
@@ -77,8 +83,18 @@ function supabaseStore(userId) {
       const supabase = await client()
       unwrap(await supabase.from('shopping_items').delete().eq('id', id))
     },
+    // Rows for weeks long gone (AUDIT 10). Ticks and hand-added items are only
+    // read for the week on screen, so old ones are dead weight on the free tier.
+    // A null week_start never compares less-than, so it is never matched.
+    async prune(beforeISO) {
+      const supabase = await client()
+      unwrap(await supabase.from('shopping_items').delete().lt('week_start', beforeISO))
+    },
   }
 }
+
+// How many whole weeks back a week's ticks and hand-added items are kept.
+export const KEEP_WEEKS = 8
 
 export async function migrateLocalShopping(userId) {
   const local = stored.read()
