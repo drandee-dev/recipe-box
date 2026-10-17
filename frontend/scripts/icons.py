@@ -235,8 +235,12 @@ if __name__ == "__main__":
     for size in (192, 512):
         save(lockup(size, height_frac=safe, radius_pct=0, opaque=True), f"pwa-maskable-{size}.png")
 
-    # iOS masks this itself; the inset keeps the mark clear of the squircle.
-    save(lockup(180, height_frac=0.56, radius_pct=0, opaque=True), "apple-touch-icon.png")
+    # iOS masks this itself, rounding the corners to about 22.5% of the side. The
+    # mark's own corners (the ends of the two rules) are what could meet that
+    # rounding, and at 0.80 of the height they sit 0.29 and 0.40 of the side from
+    # the centre: a 10% margin top and bottom and well inside the mask. It was
+    # 0.56, a 22% margin, which read as a small mark floating on the home screen.
+    save(lockup(180, height_frac=0.80, radius_pct=0, opaque=True), "apple-touch-icon.png")
 
     # Browser-tab fallback for anything that won't take favicon.svg.
     save(lockup(96, height_frac=0.68, radius_pct=0.22, opaque=False), "favicon-96.png")
