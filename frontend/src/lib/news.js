@@ -13,16 +13,30 @@
 // `upcoming` announces work before it ships and carries the feedback button.
 // Closing the banner remembers the entry's id, so a new id brings it back.
 
-export const APP_VERSION = '1.0.1'
+export const APP_VERSION = '1.1.0'
 
 export const NEWS = [
   {
-    id: '2026-10-update-coming',
-    kind: 'upcoming',
-    date: '2026-10-16',
-    title: 'An update is on the way',
-    body:
-      "Timers that ring when time's up, even with the phone locked in the installed app, switching between metric and US measures, and a better shopping list. Have an idea or found a bug?",
+    id: '1.1.0',
+    kind: 'release',
+    version: '1.1.0',
+    date: '2026-10-17',
+    title: 'Version 1.1.0',
+    body: 'Dark mode, notes, leftovers, timers that ring on a locked phone, and more. Tap to see what changed.',
+    notes: [
+      'Timers can now alert you on a locked phone, if you install the app and allow notifications. On an iPhone this needs iOS 18.4 or later.',
+      'Run several timers at once from a tray that follows you around, and add one by hand.',
+      'Switch recipes and the shopping list between metric and US measures. Amounts of the same thing now add up across units, so ticks on weight and volume items start fresh once.',
+      'Plan a meal for more or fewer people and the shopping list buys for that many. Tap a planned meal to open it, move it to another day, or mark it as leftovers so nothing is bought for it.',
+      "Mark things you always have, like salt, as staples. Move an item to its real aisle and put the aisles in your shop's order. Share the list as text.",
+      "Add some of a recipe's ingredients to the list without planning it.",
+      'Add notes to a recipe, mark it as cooked, and sort by recently cooked or most cooked.',
+      'Download all your recipes as a file from the account menu.',
+      'Dark mode follows your phone, or choose Light or Dark in the account menu.',
+      'Easier to read: bigger recipe text, amounts lined up in a column, ingredients beside the step in cook mode, a slimmer update notice, and a wider layout on tablets and laptops.',
+      'A bigger icon on the iPhone home screen. To get it, remove the app from your home screen and add it again.',
+      'If the app looks the same as before, close it completely and open it again to get this update.',
+    ],
   },
   {
     id: '1.0.1',
