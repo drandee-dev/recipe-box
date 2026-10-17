@@ -88,7 +88,7 @@ export default function RecipeThumb({ recipe, priority = false, size = 'md' }) {
             ? 'recipes-thumb-fallback recipes-thumb-glyph'
             : 'recipes-thumb-fallback recipes-thumb-mono'
         }
-        style={{ background: tileTint(recipe.title) }}
+        style={{ '--tile': tileTint(recipe.title) }}
         aria-hidden="true"
       >
         {glyph ? <TagGlyph name={glyph} /> : monogramLetter(recipe.title)}
