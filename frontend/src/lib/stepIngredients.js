@@ -17,12 +17,16 @@
 // 3. The same ingredient is listed more than once (butter for the crust, the
 //    topping, the filling). Where both the ingredient lines and the steps carry
 //    a section name, only the matching section's lines are used. Where they do
-//    not, every candidate is returned, flagged `shared`, each with its own
-//    quantity: showing three butters is honest, picking one is a guess.
+//    not, and the lines are copies of one ingredient (same name), the ones that
+//    sit closest together in the list win, since a list is written section by
+//    section. Lines that are DIFFERENT ingredients sharing a word (black, bell and
+//    jalapeno pepper for "salt and pepper") are never narrowed that way: being
+//    next to the salt does not make one of them the pepper. Every candidate that
+//    survives is returned, flagged `shared`, each with its own quantity.
 //
 // `ing.group` is the section an ingredient line sits under, and
 // `recipe.instruction_groups[n]` the section of step n. Neither is stored yet, so
-// today every recipe takes the "all candidates" path; the section rules are here,
+// today every recipe takes the adjacency path; the section rules are here,
 // tested, for the day the import keeps them.
 
 import { readIngredient, singular } from './ingredients.js'
@@ -54,7 +58,18 @@ const FORM_HEADS = new Set([
 
 // Words that are fine as the end of an ingredient but never mean one by
 // themselves in a step ("whisk the spices" names no line).
-const GENERIC = new Set(['spice', 'seasoning', 'herb', 'ingredient', 'mixture', 'liquid', 'topping', 'filling'])
+//
+// Also here: "powder" and "flake". A step that says "dust with powder" or "add the
+// flakes" is not naming the baking powder. These match only when the step spells
+// out the line's own phrase ("baking powder", "apple pie spice").
+const GENERIC = new Set([
+  'spice', 'seasoning', 'herb', 'ingredient', 'mixture', 'liquid', 'topping', 'filling',
+  'powder', 'flake',
+])
+
+// "Cream the butter and sugar" is a verb. Read the word that way when it is
+// followed by one of these, so it does not claim the heavy cream.
+const CREAM_VERB_BEFORE = new Set(['the', 'together', 'butter', 'shortening', 'sugar'])
 
 // Words a step uses for a set of lines at once ("mix the sauce" means the soy sauce
 // and the oyster sauce together), so a tie among them is not a tie to break.
@@ -76,6 +91,8 @@ function words(text) {
 
 // One entry per way the line can be named ("sour cream or Greek yogurt" is two).
 function alternatives(ing) {
+  // A line with no text has nothing to show.
+  if (!String(ing?.raw ?? '').trim()) return []
   let name = readIngredient(ing)?.name ?? ''
   // The parser keeps what is before the first comma as the name, which for
   // "boneless, skinless chicken breast" is just "boneless". When that leaves
@@ -87,7 +104,7 @@ function alternatives(ing) {
   for (const alt of name.split(/\s+(?:or|\/)\s+/i)) {
     const tokens = words(alt).filter((w) => !DESCRIPTORS.has(w))
     if (tokens.length === 0) continue
-    out.push({ tokens, head: tokens[tokens.length - 1], mods: tokens.slice(0, -1) })
+    out.push({ tokens, head: tokens[tokens.length - 1], mods: tokens.slice(0, -1), sig: tokens.join(' ') })
   }
   return out
 }
@@ -168,21 +185,23 @@ function narrowBySpan(fixed, open) {
 }
 
 function matchStep(step, stepGroup, ingredients, alts, hasGroups) {
-  const stepWords = words(withoutLabel(step))
-  if (stepWords.length === 0) return []
+  const stepWords = words(withoutLabel(step)).map((w, p, all) =>
+    w === 'cream' && CREAM_VERB_BEFORE.has(all[p + 1]) ? '' : w,
+  )
+  if (stepWords.every((w) => !w)) return []
   const claimed = claimPhrases(stepWords, alts)
 
-  // { i, pos, key, strong }
+  // { i, pos, head, sig, bare, strong }
   let found = []
   alts.forEach((list, i) => {
     let best = null
-    for (const { head, mods } of list) {
+    for (const { head, mods, sig } of list) {
       let pos = -1
       let strong = false
-      if (!GENERIC.has(head)) {
-        pos = stepWords.findIndex((w, p) => w === head && usable(claimed, p, i))
-        strong = pos >= 0
-      }
+      // A generic head counts only when the step spelled out this line's phrase.
+      const owned = (p) => (GENERIC.has(head) ? claimed.get(p)?.has(i) : usable(claimed, p, i))
+      pos = stepWords.findIndex((w, p) => w === head && owned(p))
+      strong = pos >= 0
       if (!strong && FORM_HEADS.has(head)) {
         for (const m of mods) {
           if (WEAK_BLOCK.has(m) || GENERIC.has(m) || m.length < 4) continue
@@ -193,7 +212,7 @@ function matchStep(step, stepGroup, ingredients, alts, hasGroups) {
           }
         }
       }
-      if (pos >= 0 && (!best || (strong && !best.strong))) best = { i, pos, head, bare: mods.length === 0, strong }
+      if (pos >= 0 && (!best || (strong && !best.strong))) best = { i, pos, head, sig, bare: mods.length === 0, strong }
     }
     if (best) found.push(best)
   })
@@ -225,10 +244,13 @@ function matchStep(step, stepGroup, ingredients, alts, hasGroups) {
   // section, so the lines one step uses sit close together. Keep the combination
   // of candidates that spans the fewest places in the list. Where that is itself
   // a tie, every tied candidate stays.
-  // A collective word ("Mix the sauce") means all of its lines, not one of them,
-  // so those are neither narrowed nor used as anchors.
-  const collective = lists.filter((l) => COLLECTIVE.has(l[0].head))
-  const rest = lists.filter((l) => !COLLECTIVE.has(l[0].head))
+  // Two things are never narrowed, and are not used as anchors either: a
+  // collective word ("Mix the sauce" means all of its lines), and lines that are
+  // different ingredients sharing a word (black, bell and jalapeno pepper).
+  // Adjacency can tell which copy of butter is meant, not which pepper.
+  const isTie = (l) => COLLECTIVE.has(l[0].head) || new Set(l.map((f) => f.sig)).size > 1
+  const collective = lists.filter(isTie)
+  const rest = lists.filter((l) => !isTie(l))
   const single = rest.filter((l) => l.length === 1)
   const settled = narrowBySpan(single.flat(), rest.filter((l) => l.length > 1))
 

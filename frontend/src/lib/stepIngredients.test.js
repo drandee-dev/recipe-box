@@ -115,19 +115,67 @@ test('without sections, lines that sit together in the list settle the tie', () 
   const crust = lines(withoutSections, 2)
   assert.equal(crust.filter((l) => l.includes('butter')).length, 1)
   assert.ok(crust.find((l) => l.includes('butter')).startsWith('8 tablespoons (1 stick / ½ cup) unsalted butter'))
-  assert.deepEqual(
-    crust.filter((l) => l.includes('sugar')),
-    ['4 tablespoons granulated sugar'],
-  )
-  // The topping step has no unambiguous line at all (butter, flour, sugar and salt
-  // each occur under two or more sections), and the tightest set is still the
-  // topping block's.
+  // Granulated and brown sugar are different ingredients, so "sugar" keeps both
+  // kinds (flagged shared); adjacency may only pick between copies of one.
+  const crustSugar = stepIngredientMap(withoutSections)[2].filter((m) => plain[m.index].raw.includes('sugar'))
+  assert.ok(crustSugar.every((m) => m.shared))
+  assert.ok(crustSugar.some((m) => plain[m.index].raw === '4 tablespoons granulated sugar'))
+  // The topping step: flour and salt each occur under two sections, they are
+  // copies of one ingredient, and the oats beside the right ones settle which.
   const topping = lines(withoutSections, 6)
-  assert.ok(has(topping, '1 cup all-purpose flour') && has(topping, '1 cup brown sugar') && has(topping, '½ teaspoon salt'))
-  assert.ok(!has(topping, '2 tablespoon all-purpose flour') && !has(topping, 'granulated'))
+  assert.ok(has(topping, '1 cup all-purpose flour') && has(topping, '½ teaspoon salt') && has(topping, 'oats'))
+  assert.ok(!has(topping, '2 tablespoon all-purpose flour') && !has(topping, 'Pinch of salt'))
   const melted = lines(withoutSections, 7).filter((l) => l.includes('butter'))
   assert.equal(melted.length, 1)
   assert.ok(melted[0].includes('unsalted unsalted'))
+})
+
+// Found by review: each of these showed a wrong amount with confidence.
+test('different ingredients that share a word are all kept, never narrowed by being near the salt', () => {
+  const recipe = {
+    ingredients: [
+      { raw: '1 tsp black pepper' },
+      { raw: '1 red bell pepper' },
+      { raw: '1 jalapeno pepper' },
+      { raw: '1 tsp red pepper flakes' },
+      { raw: '1 tsp salt' },
+    ],
+    instructions: ['Season with salt and pepper.', 'Cook until the pepper is tender.'],
+  }
+  const got = lines(recipe, 0)
+  assert.ok(got.includes('1 tsp salt'))
+  assert.ok(got.includes('1 red bell pepper') && got.includes('1 tsp black pepper') && got.includes('1 jalapeno pepper'))
+  assert.ok(stepIngredientMap(recipe)[0].filter((m) => recipe.ingredients[m.index].raw.includes('pepper')).every((m) => m.shared))
+})
+
+test('"cream the butter" is the verb, and does not pull in the heavy cream', () => {
+  const recipe = {
+    ingredients: [{ raw: '1 cup heavy cream' }, { raw: '1/2 cup butter' }, { raw: '1 cup sugar' }],
+    instructions: ['Cream the butter and sugar until fluffy.', 'Whip the cream to soft peaks.'],
+  }
+  assert.deepEqual(lines(recipe, 0), ['1/2 cup butter', '1 cup sugar'])
+  assert.deepEqual(lines(recipe, 1), ['1 cup heavy cream'])
+})
+
+test('a bare "powder" or "flakes" is not claimed unless the step spells the line out', () => {
+  const recipe = {
+    ingredients: [{ raw: '1 tsp baking powder' }, { raw: '1 tsp red pepper flakes' }],
+    instructions: [
+      'Cool in the pan, then dust with powder.',
+      'Whisk in the baking powder.',
+      'Add the red pepper flakes.',
+      'Add the flakes.',
+    ],
+  }
+  assert.deepEqual(lines(recipe, 0), [])
+  assert.deepEqual(lines(recipe, 1), ['1 tsp baking powder'])
+  assert.deepEqual(lines(recipe, 2), ['1 tsp red pepper flakes'])
+  assert.deepEqual(lines(recipe, 3), [])
+})
+
+test('a structured line with no text is never shown', () => {
+  const recipe = { ingredients: [{ raw: '', item: 'flour', qty: '1' }], instructions: ['Sift the flour.'] }
+  assert.deepEqual(stepIngredientMap(recipe), [[]])
 })
 
 test('"the sauce" means every sauce line, not the one nearest the chicken', () => {
