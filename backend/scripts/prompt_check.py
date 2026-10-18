@@ -34,6 +34,8 @@ CASES = [
         ),
         "recipe": True,
         "min_ingredients": 5,
+        # It literally says "Ingredients:", which is a label and not a part.
+        "no_sections": True,
     },
     {
         "name": "ingredients and method",

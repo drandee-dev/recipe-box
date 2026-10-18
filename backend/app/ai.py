@@ -22,7 +22,11 @@ from .tags import ALLOWED_TAGS, normalize_tags, strip_hashtags
 log = logging.getLogger("recipe.ai")
 
 MODEL = "claude-haiku-4-5"
-MAX_TOKENS = 2000
+# The cap bills only what is generated, so headroom is free on a short recipe. It is
+# here for the long one: a 30-ingredient, 15-step bake is near 1,800 tokens of
+# structured output, and the section fields (a `group` per ingredient, an entry per
+# step) add 200 to 450 more. A generation cut off at the cap returns nothing at all.
+MAX_TOKENS = 3500
 MAX_INPUT_CHARS = 12000
 
 # What an image is shrunk to before it is sent. Both limits are the API's own:
