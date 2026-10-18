@@ -17,7 +17,7 @@ from bs4 import BeautifulSoup
 
 from . import sections
 from .tags import drop_unsupported, hashtags_in, infer_tags, merge_tags, strip_hashtags
-from .extract import ExtractError, assert_public_host, fetch_html, guarded_client
+from .extract import ExtractError, absolute_url, assert_public_host, fetch_html, guarded_client
 
 log = logging.getLogger("recipe.social")
 
@@ -163,7 +163,8 @@ def _og_tags(url: str) -> dict:
 
     return {
         "caption": caption,
-        "image_url": tags.get("og:image") or tags.get("twitter:image") or "",
+        # Resolved against the page: plenty of sites write og:image as a path.
+        "image_url": absolute_url(url, tags.get("og:image") or tags.get("twitter:image") or ""),
         "title": title_body,
     }
 

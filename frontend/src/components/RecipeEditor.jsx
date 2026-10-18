@@ -15,6 +15,7 @@ import { useMemo, useRef, useState } from 'react'
 import Sheet from './Sheet.jsx'
 import RecipeThumb from './RecipeThumb.jsx'
 import { TAG_VOCABULARY, normalizeTag } from '../lib/tags.js'
+import { fullPhotoLink } from '../lib/images.js'
 
 // Rows carry their own key. Using the array index would be fine until the first
 // removal, at which point every row below shifts onto a new index, React reuses
@@ -61,7 +62,9 @@ function initialForm(recipe) {
   return {
     title: recipe?.title || '',
     description: recipe?.description || '',
-    image_url: recipe?.image_url || '',
+    // A photo saved as a bare path (an old import) is opened as the full link it
+    // meant, or the form could not be saved at all.
+    image_url: fullPhotoLink(recipe?.image_url, recipe?.source_url),
     source_url: recipe?.source_url || '',
     servings: recipe?.servings || '',
     prep_min: minutesField(recipe?.prep_min),
