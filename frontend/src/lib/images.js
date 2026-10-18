@@ -48,6 +48,9 @@ export function needsMirror(recipe) {
 // this is one pass over the Instagram recipes in the box and then never again.
 export function needsGlyphRepair(recipe) {
   if (recipe?.source_type !== 'instagram' || !isMirrored(recipe)) return false
+  // `&u=` marks a photo the person uploaded themselves. A repair goes back to the
+  // post and would replace their picture with the post's cover.
+  if (recipe.image_url.includes('&u=')) return false
   return !recipe.image_url.includes(`?v=${MIRROR_VERSION}`)
 }
 

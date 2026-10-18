@@ -180,6 +180,8 @@ export default function App() {
   // {id, created_at} of a recipe the editor created but whose photo upload failed;
   // see handleEditorSave. Cleared when the editor closes.
   const newDraft = useRef(null)
+  // Ids whose photo the person uploaded this session; the mirror queue skips them.
+  const uploaded = useRef(new Set())
 
   // Phase 7. Fetch the photo while its URL still works and store it under our
   // own account, so it stops mattering that the origin will take it away.
@@ -223,6 +225,10 @@ export default function App() {
       async function worker() {
         while (queue.length > 0) {
           const recipe = queue.shift()
+          // Claimed up front, so a recipe may wait here while the person uploads
+          // a photo for it. The entry is the old list's; mirroring it now would
+          // overwrite their upload with the old link's picture.
+          if (uploaded.current.has(recipe.id)) continue
           try {
             const columns = await mirrorRecipeImage(recipe.id, mirrorSource(recipe), token)
             const saved = await store.saveImage(recipe.id, columns)
@@ -787,6 +793,7 @@ export default function App() {
     // checks the recipe is theirs, and in place of the link mirror: the link
     // field was cleared when the photo was picked.
     if (photo) {
+      uploaded.current.add(saved.id)
       try {
         const supabase = await getSupabase()
         const { data } = await supabase.auth.getSession()
@@ -799,6 +806,8 @@ export default function App() {
         newDraft.current = null
         return withPhoto
       } catch (err) {
+        // The upload did not land, so the old link's mirror is the right thing again.
+        uploaded.current.delete(saved.id)
         if (!target) newDraft.current = { id: saved.id, created_at: saved.created_at }
         // The editor keeps its sheet and the picked photo when this throws, so
         // saving again retries just the photo.
