@@ -25,7 +25,7 @@ import { clearProgress, loadProgress, saveProgress } from '../lib/cookProgress.j
 import { convertTemperatures, displayIngredient } from '../lib/convert.js'
 import { qtyColumnCh } from '../lib/ingredients.js'
 import { stepIngredientMap } from '../lib/stepIngredients.js'
-import { headingAt, ingredientGroups } from '../lib/sections.js'
+import { headingAt, ingredientGroups, sectionsFor } from '../lib/sections.js'
 import IngredientLine from './IngredientLine.jsx'
 import { useWakeLock } from '../lib/useWakeLock.js'
 
@@ -77,6 +77,7 @@ export default function CookMode({ recipe, servings, factor = 1, units = 'origin
   const stepMap = useMemo(() => stepIngredientMap(recipe), [recipe])
   const needs = stepMap[index] || []
   const ingGroups = useMemo(() => ingredientGroups(recipe.ingredients), [recipe.ingredients])
+  const stepGroups = useMemo(() => sectionsFor(recipe), [recipe])
   const showIngredients = choice === null ? needs.length === 0 : choice === '1'
 
   function toggleIngredients() {
@@ -190,7 +191,7 @@ export default function CookMode({ recipe, servings, factor = 1, units = 'origin
           <p className="cook-eyebrow">Step {stepLabel(index + 1)}</p>
           {/* The part of the recipe this step belongs to, when the source had
               parts ("For the crust"). It is what tells you which butter. */}
-          {recipe.instruction_groups?.[index] && <p className="cook-section">{recipe.instruction_groups[index]}</p>}
+          {stepGroups?.[index] && <p className="cook-section">{stepGroups[index]}</p>}
           <p className="cook-step">
             <StepText text={step} recipe={recipe} step={index} units={units} />
           </p>
@@ -243,7 +244,7 @@ export default function CookMode({ recipe, servings, factor = 1, units = 'origin
               <ul className="cook-peek-list">
                 {recipe.ingredients.map((_, n) => (
                   <Fragment key={n}>
-                    {headingAt(ingGroups, n) && <li className="cook-peek-group">{headingAt(ingGroups, n)}</li>}
+                    {headingAt(ingGroups, n) && <li className="cook-peek-group" role="presentation">{headingAt(ingGroups, n)}</li>}
                     <li>
                       <IngredientLine text={ingLines[n]} ch={qtyCh} />
                     </li>

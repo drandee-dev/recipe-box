@@ -88,6 +88,13 @@ test('with sections, "the melted butter" in the topping is the topping butter', 
   assert.equal(butter[0].shared, false)
 })
 
+test('a stale step-sections list is ignored, not used to filter the wrong lines', () => {
+  // A step was removed by a client that does not know the column: the array is
+  // now one short and every later entry names the wrong step.
+  const stale = { ...withSections, instruction_groups: STEPS.map(([g]) => g).slice(1) }
+  assert.deepEqual(stepIngredientMap(stale), stepIngredientMap({ ...withSections, instruction_groups: null }))
+})
+
 test('"For the Topping" is the same section as "For the Crumble Topping"', () => {
   const got = lines(withSections, 6)
   assert.ok(has(got, 'all-purpose flour') && has(got, 'brown sugar') && has(got, 'oats') && has(got, '½ teaspoon salt'))

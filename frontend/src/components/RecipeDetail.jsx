@@ -26,7 +26,7 @@ import UnitsToggle from './UnitsToggle.jsx'
 import { displayIngredient } from '../lib/convert.js'
 import { qtyColumnCh } from '../lib/ingredients.js'
 import { stepIngredientMap } from '../lib/stepIngredients.js'
-import { headingAt, ingredientGroups } from '../lib/sections.js'
+import { headingAt, ingredientGroups, sectionsFor } from '../lib/sections.js'
 import { cookedLabel } from '../lib/cooked.js'
 import IngredientLine from './IngredientLine.jsx'
 import { useUnits } from '../lib/useUnits.js'
@@ -217,7 +217,7 @@ export default function RecipeDetail({
   // The named parts the ingredients and the steps are divided into, when the
   // source had any (lib/sections). Null for a recipe with none.
   const ingGroups = useMemo(() => ingredientGroups(recipe.ingredients), [recipe.ingredients])
-  const stepGroups = Array.isArray(recipe.instruction_groups) ? recipe.instruction_groups : null
+  const stepGroups = useMemo(() => sectionsFor(recipe), [recipe])
 
   const host = hostOf(recipe.source_url)
   const tags = recipe.tags || []
@@ -614,7 +614,11 @@ export default function RecipeDetail({
           <ul className="detail-checks">
             {recipe.ingredients.map((ing, n) => (
               <Fragment key={n}>
-                {headingAt(ingGroups, n) && <li className="detail-group">{headingAt(ingGroups, n)}</li>}
+                {headingAt(ingGroups, n) && (
+                  <li className="detail-group" role="presentation">
+                    {headingAt(ingGroups, n)}
+                  </li>
+                )}
                 <li className={gathered.has(n) ? 'detail-check detail-check-on' : 'detail-check'}>
                   <label>
                     <input
@@ -658,7 +662,11 @@ export default function RecipeDetail({
             <ol className="detail-checks detail-steps">
               {recipe.instructions.map((step, n) => (
                 <Fragment key={n}>
-                {headingAt(stepGroups, n) && <li className="detail-group">{headingAt(stepGroups, n)}</li>}
+                {headingAt(stepGroups, n) && (
+                  <li className="detail-group" role="presentation">
+                    {headingAt(stepGroups, n)}
+                  </li>
+                )}
                 <li
                   aria-current={n === currentStep ? 'step' : undefined}
                   className={

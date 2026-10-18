@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { headingAt, ingredientGroups } from './sections.js'
+import { headingAt, ingredientGroups, sectionsFor } from './sections.js'
 
 test('a heading is drawn once, above the first line of each run', () => {
   const groups = [null, null, 'Crust', 'Crust', 'Topping', 'Topping', 'Crust']
@@ -17,6 +17,23 @@ test('no groups, or a line with no section, draws nothing', () => {
 
 test('the first line of a recipe that opens with a section gets its heading', () => {
   assert.equal(headingAt(['Sauce', 'Sauce'], 0), 'Sauce')
+})
+
+test('step sections are trusted only when they line up with the steps', () => {
+  const steps = ['a', 'b', 'c']
+  assert.deepEqual(sectionsFor({ instructions: steps, instruction_groups: [null, 'Crust', 'Crust'] }), [
+    null,
+    'Crust',
+    'Crust',
+  ])
+  // An older client edited the steps and left the array behind: no sections.
+  assert.equal(sectionsFor({ instructions: steps, instruction_groups: ['Crust', 'Crust'] }), null)
+  assert.equal(sectionsFor({ instructions: [...steps, 'd'], instruction_groups: [null, 'Crust', 'Crust'] }), null)
+  assert.equal(sectionsFor({ instructions: steps, instruction_groups: [null, 5, 'Crust'] }), null)
+  assert.equal(sectionsFor({ instructions: steps, instruction_groups: [null, null, null] }), null)
+  assert.equal(sectionsFor({ instructions: steps }), null)
+  assert.equal(sectionsFor({ instructions: steps, instruction_groups: 'Crust' }), null)
+  assert.equal(sectionsFor(undefined), null)
 })
 
 test('ingredientGroups reads the group off each line and is null when none is named', () => {

@@ -31,6 +31,7 @@
 // or from a source with no parts, takes the adjacency path.
 
 import { readIngredient, singular } from './ingredients.js'
+import { sectionsFor } from './sections.js'
 
 // Words that describe an ingredient without telling it from another one.
 const DESCRIPTORS = new Set([
@@ -279,7 +280,6 @@ export function stepIngredientMap(recipe) {
   if (ingredients.length === 0 || steps.length === 0) return steps.map(() => [])
   const alts = ingredients.map(alternatives)
   const hasGroups = ingredients.some((ing) => ing.group)
-  return steps.map((step, n) =>
-    matchStep(step, recipe.instruction_groups?.[n] || null, ingredients, alts, hasGroups),
-  )
+  const stepGroups = sectionsFor(recipe)
+  return steps.map((step, n) => matchStep(step, stepGroups?.[n] || null, ingredients, alts, hasGroups))
 }
