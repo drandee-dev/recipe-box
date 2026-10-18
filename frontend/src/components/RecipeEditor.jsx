@@ -188,7 +188,10 @@ export default function RecipeEditor({ recipe, onSave, onClose }) {
           if (row.original && typeof row.original === 'object' && ingredientText(row.original) === text) {
             return row.original
           }
-          return { raw: text, item: null, qty: null, unit: null }
+          // The section it sits under ("For the crust") is where the line is, not
+          // what it says, so rewording the line keeps it.
+          const group = typeof row.original === 'object' ? row.original?.group : null
+          return { raw: text, item: null, qty: null, unit: null, ...(group && { group }) }
         })
         .filter(Boolean),
       instructions: steps.map((row) => row.text.trim()).filter(Boolean),

@@ -16,6 +16,8 @@ from urllib.parse import quote_plus, urljoin, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
+from . import sections
+
 log = logging.getLogger("recipe.extract")
 
 MAX_BYTES = 3 * 1024 * 1024
@@ -146,21 +148,28 @@ def _joined_str(value) -> str:
     return ""
 
 
-def _flatten_instructions(value) -> list[str]:
-    steps: list[str] = []
+def _flatten_sections(value, section: str | None = None) -> list[tuple[str, str | None]]:
+    """Every step as (text, section name). A `HowToSection` names the steps inside
+    it; steps outside any section carry None."""
+    steps: list[tuple[str, str | None]] = []
     if isinstance(value, str):
-        steps.extend(s.strip() for s in re.split(r"\n+", value) if s.strip())
+        steps.extend((s.strip(), section) for s in re.split(r"\n+", value) if s.strip())
     elif isinstance(value, list):
         for item in value:
-            steps.extend(_flatten_instructions(item))
+            steps.extend(_flatten_sections(item, section))
     elif isinstance(value, dict):
         if value.get("@type") == "HowToSection":
-            steps.extend(_flatten_instructions(value.get("itemListElement", [])))
+            name = sections.clean_name(value.get("name")) or section
+            steps.extend(_flatten_sections(value.get("itemListElement", []), name))
         else:
             text = value.get("text") or value.get("name")
             if isinstance(text, str) and text.strip():
-                steps.append(text.strip())
+                steps.append((text.strip(), section))
     return steps
+
+
+def _flatten_instructions(value) -> list[str]:
+    return [text for text, _ in _flatten_sections(value)]
 
 
 def _find_recipe_node(data) -> dict | None:
@@ -195,11 +204,27 @@ def parse_jsonld_recipe(html: str, source_url: str) -> dict | None:
         if isinstance(ingredients, str):
             ingredients = [ingredients]
 
-        parsed = [
-            {"raw": i.strip(), "item": None, "qty": None, "unit": None}
-            for i in ingredients
-            if isinstance(i, str) and i.strip()
-        ]
+        # The headings the page put over its ingredient groups ("For the crust"),
+        # which `recipeIngredient` flattens away. Read before blank lines are
+        # dropped, since the count has to match the page's own list.
+        ingredient_groups = sections.wprm_ingredient_groups(soup, ingredients)
+        parsed = []
+        for n, i in enumerate(ingredients):
+            if not (isinstance(i, str) and i.strip()):
+                continue
+            line = {"raw": i.strip(), "item": None, "qty": None, "unit": None}
+            if ingredient_groups and ingredient_groups[n]:
+                line["group"] = ingredient_groups[n]
+            parsed.append(line)
+
+        # Step sections: a HowToSection names its own steps; failing that, a
+        # WP Recipe Maker card does. Neither is stored yet (the column arrives with
+        # the editor work), so the client ignores this until then.
+        flat = _flatten_sections(node.get("recipeInstructions"))
+        steps = [text for text, _ in flat]
+        instruction_groups = sections.informative([name for _, name in flat])
+        if instruction_groups is None:
+            instruction_groups = sections.wprm_instruction_groups(soup, steps)
         total_min = _iso_duration_to_min(node.get("totalTime"))
 
         # This path never calls a model, so it used to hand back an untagged
@@ -226,7 +251,8 @@ def parse_jsonld_recipe(html: str, source_url: str) -> dict | None:
             "image_url": _first_str(node.get("image")),
             "description": _first_str(node.get("description")),
             "ingredients": parsed,
-            "instructions": _flatten_instructions(node.get("recipeInstructions")),
+            "instructions": steps,
+            "instruction_groups": instruction_groups,
             "prep_min": _iso_duration_to_min(node.get("prepTime")),
             "cook_min": _iso_duration_to_min(node.get("cookTime")),
             "total_min": total_min,
