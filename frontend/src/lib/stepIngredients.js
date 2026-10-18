@@ -64,7 +64,7 @@ const FORM_HEADS = new Set([
 // out the line's own phrase ("baking powder", "apple pie spice").
 const GENERIC = new Set([
   'spice', 'seasoning', 'herb', 'ingredient', 'mixture', 'liquid', 'topping', 'filling',
-  'powder', 'flake',
+  'powder', 'flake', 'mix',
 ])
 
 // "Cream the butter and sugar" is a verb, and must not claim the heavy cream. It
@@ -191,7 +191,7 @@ function narrowBySpan(fixed, open) {
 function matchStep(step, stepGroup, ingredients, alts, hasGroups) {
   // "of" is dropped from the step as it is from ingredient names, so that
   // "cream of tartar" is one contiguous phrase on both sides and claims "cream".
-  const stepWords = words(withoutLabel(step).replace(CREAM_VERB, '$1mix')).filter((w) => w !== 'of')
+  const stepWords = words(withoutLabel(step).replace(CREAM_VERB, '$1')).filter((w) => w !== 'of')
   if (stepWords.length === 0) return []
   const claimed = claimPhrases(stepWords, alts)
 

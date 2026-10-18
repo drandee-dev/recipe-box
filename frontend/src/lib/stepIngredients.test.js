@@ -173,6 +173,18 @@ test('"cream" is a verb only at the start of a clause; after a comma it is the i
   assert.deepEqual(lines(recipe, 3), ['1/2 cup butter', '1 cup sugar'])
 })
 
+test('reading "cream" as a verb must not leave a word behind that matches a "mix" line', () => {
+  // The first version replaced the verb with "mix", which matched every cake,
+  // pancake and brownie mix on the list.
+  const recipe = {
+    ingredients: [{ raw: '1 box yellow cake mix' }, { raw: '1/2 cup butter' }, { raw: '1 cup sugar' }],
+    instructions: ['Cream the butter and sugar until fluffy.', 'Mix the butter and the cake mix.', 'Mix well.'],
+  }
+  assert.deepEqual(lines(recipe, 0), ['1/2 cup butter', '1 cup sugar'])
+  assert.deepEqual(lines(recipe, 1), ['1/2 cup butter', '1 box yellow cake mix'])
+  assert.deepEqual(lines(recipe, 2), [], '"Mix well" is not the cake mix')
+})
+
 test('"cream of tartar" is one ingredient and does not pull in the cream lines', () => {
   const recipe = {
     ingredients: [{ raw: '1 cup heavy cream' }, { raw: '1 cup sour cream' }, { raw: '1/2 tsp cream of tartar' }],
