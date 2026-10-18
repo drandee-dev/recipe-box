@@ -1859,6 +1859,16 @@ textarea.field {
   opacity: 0.55;
 }
 
+/* The ingredient lines a step uses, one per line under the step (lib/stepIngredients).
+   Quiet and smaller than the step: it is a reminder of the amount, not part of
+   the method. */
+.detail-step-needs {
+  display: block;
+  margin-top: var(--sp-1);
+  color: var(--txt-2);
+  font-size: var(--fs-sm);
+}
+
 .detail-step-n {
   flex-shrink: 0;
   width: 22px;
@@ -3221,6 +3231,45 @@ textarea.field {
   50% {
     opacity: 0.55;
   }
+}
+
+/* What this step uses (CookMode.jsx). Set apart from the step by a tint rather than
+   a border, so it reads as part of the step and not as a second list; the
+   amounts are the same hanging column the recipe sheet uses. Full-strength ink:
+   it is the thing being looked for. */
+.cook-needs {
+  margin-top: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r);
+  background: rgb(243 240 228 / 8%);
+}
+
+.cook-needs-label {
+  margin: 0 0 var(--sp-1);
+  color: var(--cook-ink);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.cook-needs-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-md);
+  line-height: 1.5;
+}
+
+.cook-needs-list li {
+  padding: var(--sp-1) 0;
+}
+
+/* Which section a line is from, when the same ingredient is listed under more
+   than one and the step does not say. */
+.cook-needs-group {
+  display: block;
+  font-size: var(--fs-sm);
+  opacity: 0.65;
 }
 
 .cook-peek {

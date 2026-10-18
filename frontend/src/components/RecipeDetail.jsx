@@ -14,7 +14,7 @@
 // the failure, while a tick left over from Tuesday's cook is worse than no tick,
 // hence the limit.
 
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import CookMode from './CookMode.jsx'
 import RecipeThumb from './RecipeThumb.jsx'
 import Sheet from './Sheet.jsx'
@@ -25,6 +25,7 @@ import { SERVINGS_MAX_FACTOR, baseServings, hostOf, metaParts, servingsLabel } f
 import UnitsToggle from './UnitsToggle.jsx'
 import { displayIngredient } from '../lib/convert.js'
 import { qtyColumnCh } from '../lib/ingredients.js'
+import { stepIngredientMap } from '../lib/stepIngredients.js'
 import { cookedLabel } from '../lib/cooked.js'
 import IngredientLine from './IngredientLine.jsx'
 import { useUnits } from '../lib/useUnits.js'
@@ -210,6 +211,8 @@ export default function RecipeDetail({
   // quantity column they share. Both lists on this sheet use the same two.
   const ingLines = recipe.ingredients.map((ing) => displayIngredient(ing.raw, { factor, units }))
   const qtyCh = qtyColumnCh(ingLines)
+  // What each step uses (lib/stepIngredients), shown under the step.
+  const stepMap = useMemo(() => stepIngredientMap(recipe), [recipe])
 
   const host = hostOf(recipe.source_url)
   const tags = recipe.tags || []
@@ -667,6 +670,12 @@ export default function RecipeDetail({
                     </span>
                     <span>
                       <StepText text={step} recipe={recipe} step={n} units={units} />
+                      {stepMap[n]?.map((m) => (
+                        <span key={m.index} className="detail-step-needs">
+                          {ingLines[m.index]}
+                          {m.shared && m.group ? ` (${m.group})` : ''}
+                        </span>
+                      ))}
                     </span>
                   </label>
                 </li>

@@ -17,13 +17,14 @@
 // second modal to get a dark full-screen panel would have meant reimplementing
 // all of that to change a background colour. `.sheet-cook` is the whole skin.
 
-import { useRef, useState } from 'react'
+import { useMemo, useRef, useState } from 'react'
 import Sheet from './Sheet.jsx'
 import StepText from './StepText.jsx'
 import { TimerTray } from './Timers.jsx'
 import { clearProgress, loadProgress, saveProgress } from '../lib/cookProgress.js'
 import { convertTemperatures, displayIngredient } from '../lib/convert.js'
 import { qtyColumnCh } from '../lib/ingredients.js'
+import { stepIngredientMap } from '../lib/stepIngredients.js'
 import IngredientLine from './IngredientLine.jsx'
 import { useWakeLock } from '../lib/useWakeLock.js'
 
@@ -48,33 +49,43 @@ export default function CookMode({ recipe, servings, factor = 1, units = 'origin
   const steps = recipe.instructions || []
   // Resumes where you left off if you were mid-cook in the last twelve hours.
   const [index, setIndex] = useState(() => loadProgress(recipe.id, steps.length).step)
-  // Open by default, and the choice is kept: closed, the middle of every step was
-  // empty ground between a few lines of text and the Next preview (measured at
-  // 390x844), and the ingredients are the thing you reach for mid-step. A person
-  // who hides them keeps them hidden, on this device.
-  const [showIngredients, setShowIngredients] = useState(() => {
+  // The whole list is open by default where the step has nothing of its own to
+  // show, and the choice is kept: closed, the middle of every step was empty
+  // ground between a few lines of text and the Next preview (measured at
+  // 390x844), and the ingredients are the thing you reach for mid-step. Where the
+  // step does list its own (below), the whole list is behind a press instead,
+  // since it is the scrolling that block exists to save. Once the person presses
+  // it either way, that choice wins on every step, on this device. `null` is
+  // "never chosen".
+  const [choice, setChoice] = useState(() => {
     try {
-      return localStorage.getItem(INGREDIENTS_KEY) !== '0'
+      const saved = localStorage.getItem(INGREDIENTS_KEY)
+      return saved === '1' || saved === '0' ? saved : null
     } catch {
-      return true
+      return null
     }
   })
-
-  function toggleIngredients() {
-    const next = !showIngredients
-    setShowIngredients(next)
-    try {
-      localStorage.setItem(INGREDIENTS_KEY, next ? '1' : '0')
-    } catch {
-      // Then it is open again next time. Not worth more.
-    }
-  }
 
   const gesture = useRef(null)
   const bodyRef = useRef(null)
 
   const step = steps[index] || ''
   const atLast = index >= steps.length - 1
+
+  // What each step uses, worked out once per recipe (lib/stepIngredients).
+  const stepMap = useMemo(() => stepIngredientMap(recipe), [recipe])
+  const needs = stepMap[index] || []
+  const showIngredients = choice === null ? needs.length === 0 : choice === '1'
+
+  function toggleIngredients() {
+    const next = showIngredients ? '0' : '1'
+    setChoice(next)
+    try {
+      localStorage.setItem(INGREDIENTS_KEY, next)
+    } catch {
+      // Then it is back to the default next time. Not worth more.
+    }
+  }
 
   useWakeLock()
 
@@ -136,6 +147,7 @@ export default function CookMode({ recipe, servings, factor = 1, units = 'origin
   // The peek list in one hanging quantity column, same as the recipe sheet.
   const ingLines = (recipe.ingredients || []).map((ing) => displayIngredient(ing.raw, { factor, units }))
   const qtyCh = qtyColumnCh(ingLines)
+  const needsCh = qtyColumnCh(needs.map((m) => ingLines[m.index]))
 
   return (
     <Sheet
@@ -177,6 +189,26 @@ export default function CookMode({ recipe, servings, factor = 1, units = 'origin
           <p className="cook-step">
             <StepText text={step} recipe={recipe} step={index} units={units} />
           </p>
+
+          {/* How much of each thing this step uses, so the answer is on the step
+              and not up a list. The lines are the recipe's own, at the scale you
+              set. A step that names nothing shows nothing here. Where the same
+              ingredient is listed under more than one section and the step does
+              not say which, every candidate is shown with its section so the
+              amounts can be told apart. */}
+          {needs.length > 0 && (
+            <div className="cook-needs">
+              <p className="cook-needs-label">For this step</p>
+              <ul className="cook-needs-list">
+                {needs.map((m) => (
+                  <li key={m.index}>
+                    <IngredientLine text={ingLines[m.index]} ch={needsCh} />
+                    {m.shared && m.group ? <span className="cook-needs-group">{m.group}</span> : null}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
         </div>
 
         {/* The one thing you reliably need mid-step that is not on the step:
@@ -198,7 +230,7 @@ export default function CookMode({ recipe, servings, factor = 1, units = 'origin
                   none` on the serving count did nothing and it sat underlined
                   as if it were part of the control's label. */}
               <span className="cook-peek-label">
-                {showIngredients ? 'Hide ingredients' : 'Ingredients'}
+                {showIngredients ? 'Hide ingredients' : needs.length > 0 ? 'All ingredients' : 'Ingredients'}
               </span>
               {servings ? <span className="cook-peek-servings">{servings}</span> : null}
             </button>
