@@ -26,6 +26,7 @@ import { usePendingCommit } from '../lib/usePendingCommit.js'
 import { useWeekSwipe } from '../lib/useWeekSwipe.js'
 import { effectiveAisleOrder, moveAisle, setAisle, toggleStaple } from '../lib/prefs.js'
 import Sheet from './Sheet.jsx'
+import SwipeHint from './SwipeHint.jsx'
 
 function DerivedItem({ item, checked, onToggle, onMore }) {
   return (
@@ -179,6 +180,7 @@ export default function ShoppingList({
   // Swiping the screen changes the week, the same gesture as the planner.
   const {
     goWeek,
+    showHint,
     slideDir,
     dragX: weekDragX,
     dragging: weekDragging,
@@ -465,6 +467,7 @@ export default function ShoppingList({
           .join(' ')}
         style={weekDragging ? { transform: `translateX(${weekDragX}px)` } : undefined}
       >
+      {showHint && <SwipeHint />}
       <form className="shopping-add" onSubmit={submitManual}>
         <input
           className="field"
