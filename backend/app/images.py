@@ -20,6 +20,7 @@ the image box something to hold while the real photo arrives.
 import base64
 import io
 import logging
+import time
 import uuid
 
 import httpx
@@ -146,8 +147,13 @@ def image_for_vision(data: bytes) -> tuple[str, str]:
     return base64.b64encode(buf.getvalue()).decode("ascii"), "image/jpeg"
 
 
-def _upload(path: str, data: bytes) -> str:
-    """Put one object in the bucket and return its public URL."""
+def _upload(path: str, data: bytes, bust: int | None = None) -> str:
+    """Put one object in the bucket and return its public URL.
+
+    `bust` is for a photo replaced by the person (see `upload_image`): the path
+    is the same, so without a changing value in the URL every device that has seen
+    the old picture keeps it for the year the cache header promises.
+    """
     url, key = _storage()
     try:
         with httpx.Client(timeout=TIMEOUT) as client:
@@ -176,7 +182,10 @@ def _upload(path: str, data: bytes) -> str:
     # header above tells every cache in the way to keep these bytes for a year,
     # and the path is derived from the recipe id, so a re-mirror that improves
     # the picture would otherwise never be seen.
-    return f"{url}/storage/v1/object/public/{BUCKET}/{path}?v={MIRROR_VERSION}"
+    # `v=` stays first: the client reads `?v=N` off the URL to tell a current
+    # photo from an old one, and an upload is a current photo.
+    suffix = f"&u={bust}" if bust is not None else ""
+    return f"{url}/storage/v1/object/public/{BUCKET}/{path}?v={MIRROR_VERSION}{suffix}"
 
 
 def recipe_is_owned(user_id: str, recipe_id: str) -> bool:
@@ -276,8 +285,25 @@ def mirror_image(user_id: str, recipe_id: str, source_url: str) -> dict:
     if stripped:
         log.info("stripped a play glyph from the cover for %s", recipe_id)
 
+    return _store(user_id, recipe_id, img)
+
+
+def upload_image(user_id: str, recipe_id: str, data: bytes) -> dict:
+    """Resize and store a photo the person sent as bytes. Returns the columns.
+
+    The same pipeline as `mirror_image` minus the fetch and the play-glyph strip
+    (that is Instagram's overlay; a photo from a camera has none). Differs in one
+    way that matters: the person may be *replacing* a photo, and the object path
+    is the recipe's, so the URL carries a timestamp the mirror's does not.
+    """
+    user_id = str(uuid.UUID(user_id))
+    recipe_id = str(uuid.UUID(recipe_id))
+    return _store(user_id, recipe_id, _open(data), bust=int(time.time()))
+
+
+def _store(user_id: str, recipe_id: str, img: Image.Image, bust: int | None = None) -> dict:
     blur = _blur_data_uri(img)
-    lg = _upload(f"{user_id}/{recipe_id}-lg.jpg", _encode(img, WIDTHS["lg"], 82))
-    sm = _upload(f"{user_id}/{recipe_id}-sm.jpg", _encode(img, WIDTHS["sm"], 80))
+    lg = _upload(f"{user_id}/{recipe_id}-lg.jpg", _encode(img, WIDTHS["lg"], 82), bust)
+    sm = _upload(f"{user_id}/{recipe_id}-sm.jpg", _encode(img, WIDTHS["sm"], 80), bust)
 
     return {"image_url": lg, "image_thumb_url": sm, "image_blur": blur}

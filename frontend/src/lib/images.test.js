@@ -61,6 +61,11 @@ test('a repaired photo is not repaired again', () => {
   assert.equal(needsGlyphRepair({ source_type: 'instagram', image_url: OURS }), false)
 })
 
+test('a photo the person uploaded is never repaired from the post, whatever its version', () => {
+  const uploaded = `${BUCKET}/user-1/recipe-1-lg.jpg?v=2&u=1760000000`
+  assert.equal(needsGlyphRepair({ source_type: 'instagram', image_url: uploaded }), false)
+})
+
 test('only Instagram is repaired', () => {
   // TikTok's oEmbed thumbnail is a clean cover frame and a recipe site's photo
   // is a photo. Repairing those would be a re-upload that changes nothing.

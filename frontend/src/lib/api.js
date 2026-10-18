@@ -39,3 +39,10 @@ export function structureImage(image) {
 export function mirrorRecipeImage(recipeId, url, token) {
   return post('/api/recipes/image', { recipe_id: recipeId, url }, token)
 }
+
+// The same three columns back, for a photo the person picked: `image` is the
+// bare base64 from lib/photo.js (already shrunk on the device). The recipe has
+// to be saved first, since the backend checks the row is the caller's.
+export function uploadRecipeImage(recipeId, image, token) {
+  return post('/api/recipes/image/upload', { recipe_id: recipeId, image }, token)
+}

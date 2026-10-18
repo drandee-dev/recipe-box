@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { extractRecipe, mirrorRecipeImage, structureImage, structureText } from './lib/api.js'
+import { extractRecipe, mirrorRecipeImage, structureImage, structureText, uploadRecipeImage } from './lib/api.js'
 import { PhotoError, readPhoto } from './lib/photo.js'
 import { getSupabase, supabaseEnabled } from './lib/supabase.js'
 import { makeStore, migrateLocalRecipes } from './lib/store.js'
@@ -177,6 +177,11 @@ export default function App() {
   // without this every resume would spend a serverless invocation rediscovering
   // that. A reload clears it, which is the retry.
   const mirrored = useRef(new Set())
+  // {id, created_at} of a recipe the editor created but whose photo upload failed;
+  // see handleEditorSave. Cleared when the editor closes.
+  const newDraft = useRef(null)
+  // Ids whose photo the person uploaded this session; the mirror queue skips them.
+  const uploaded = useRef(new Set())
 
   // Phase 7. Fetch the photo while its URL still works and store it under our
   // own account, so it stops mattering that the origin will take it away.
@@ -220,6 +225,10 @@ export default function App() {
       async function worker() {
         while (queue.length > 0) {
           const recipe = queue.shift()
+          // Claimed up front, so a recipe may wait here while the person uploads
+          // a photo for it. The entry is the old list's; mirroring it now would
+          // overwrite their upload with the old link's picture.
+          if (uploaded.current.has(recipe.id)) continue
           try {
             const columns = await mirrorRecipeImage(recipe.id, mirrorSource(recipe), token)
             const saved = await store.saveImage(recipe.id, columns)
@@ -744,8 +753,13 @@ export default function App() {
   // a star and wrong for a form. Here the sheet stays open and shows what went
   // wrong, so the typing isn't lost — hence the throw rather than a catch.
   async function handleEditorSave(values) {
+    // `photo` is bytes for the upload below, not a column: it never reaches the store.
+    const { photo, ...fields } = values
     const target = editing?.recipe
     const previousImage = target?.image_url || null
+    // A new recipe whose photo failed to upload is already saved. Saving again
+    // must update that row, not create a second recipe with the same title.
+    const draft = newDraft.current
 
     // Step sections (`instruction_groups`) run parallel to the steps, and the
     // editor knows nothing of them. Where the steps were added, removed or
@@ -754,24 +768,57 @@ export default function App() {
     // writes the null, which clears the column.)
     const stepsChanged =
       target?.instruction_groups &&
-      JSON.stringify(target.instructions) !== JSON.stringify(values.instructions)
+      JSON.stringify(target.instructions) !== JSON.stringify(fields.instructions)
 
     const saved = await store.save(
       target
-        ? { ...target, ...values, ...(stepsChanged && { instruction_groups: null }) }
+        ? { ...target, ...fields, ...(stepsChanged && { instruction_groups: null }) }
         : {
-            ...values,
+            ...fields,
             source_type: 'manual',
             favorite: false,
-            id: crypto.randomUUID(),
-            created_at: new Date().toISOString(),
+            id: draft?.id || crypto.randomUUID(),
+            created_at: draft?.created_at || new Date().toISOString(),
           },
     )
 
-    setRecipes((prev) =>
-      target ? prev.map((r) => (r.id === saved.id ? saved : r)) : [saved, ...prev],
-    )
+    // Replaced if it is already in the list (an edit, or a retry after a failed
+    // photo), added otherwise.
+    const place = (row) => (prev) =>
+      prev.some((r) => r.id === row.id) ? prev.map((r) => (r.id === row.id ? row : r)) : [row, ...prev]
+    setRecipes(place(saved))
     setOpenId(saved.id)
+
+    // A photo the person picked. It goes up after the save because the backend
+    // checks the recipe is theirs, and in place of the link mirror: the link
+    // field was cleared when the photo was picked.
+    if (photo) {
+      uploaded.current.add(saved.id)
+      try {
+        const supabase = await getSupabase()
+        const { data } = await supabase.auth.getSession()
+        const token = data?.session?.access_token
+        if (!token) throw new Error('not signed in')
+        const columns = await uploadRecipeImage(saved.id, photo, token)
+        const withPhoto = await store.saveImage(saved.id, columns)
+        if (!withPhoto) throw new Error('recipe not found')
+        setRecipes(place(withPhoto))
+        newDraft.current = null
+        return withPhoto
+      } catch (err) {
+        // The upload did not land, so the old link's mirror is the right thing again.
+        uploaded.current.delete(saved.id)
+        if (!target) newDraft.current = { id: saved.id, created_at: saved.created_at }
+        // The editor keeps its sheet and the picked photo when this throws, so
+        // saving again retries just the photo.
+        throw new Error(
+          navigator.onLine
+            ? "The recipe is saved, but the photo didn't upload. Save again to retry the photo."
+            : "You're offline. The recipe is saved, but the photo didn't upload. Save again when you're back online.",
+          { cause: err },
+        )
+      }
+    }
 
     // A pasted photo link is mirrored on exactly the same terms as an imported
     // one. The per-session set is keyed by recipe id, so a recipe whose earlier
@@ -1273,7 +1320,11 @@ export default function App() {
           key={editing.recipe?.id || 'new'}
           recipe={editing.recipe}
           onSave={handleEditorSave}
-          onClose={() => setEditing(null)}
+          onClose={() => {
+            newDraft.current = null
+            setEditing(null)
+          }}
+          canUploadPhoto={Boolean(userId && supabaseEnabled)}
         />
       )}
 
