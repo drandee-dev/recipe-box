@@ -34,6 +34,8 @@ CASES = [
         ),
         "recipe": True,
         "min_ingredients": 5,
+        # It literally says "Ingredients:", which is a label and not a part.
+        "no_sections": True,
     },
     {
         "name": "ingredients and method",
@@ -58,6 +60,30 @@ CASES = [
         "recipe": True,
         "min_ingredients": 4,
         "min_steps": 1,
+        "no_sections": True,
+    },
+    {
+        "name": "named parts, butter three times",
+        "why": "the case sections exist for: the same ingredient under three headings, "
+        "and steps that say 'the melted butter' without saying which",
+        "text": (
+            "Apple Crumble Cheesecake Bars\n\nIngredients\n\nFor the Crust\n"
+            "2 1/2 cups graham cracker crumbs\n4 tablespoons sugar\n"
+            "8 tablespoons unsalted butter, melted\n\nFor the Crumble Topping\n"
+            "1 cup all-purpose flour\n1 cup brown sugar\n"
+            "8 tablespoons unsalted butter, melted\n\nFor the Apples\n"
+            "4 tablespoons unsalted butter\n4 large apples, peeled and diced\n"
+            "1/3 cup brown sugar\n\nDirections\n\nFor Crust\n"
+            "Mix the crumbs, sugar and the melted butter. Press into the pan and bake "
+            "10 minutes.\n\nFor the Apples\nMelt the butter in a skillet, add the apples "
+            "and sugar and cook 4 minutes.\n\nFor the Topping\nWhisk the flour and "
+            "sugar, then pour in the melted butter and toss until clumpy.\n\n"
+            "Assemble\nTop the crust with the apples and the crumble and bake 45 minutes."
+        ),
+        "recipe": True,
+        "min_ingredients": 8,
+        "min_steps": 3,
+        "sections": True,
     },
     {
         "name": "not a recipe",
@@ -100,7 +126,23 @@ def check(case: dict, result: dict | None) -> tuple[bool, str]:
         return False, f"{ingredients} ingredients, wanted {case['min_ingredients']}+"
     if steps < case.get("min_steps", 0):
         return False, f"{steps} steps, wanted {case['min_steps']}+"
-    return True, f"{ingredients} ingredients, {steps} steps"
+
+    named = {i.get("group") for i in result.get("ingredients") or [] if i.get("group")}
+    step_groups = result.get("instruction_groups")
+    if case.get("no_sections") and (named or step_groups):
+        # A source that never divided itself must not come back divided.
+        return False, f"invented sections: {sorted(named)} / {step_groups}"
+    if case.get("sections"):
+        if len(named) < 3:
+            return False, f"{len(named)} ingredient sections, wanted 3: {sorted(named)}"
+        butter = {i.get("group") for i in result["ingredients"] if "butter" in i["raw"].lower() and "graham" not in i["raw"].lower()}
+        if len(butter - {None}) < 3:
+            return False, f"the three butters sit under {sorted(g for g in butter if g)}"
+        if not step_groups or len(step_groups) != steps or len({g for g in step_groups if g}) < 2:
+            return False, f"step sections missing or misaligned: {step_groups}"
+    return True, f"{ingredients} ingredients, {steps} steps" + (
+        f", sections {sorted(named)}" if named else ""
+    )
 
 
 def main() -> int:

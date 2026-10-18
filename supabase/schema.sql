@@ -343,3 +343,12 @@ create index if not exists cook_log_user_recipe_idx on cook_log (user_id, recipe
 -- flagged true is eaten from what was cooked earlier, so the shopping list leaves
 -- it out.
 alter table meal_plan add column if not exists leftover boolean not null default false;
+
+-- Step sections ("For the crust"). Additive only: a nullable jsonb column the live
+-- app never selects or writes, so it ignores it. One entry per step in
+-- `instructions`, in order: the name of the section the step sits under, or null.
+-- A parallel array rather than a change to `instructions` itself, because the live
+-- app reads that column as an array of strings. Null means the recipe has no
+-- sections. Ingredient sections need no column: they are a `group` key inside the
+-- existing `ingredients` jsonb.
+alter table recipes add column if not exists instruction_groups jsonb;
