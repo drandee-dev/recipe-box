@@ -157,6 +157,40 @@ test('"cream the butter" is the verb, and does not pull in the heavy cream', () 
   assert.deepEqual(lines(recipe, 1), ['1 cup heavy cream'])
 })
 
+test('"cream" is a verb only at the start of a clause; after a comma it is the ingredient', () => {
+  const recipe = {
+    ingredients: [{ raw: '1 cup heavy cream' }, { raw: '1/2 cup butter' }, { raw: '1 cup sugar' }, { raw: '1 cup sour cream' }],
+    instructions: [
+      'Whisk the heavy cream, sugar and vanilla until stiff.',
+      'Add the sour cream, butter and sugar.',
+      'Beat the eggs. Cream butter and sugar until fluffy.',
+      'Chill, then cream the butter with the sugar.',
+    ],
+  }
+  assert.deepEqual(lines(recipe, 0), ['1 cup heavy cream', '1 cup sugar'])
+  assert.deepEqual(lines(recipe, 1), ['1 cup sour cream', '1/2 cup butter', '1 cup sugar'])
+  assert.deepEqual(lines(recipe, 2), ['1/2 cup butter', '1 cup sugar'])
+  assert.deepEqual(lines(recipe, 3), ['1/2 cup butter', '1 cup sugar'])
+})
+
+test('"cream of tartar" is one ingredient and does not pull in the cream lines', () => {
+  const recipe = {
+    ingredients: [{ raw: '1 cup heavy cream' }, { raw: '1 cup sour cream' }, { raw: '1/2 tsp cream of tartar' }],
+    instructions: ['Add the cream of tartar.', 'Add the heavy cream.'],
+  }
+  assert.deepEqual(lines(recipe, 0), ['1/2 tsp cream of tartar'])
+  assert.deepEqual(lines(recipe, 1), ['1 cup heavy cream'])
+})
+
+test('a copy picked by adjacency is flagged shared, so it is not presented as certain', () => {
+  const recipe = {
+    ingredients: [{ raw: '8 tbsp butter' }, { raw: '1 cup sugar' }, { raw: '2 tbsp butter' }],
+    instructions: ['Cream the butter and sugar.'],
+  }
+  const m = stepIngredientMap(recipe)[0]
+  assert.ok(m.filter((x) => recipe.ingredients[x.index].raw.includes('butter')).every((x) => x.shared))
+})
+
 test('a bare "powder" or "flakes" is not claimed unless the step spells the line out', () => {
   const recipe = {
     ingredients: [{ raw: '1 tsp baking powder' }, { raw: '1 tsp red pepper flakes' }],

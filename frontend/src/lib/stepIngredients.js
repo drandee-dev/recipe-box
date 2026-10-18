@@ -67,9 +67,13 @@ const GENERIC = new Set([
   'powder', 'flake',
 ])
 
-// "Cream the butter and sugar" is a verb. Read the word that way when it is
-// followed by one of these, so it does not claim the heavy cream.
-const CREAM_VERB_BEFORE = new Set(['the', 'together', 'butter', 'shortening', 'sugar'])
+// "Cream the butter and sugar" is a verb, and must not claim the heavy cream. It
+// is one only when it opens a clause (the start of the step, after a full stop,
+// or after "then") and a baking word follows it directly. "Whisk the heavy cream,
+// sugar and vanilla" is a noun: the comma after it ends the match, and it is
+// not at a clause start either. (Reading the word that follows without the comma
+// is what made the first version drop a real heavy cream.)
+const CREAM_VERB = /(^|[.!?;:]\s+|\bthen\s+)cream(?=\s+(?:the|together|butter|shortening|sugar)\b)/gi
 
 // Words a step uses for a set of lines at once ("mix the sauce" means the soy sauce
 // and the oyster sauce together), so a tie among them is not a tie to break.
@@ -185,10 +189,10 @@ function narrowBySpan(fixed, open) {
 }
 
 function matchStep(step, stepGroup, ingredients, alts, hasGroups) {
-  const stepWords = words(withoutLabel(step)).map((w, p, all) =>
-    w === 'cream' && CREAM_VERB_BEFORE.has(all[p + 1]) ? '' : w,
-  )
-  if (stepWords.every((w) => !w)) return []
+  // "of" is dropped from the step as it is from ingredient names, so that
+  // "cream of tartar" is one contiguous phrase on both sides and claims "cream".
+  const stepWords = words(withoutLabel(step).replace(CREAM_VERB, '$1mix')).filter((w) => w !== 'of')
+  if (stepWords.length === 0) return []
   const claimed = claimPhrases(stepWords, alts)
 
   // { i, pos, head, sig, bare, strong }
@@ -254,10 +258,12 @@ function matchStep(step, stepGroup, ingredients, alts, hasGroups) {
   const single = rest.filter((l) => l.length === 1)
   const settled = narrowBySpan(single.flat(), rest.filter((l) => l.length > 1))
 
+  // A copy picked by adjacency is still a guess between rivals, so it is flagged
+  // `shared` like the rest of a tie, and shows its section if it has one.
   const kept = []
-  for (const list of [...single, ...collective, ...settled]) {
-    for (const f of list) kept.push({ ...f, shared: list.length > 1 })
-  }
+  for (const list of single) for (const f of list) kept.push({ ...f, shared: false })
+  for (const list of collective) for (const f of list) kept.push({ ...f, shared: list.length > 1 })
+  for (const list of settled) for (const f of list) kept.push({ ...f, shared: true })
 
   return kept
     .sort((a, b) => a.pos - b.pos || a.i - b.i)
