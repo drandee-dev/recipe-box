@@ -230,6 +230,7 @@ def link_card(url: str, source_type: str, post: dict, structured: dict | None = 
         "description": strip_hashtags(caption)[:2000] or None,
         "ingredients": [],
         "instructions": [],
+        "instruction_groups": None,
         "prep_min": None,
         "cook_min": None,
         "total_min": None,
@@ -262,6 +263,7 @@ def to_recipe(structured: dict, url: str, source_type: str, post: dict) -> dict:
         "description": (structured.get("description") or "").strip()[:2000] or None,
         "ingredients": ingredients,
         "instructions": steps,
+        "instruction_groups": None,
         "prep_min": structured.get("prep_min"),
         "cook_min": structured.get("cook_min"),
         "total_min": structured.get("total_min"),
@@ -303,6 +305,8 @@ def graft_written_recipe(recipe: dict, linked: dict | None) -> dict:
         return recipe
     if not recipe.get("instructions") and linked.get("instructions"):
         recipe["instructions"] = linked["instructions"]
+        # Section names go with the steps they label, or not at all.
+        recipe["instruction_groups"] = linked.get("instruction_groups")
     for field in ("prep_min", "cook_min", "total_min", "servings"):
         if recipe.get(field) is None and linked.get(field) is not None:
             recipe[field] = linked[field]
