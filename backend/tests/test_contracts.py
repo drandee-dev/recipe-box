@@ -136,9 +136,11 @@ class RecipeShape(unittest.TestCase):
             "ingredients", "instructions", "prep_min", "cook_min", "total_min",
             "servings", "tags", "favorite",
             # Carried ahead of its column: the client's toRow does not store it yet
-            # (the migration and the editor work come together), so for now it is
-            # read and dropped on purpose. Move it up into the column list in
-            # store.js and this comment away when that lands.
+            # (the migration and the editor work come together), so signed in it is
+            # read and dropped on purpose. The signed-out store keeps the whole
+            # object, which is why App.jsx's handleEditorSave clears it when the
+            # steps change. Move it up into the column list in store.js and this
+            # comment away when the column lands.
             "instruction_groups",
         }
         for name, recipe in self.all_four().items():

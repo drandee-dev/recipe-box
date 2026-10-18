@@ -207,7 +207,7 @@ def parse_jsonld_recipe(html: str, source_url: str) -> dict | None:
         # The headings the page put over its ingredient groups ("For the crust"),
         # which `recipeIngredient` flattens away. Read before blank lines are
         # dropped, since the count has to match the page's own list.
-        ingredient_groups = sections.wprm_ingredient_groups(soup, len(ingredients))
+        ingredient_groups = sections.wprm_ingredient_groups(soup, ingredients)
         parsed = []
         for n, i in enumerate(ingredients):
             if not (isinstance(i, str) and i.strip()):
@@ -224,7 +224,7 @@ def parse_jsonld_recipe(html: str, source_url: str) -> dict | None:
         steps = [text for text, _ in flat]
         instruction_groups = sections.informative([name for _, name in flat])
         if instruction_groups is None:
-            instruction_groups = sections.wprm_instruction_groups(soup, len(steps))
+            instruction_groups = sections.wprm_instruction_groups(soup, steps)
         total_min = _iso_duration_to_min(node.get("totalTime"))
 
         # This path never calls a model, so it used to hand back an untagged

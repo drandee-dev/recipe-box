@@ -6,8 +6,8 @@ crust, the topping, the filling) and write their steps under the same headings.
 `recipeIngredient` is one flat list, so the headings are gone by the time a
 JSON-LD parser has read it; they survive in the page's own markup and, for steps,
 in `HowToSection`. Nothing here guesses: a heading is kept only when the markup
-names it AND the counts line up with the list it labels, and any disagreement
-returns None, which is the same recipe as before.
+names it AND the card lines up with the list it labels, both in count and in
+content, and any disagreement returns None, which is the same recipe as before.
 
 Evidence this is the shape in the wild (checked on real pages, 2026-10-17): WP
 Recipe Maker puts each group in a `.wprm-recipe-ingredient-group` with an
@@ -16,6 +16,7 @@ exactly on every page that carried groups. No other plugin was seen with groups,
 so none is parsed.
 """
 
+import html
 import re
 
 MAX_NAME = 60
@@ -25,7 +26,10 @@ GENERIC_NAMES = {"ingredients", "ingredient", "directions", "instructions", "met
 
 
 def clean_name(text) -> str | None:
-    name = re.sub(r"\s+", " ", str(text or "")).strip().strip(":").strip()
+    # A section name that is not text (a list, a number) is not a name.
+    if not isinstance(text, str):
+        return None
+    name = re.sub(r"\s+", " ", html.unescape(text)).strip().strip(":").strip()
     if not name or name.lower() in GENERIC_NAMES:
         return None
     name = name[:MAX_NAME]
@@ -42,35 +46,60 @@ def informative(groups: list[str | None]) -> list[str | None] | None:
     return groups
 
 
-def wprm_ingredient_groups(soup, count: int) -> list[str | None] | None:
-    """One name (or None) per ingredient, in the order of `recipeIngredient`, read
-    from a WP Recipe Maker block. None when there is no block, no named group, or
-    the block does not hold exactly `count` lines (a second recipe card, or a page
-    whose card and markup disagree: never guess which line is which)."""
-    container = soup.select_one(".wprm-recipe-ingredients-container")
-    if container is None:
-        return None
-    groups: list[str | None] = []
-    for group in container.select(".wprm-recipe-ingredient-group"):
-        label = group.select_one(".wprm-recipe-group-name")
-        name = clean_name(label.get_text(" ")) if label else None
-        groups.extend([name] * len(group.select("li.wprm-recipe-ingredient")))
-    if len(groups) != count:
-        return None
-    return informative(groups)
+def _words(text) -> set[str]:
+    return set(re.findall(r"[a-z]{3,}", html.unescape(str(text or "")).lower()))
 
 
-def wprm_instruction_groups(soup, count: int) -> list[str | None] | None:
+def _same_content(card: list[str], listed: list) -> bool:
+    """Line n of the card is line n of the list: the two share a word of three
+    letters or more at every position (or are both empty). Equal counts alone
+    would let a roundup page's other card, or a card in a different order, hand
+    its headings to the wrong lines."""
+    if len(card) != len(listed):
+        return False
+    for on_card, in_list in zip(card, listed):
+        a, b = _words(on_card), _words(in_list)
+        if (a or b) and not (a & b):
+            return False
+    return True
+
+
+def _groups(soup, container_sel: str, group_sel: str, item_sel: str, listed: list) -> list[str | None] | None:
+    """One name (or None) per line, from the first WP Recipe Maker card whose
+    lines are the page's own."""
+    for container in soup.select(container_sel):
+        groups: list[str | None] = []
+        texts: list[str] = []
+        for group in container.select(group_sel):
+            label = group.select_one(".wprm-recipe-group-name")
+            name = clean_name(label.get_text(" ")) if label else None
+            items = group.select(item_sel)
+            groups.extend([name] * len(items))
+            texts.extend(item.get_text(" ", strip=True) for item in items)
+        if _same_content(texts, listed):
+            return informative(groups)
+    return None
+
+
+def wprm_ingredient_groups(soup, listed: list) -> list[str | None] | None:
+    """One name (or None) per entry of `recipeIngredient`, in its order. `listed`
+    is that list exactly as the page gave it, blanks and all."""
+    return _groups(
+        soup,
+        ".wprm-recipe-ingredients-container",
+        ".wprm-recipe-ingredient-group",
+        "li.wprm-recipe-ingredient",
+        listed,
+    )
+
+
+def wprm_instruction_groups(soup, listed: list) -> list[str | None] | None:
     """The same for steps, used when the JSON-LD steps are flat but the card has
     sections."""
-    container = soup.select_one(".wprm-recipe-instructions-container")
-    if container is None:
-        return None
-    groups: list[str | None] = []
-    for group in container.select(".wprm-recipe-instruction-group"):
-        label = group.select_one(".wprm-recipe-group-name")
-        name = clean_name(label.get_text(" ")) if label else None
-        groups.extend([name] * len(group.select("li.wprm-recipe-instruction")))
-    if len(groups) != count:
-        return None
-    return informative(groups)
+    return _groups(
+        soup,
+        ".wprm-recipe-instructions-container",
+        ".wprm-recipe-instruction-group",
+        "li.wprm-recipe-instruction",
+        listed,
+    )

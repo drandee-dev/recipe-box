@@ -101,12 +101,40 @@ class IngredientGroups(unittest.TestCase):
         got = [(i["raw"], i.get("group")) for i in self.parse(lines, body)["ingredients"]]
         self.assertEqual(got, [("2 cups flour", None), ("1 cup sugar", None), ("3 tbsp butter", "Topping")])
 
-    def test_a_second_recipe_card_cannot_misalign_the_first(self):
-        # Only the first container is read; a page with two cards that disagree on
-        # the count is the mismatch case, not a guess.
-        body = wprm_ingredients([(None, FLAT[:2]), ("Topping", FLAT[2:])]) + wprm_ingredients([("Other", FLAT[:1])])
+    def test_the_card_that_is_the_pages_own_is_the_one_used(self):
+        # A roundup page: the first card is another recipe with the same number of
+        # lines, and the JSON-LD belongs to the second. Equal counts are not
+        # enough; the first card's headings must not land on these lines.
+        roundup = wprm_ingredients(
+            [("Roundup A", ["1 cup rice", "2 eggs"]), ("Roundup B", ["1 onion", "3 cloves garlic"])]
+        )
+        own = wprm_ingredients([(None, FLAT[:2]), ("Topping", FLAT[2:])])
+        recipe = self.parse(FLAT, roundup + own)
+        self.assertEqual(
+            [i.get("group") for i in recipe["ingredients"]], [None, None, "Topping", "Topping"]
+        )
+
+    def test_a_card_in_a_different_order_gets_no_groups(self):
+        # Same count, same lines, different order: the headings would land on the
+        # wrong lines, so none are kept.
+        body = wprm_ingredients([("Crust", [FLAT[3], FLAT[2]]), ("Topping", [FLAT[1], FLAT[0]])])
         recipe = self.parse(FLAT, body)
-        self.assertEqual(recipe["ingredients"][3]["group"], "Topping")
+        self.assertTrue(all("group" not in i for i in recipe["ingredients"]))
+
+    def test_a_nested_list_that_shifts_the_count_cannot_shift_the_groups(self):
+        # An <li> inside an <li> inflates the item count by one; the content check
+        # refuses it rather than moving every later heading up a line.
+        nested = (
+            '<div class="wprm-recipe-ingredients-container"><div class="wprm-recipe-ingredient-group">'
+            '<ul><li class="wprm-recipe-ingredient">2 cups flour<ul>'
+            '<li class="wprm-recipe-ingredient">sifted twice</li></ul></li>'
+            '<li class="wprm-recipe-ingredient">1 cup sugar</li></div>'
+            '<div class="wprm-recipe-ingredient-group"><h4 class="wprm-recipe-group-name">Topping</h4>'
+            '<ul><li class="wprm-recipe-ingredient">3 tbsp butter</li>'
+            '<li class="wprm-recipe-ingredient">1 tsp salt</li></ul></div></div>'
+        )
+        recipe = self.parse(FLAT, nested)
+        self.assertTrue(all("group" not in i for i in recipe["ingredients"]))
 
 
 class StepSections(unittest.TestCase):
@@ -170,6 +198,19 @@ class StepSections(unittest.TestCase):
 
 
 class CleanName(unittest.TestCase):
+    def test_entities_and_non_text(self):
+        self.assertEqual(sections.clean_name("Assembly &amp; Baking"), "Assembly & Baking")
+        self.assertIsNone(sections.clean_name(["x"]))
+        self.assertIsNone(sections.clean_name(5))
+
+    def test_a_howtosection_with_a_list_for_a_name_is_unnamed(self):
+        steps = [
+            {"@type": "HowToSection", "name": ["x"], "itemListElement": [{"text": "One."}]},
+            {"@type": "HowToSection", "name": "Filling", "itemListElement": [{"text": "Two."}]},
+        ]
+        recipe = extract.parse_jsonld_recipe(page(FLAT, steps), URL)
+        self.assertEqual(recipe["instruction_groups"], [None, "Filling"])
+
     def test_names(self):
         self.assertEqual(sections.clean_name("  For the Crust: "), "For the Crust")
         self.assertEqual(sections.clean_name("SAUCE"), "Sauce")
