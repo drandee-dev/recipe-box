@@ -207,7 +207,7 @@ function takeUnit(text) {
 // shop. It is deliberately not conditioned on anything cleverer: `o` also
 // over-collapses words like "shoes", which are not ingredients, and this string
 // is never shown to anyone.
-function singular(word) {
+export function singular(word) {
   if (word.length <= 3) return word
   if (word.endsWith('ies')) return `${word.slice(0, -3)}y`
   if (/(ch|sh|s|x|z|o)es$/.test(word)) return word.slice(0, -2)
