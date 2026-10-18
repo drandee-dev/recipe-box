@@ -95,6 +95,15 @@ the source's own line when the source is already English, otherwise your English
 rendering of it. Fill `item`, `qty`, and `unit` only when they are unambiguous; use
 null otherwise. Times are whole minutes.
 
+Some sources divide a recipe into named parts: "For the crust", "Sauce", "Topping".
+When the ingredients are divided like that, put the part's name in each
+ingredient's `group`, in the source's own words and without a trailing colon, and use
+null for a line that sits under no heading. When the method is divided the same way,
+`instruction_groups` has exactly one entry per instruction, in order, holding the
+name of the part that instruction sits under, or null. A source with no named parts
+gets null everywhere, and `instruction_groups` is then a list of nulls. Never invent
+a part: a name belongs in these fields only when the source wrote it.
+
 Tags come from a fixed list, enforced by the schema. Give between two and five
 whenever the text supports them, and reach for the obvious ones rather than
 holding out for certainty: the kind of dish, the main protein, the cuisine, the
@@ -124,8 +133,10 @@ INGREDIENT_SCHEMA = {
         "item": {"anyOf": [{"type": "string"}, {"type": "null"}]},
         "qty": {"anyOf": [{"type": "string"}, {"type": "null"}]},
         "unit": {"anyOf": [{"type": "string"}, {"type": "null"}]},
+        # The named part of the recipe this line sits under ("For the crust").
+        "group": {"anyOf": [{"type": "string"}, {"type": "null"}]},
     },
-    "required": ["raw", "item", "qty", "unit"],
+    "required": ["raw", "item", "qty", "unit", "group"],
     "additionalProperties": False,
 }
 
@@ -140,6 +151,9 @@ RECIPE_SCHEMA = {
         "description": {"type": "string"},
         "ingredients": {"type": "array", "items": INGREDIENT_SCHEMA},
         "instructions": {"type": "array", "items": {"type": "string"}},
+        # One entry per instruction, in order. A length the model gets wrong is
+        # caught in `to_recipe`, since the schema subset has no minItems/maxItems.
+        "instruction_groups": {"type": "array", "items": {"anyOf": [{"type": "string"}, {"type": "null"}]}},
         "prep_min": _NULLABLE_INT,
         "cook_min": _NULLABLE_INT,
         "total_min": _NULLABLE_INT,
@@ -155,6 +169,7 @@ RECIPE_SCHEMA = {
         "description",
         "ingredients",
         "instructions",
+        "instruction_groups",
         "prep_min",
         "cook_min",
         "total_min",

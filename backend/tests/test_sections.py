@@ -16,7 +16,7 @@ import unittest
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
-from app import extract, sections  # noqa: E402
+from app import ai, extract, sections, social  # noqa: E402
 
 
 def page(ingredients, instructions, body=""):
@@ -204,6 +204,84 @@ class StepSections(unittest.TestCase):
         )
         recipe = extract.parse_jsonld_recipe(page(FLAT, ["a", "b", "c"], body), URL)
         self.assertIsNone(recipe["instruction_groups"])
+
+
+class AIPath(unittest.TestCase):
+    """What the model returns for a recipe the page gave no markup for (the
+    bakery page that prompted all of this). The model reads the headings; this
+    code decides whether to believe it."""
+
+    POST = {"caption": "", "image_url": None, "title": ""}
+
+    def recipe(self, ingredients, instructions, instruction_groups):
+        structured = {
+            "title": "Bars",
+            "ingredients": [
+                {"raw": raw, "item": None, "qty": None, "unit": None, "group": group}
+                for raw, group in ingredients
+            ],
+            "instructions": instructions,
+            "instruction_groups": instruction_groups,
+        }
+        return social.to_recipe(structured, "https://example.com/x", "web", self.POST)
+
+    def test_headings_come_through_on_the_lines_and_the_steps(self):
+        r = self.recipe(
+            [("8 tbsp butter", "For the Crust"), ("1 cup flour", "For the Topping")],
+            ["Mix the crust.", "Make the topping."],
+            ["For the Crust", "For the Topping"],
+        )
+        self.assertEqual([i.get("group") for i in r["ingredients"]], ["For the Crust", "For the Topping"])
+        self.assertEqual(r["instruction_groups"], ["For the Crust", "For the Topping"])
+
+    def test_a_source_with_no_parts_gets_no_groups(self):
+        r = self.recipe([("1 cup flour", None), ("2 eggs", None)], ["Mix.", "Bake."], [None, None])
+        self.assertTrue(all("group" not in i for i in r["ingredients"]))
+        self.assertIsNone(r["instruction_groups"])
+
+    def test_one_part_or_a_generic_label_is_not_a_part(self):
+        r = self.recipe(
+            [("1 cup flour", "Ingredients"), ("2 eggs", "Ingredients")], ["Mix."], ["Method"]
+        )
+        self.assertTrue(all("group" not in i for i in r["ingredients"]))
+        self.assertIsNone(r["instruction_groups"])
+
+    def test_every_line_under_one_named_part_is_not_a_division(self):
+        r = self.recipe([("1 cup flour", "Crust"), ("2 eggs", "Crust")], ["Mix.", "Bake."], ["Crust", "Crust"])
+        self.assertTrue(all("group" not in i for i in r["ingredients"]))
+        self.assertIsNone(r["instruction_groups"])
+
+    def test_a_step_list_of_the_wrong_length_is_thrown_away_whole(self):
+        # One entry short would hand every later step the wrong section.
+        r = self.recipe([("1 cup flour", None)], ["One.", "Two.", "Three."], ["A", "B"])
+        self.assertIsNone(r["instruction_groups"])
+
+    def test_blank_instructions_are_dropped_at_the_same_positions(self):
+        r = self.recipe([("1 cup flour", None)], ["One.", "  ", "Three."], ["Crust", "Crust", "Filling"])
+        self.assertEqual(r["instructions"], ["One.", "Three."])
+        self.assertEqual(r["instruction_groups"], ["Crust", "Filling"])
+
+    def test_garbage_from_the_model_does_not_crash(self):
+        structured = {
+            "title": "x",
+            "ingredients": [{"raw": "a", "group": 5}, {"raw": "b", "group": ["x"]}, {"raw": "c"}],
+            "instructions": ["s"],
+            "instruction_groups": "not a list",
+        }
+        r = social.to_recipe(structured, "https://example.com/x", "web", self.POST)
+        self.assertTrue(all("group" not in i for i in r["ingredients"]))
+        self.assertIsNone(r["instruction_groups"])
+
+    def test_the_schema_asks_for_exactly_what_to_recipe_reads(self):
+        ing = ai.RECIPE_SCHEMA["properties"]["ingredients"]["items"]
+        self.assertIn("group", ing["properties"])
+        self.assertIn("group", ing["required"])
+        self.assertIn("instruction_groups", ai.RECIPE_SCHEMA["properties"])
+        self.assertIn("instruction_groups", ai.RECIPE_SCHEMA["required"])
+        # The structured-outputs subset: every property required, no extras.
+        self.assertEqual(set(ing["properties"]), set(ing["required"]))
+        self.assertEqual(set(ai.RECIPE_SCHEMA["properties"]), set(ai.RECIPE_SCHEMA["required"]))
+        self.assertIs(ing["additionalProperties"], False)
 
 
 class CleanName(unittest.TestCase):
