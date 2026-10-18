@@ -23,7 +23,17 @@ export const NEWS = [
     date: '2026-10-17',
     title: 'Version 1.1.0',
     body: 'Dark mode, notes, leftovers, timers that ring on a locked phone, and more. Tap to see what changed.',
+    // A large notice that stays until the person closes it, for a release that is
+    // not complete until the app has been closed and opened again. It can only
+    // appear once the new build is running, so it says what to do next rather
+    // than announcing something still to come.
+    update: {
+      heading: 'Close and reopen Recipe Box',
+      text: 'Version 1.1.0 is here. If you had Recipe Box open, close the app completely and open it again to finish updating. On an iPhone, swipe up from the bottom of the screen, flick Recipe Box away, and open it from your home screen.',
+    },
     notes: [
+      'A recipe you write by hand can now get a photo from your camera or your photo library.',
+      'Imported recipes get more accurate tags.',
       'Timers can now alert you on a locked phone, if you install the app and allow notifications. On an iPhone this needs iOS 18.4 or later.',
       'Run several timers at once from a tray that follows you around, and add one by hand.',
       'Switch recipes and the shopping list between metric and US measures. Amounts of the same thing now add up across units, so ticks on weight and volume items start fresh once.',
@@ -31,6 +41,9 @@ export const NEWS = [
       "Mark things you always have, like salt, as staples. Move an item to its real aisle and put the aisles in your shop's order. Share the list as text.",
       "Add some of a recipe's ingredients to the list without planning it.",
       'Add notes to a recipe, mark it as cooked, and sort by recently cooked or most cooked.',
+      'Swipe the Planner or Shopping screen to change the week.',
+      'Cook mode shows how much of each ingredient the step uses, so you do not have to scroll the list.',
+      'Recipes divided into parts, like crust, filling and topping, keep their headings, and cook mode shows which part a step belongs to. Recipes you saved before this update have no parts until you import them again.',
       'Download all your recipes as a file from the account menu.',
       'Dark mode follows your phone, or choose Light or Dark in the account menu.',
       'Easier to read: bigger recipe text, amounts lined up in a column, ingredients beside the step in cook mode, a slimmer update notice, and a wider layout on tablets and laptops.',

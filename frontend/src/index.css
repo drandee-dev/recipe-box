@@ -1199,6 +1199,36 @@ textarea.field {
   color: var(--info-ink);
 }
 
+/* The large variant (an entry with an `update` block): the same info triplet,
+   but a block of its own rather than a row, since it asks for something. */
+.rb-news-update {
+  display: block;
+  margin: var(--sp-4) 0 0;
+  padding: var(--sp-6);
+  border-radius: var(--r-lg);
+}
+
+.rb-news-update-title {
+  margin: 0 0 var(--sp-3);
+  font-family: 'Clash Display', 'Satoshi', sans-serif;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.rb-news-update-text {
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+}
+
+.rb-news-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
 .rb-whatsnew {
   margin: 0 0 var(--sp-6);
   padding: 0;

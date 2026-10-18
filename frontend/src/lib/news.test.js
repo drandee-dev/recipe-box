@@ -18,6 +18,15 @@ test('every entry has an id, a known kind, a title and something to say', () => 
   }
 })
 
+test('an update block, when there is one, has both a heading and what to do', () => {
+  // The large banner renders these two strings and nothing else; one missing
+  // would put an empty card on every user's screen that they must close.
+  for (const entry of NEWS.filter((e) => e.update)) {
+    assert.ok(entry.update.heading?.trim(), `${entry.id}: update has no heading`)
+    assert.ok(entry.update.text?.trim(), `${entry.id}: update has no text`)
+  }
+})
+
 test('ids are unique', () => {
   const ids = NEWS.map((e) => e.id)
   assert.equal(new Set(ids).size, ids.length)
