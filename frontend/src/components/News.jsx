@@ -26,6 +26,28 @@ function longDate(iso) {
 // (182px at 390, pushing the first photo to y=434); the full text and the
 // feedback button live in the What's new sheet, one tap away.
 export function NewsBanner({ entry, onWhatsNew, onDismiss }) {
+  // An entry with an `update` block is the large one: it is a request to do
+  // something, so it gets the room to say it and a button that closes it, rather
+  // than a slim row with a small cross.
+  if (entry.update) {
+    return (
+      <section className="rb-news rb-news-update" aria-labelledby="rb-news-update-title">
+        <h2 id="rb-news-update-title" className="rb-news-update-title">
+          {entry.update.heading}
+        </h2>
+        <p className="rb-news-update-text">{entry.update.text}</p>
+        <div className="rb-news-update-actions">
+          <button type="button" className="btn btn-primary btn-lg" onClick={onDismiss}>
+            Got it
+          </button>
+          <button type="button" className="btn btn-quiet" onClick={onWhatsNew}>
+            See what's new
+          </button>
+        </div>
+      </section>
+    )
+  }
+
   return (
     <section className="rb-news" aria-label="News">
       <button type="button" className="rb-news-main" onClick={onWhatsNew}>

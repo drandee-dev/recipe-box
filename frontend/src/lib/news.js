@@ -23,7 +23,17 @@ export const NEWS = [
     date: '2026-10-17',
     title: 'Version 1.1.0',
     body: 'Dark mode, notes, leftovers, timers that ring on a locked phone, and more. Tap to see what changed.',
+    // A large notice that stays until the person closes it, for a release that is
+    // not complete until the app has been closed and opened again. It can only
+    // appear once the new build is running, so it says what to do next rather
+    // than announcing something still to come.
+    update: {
+      heading: 'Close and reopen Recipe Box',
+      text: 'Version 1.1.0 is here. To finish updating, close the app completely, then open it again. On an iPhone, swipe up from the bottom of the screen, flick Recipe Box away, and open it from your home screen.',
+    },
     notes: [
+      'A recipe you write by hand can now get a photo from your camera or your photo library.',
+      'Imported recipes get more accurate tags.',
       'Timers can now alert you on a locked phone, if you install the app and allow notifications. On an iPhone this needs iOS 18.4 or later.',
       'Run several timers at once from a tray that follows you around, and add one by hand.',
       'Switch recipes and the shopping list between metric and US measures. Amounts of the same thing now add up across units, so ticks on weight and volume items start fresh once.',
