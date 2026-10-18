@@ -6,18 +6,30 @@
 // list keeps its scroll position and the recipe gets the whole screen instead of
 // a card-width column.
 //
-// Everything held here is per-opening and deliberately not stored: which
-// ingredients you have gathered, how far down the steps you are, whether the
-// overflow is open, a half-filled plan slot. The sheet unmounts on close, which
-// clears all of it. Nothing is saved, so nothing can go stale — a tick left over
-// from Tuesday's cook is worse than no tick at all.
+// Most of what is held here is per-opening and deliberately not stored: whether
+// the overflow is open, a half-filled plan slot, the serving scale. The sheet
+// unmounts on close, which clears all of it. The exception is which ingredients
+// you have gathered and which steps you have done: those are kept for twelve
+// hours (lib/cookProgress.js), because losing them to a text message mid-cook is
+// the failure, while a tick left over from Tuesday's cook is worse than no tick,
+// hence the limit.
 
-import { Fragment, useEffect, useRef, useState } from 'react'
+import { Fragment, useEffect, useMemo, useRef, useState } from 'react'
 import CookMode from './CookMode.jsx'
 import RecipeThumb from './RecipeThumb.jsx'
 import Sheet from './Sheet.jsx'
-import { baseServings, hostOf, metaParts, servingsLabel } from '../lib/recipes.js'
-import { scaleIngredientText } from '../lib/ingredients.js'
+import StepText from './StepText.jsx'
+import { loadProgress, saveProgress } from '../lib/cookProgress.js'
+import { useWakeLock } from '../lib/useWakeLock.js'
+import { SERVINGS_MAX_FACTOR, baseServings, hostOf, metaParts, servingsLabel } from '../lib/recipes.js'
+import UnitsToggle from './UnitsToggle.jsx'
+import { displayIngredient } from '../lib/convert.js'
+import { qtyColumnCh } from '../lib/ingredients.js'
+import { stepIngredientMap } from '../lib/stepIngredients.js'
+import { headingAt, ingredientGroups, sectionsFor } from '../lib/sections.js'
+import { cookedLabel } from '../lib/cooked.js'
+import IngredientLine from './IngredientLine.jsx'
+import { useUnits } from '../lib/useUnits.js'
 import { SLOTS, addDays, dayName, shortDate, toISODate } from '../lib/dates.js'
 
 const SLOT_LABELS = {
@@ -32,11 +44,6 @@ const SLOT_LABELS = {
 // yesterday on a Wednesday and hide next Monday all week.
 const PLAN_DAYS = 7
 
-// Four times what the recipe says is already past the point where the tin, the
-// pan and the oven stop cooperating, and halving is the only direction anyone
-// goes below one batch. The floor is one serving rather than zero, since zero
-// servings of anything is not a thing to cook.
-const SERVINGS_MAX_FACTOR = 4
 
 function planDayLabel(date, offset) {
   if (offset === 0) return 'Today'
@@ -48,7 +55,7 @@ function planDayLabel(date, offset) {
 // the common case: opening the original page, and deleting. Delete is in here
 // rather than in the row of buttons because it was previously one tap away from
 // Edit with nothing between them.
-function OverflowMenu({ recipe, onDelete, onClose }) {
+function OverflowMenu({ recipe, onEdit, onDelete, onClose }) {
   const menuRef = useRef(null)
 
   useEffect(() => {
@@ -85,6 +92,16 @@ function OverflowMenu({ recipe, onDelete, onClose }) {
   // of links and buttons that Tab already reaches.
   return (
     <div className="detail-menu-pop" ref={menuRef}>
+      <button
+        type="button"
+        className="detail-menu-item"
+        onClick={() => {
+          onClose()
+          onEdit(recipe)
+        }}
+      >
+        Edit recipe
+      </button>
       {recipe.source_url && (
         <a
           className="detail-menu-item"
@@ -117,20 +134,54 @@ export default function RecipeDetail({
   onDelete,
   onToggleFavorite,
   onAssign,
+  onToList,
+  cookStat,
+  onCooked,
+  onUndoCooked,
+  onSaveNotes,
 }) {
   // Sets of indices. Ingredients are a gathering list, steps are a progress
   // marker, and they are separate because ticking off the flour has nothing to
   // do with having finished step three.
-  const [gathered, setGathered] = useState(() => new Set())
-  const [done, setDone] = useState(() => new Set())
+  //
+  // They come back if you were cooking in the last twelve hours (lib/cookProgress),
+  // so a text or a locked phone doesn't cost you your place.
+  const [saved] = useState(() => loadProgress(recipe.id, recipe.instructions.length))
+  const [gathered, setGathered] = useState(() => new Set(saved.gathered))
+  const [done, setDone] = useState(() => new Set(saved.done))
   const [menuOpen, setMenuOpen] = useState(false)
+
+  // The cook logged from this open sheet, if any, so it can be taken back; and
+  // whether a log request is in flight, so a double tap is one cook.
+  const [lastCookId, setLastCookId] = useState(null)
+  const [cookBusy, setCookBusy] = useState(false)
+
+  // Notes. The draft is kept in state until a save succeeds, so a failed write
+  // never costs the typing (the same rule the editor follows).
+  const [noteOpen, setNoteOpen] = useState(false)
+  const [noteDraft, setNoteDraft] = useState('')
+  const [noteError, setNoteError] = useState('')
+  const [noteSaving, setNoteSaving] = useState(false)
 
   const [planOpen, setPlanOpen] = useState(false)
   const [planDate, setPlanDate] = useState(() => toISODate(new Date()))
   const [planSlot, setPlanSlot] = useState('dinner')
   const [planned, setPlanned] = useState(null)
 
+  // "To list": put some of this recipe's ingredients on the shopping list without
+  // planning a meal. Which lines are chosen is held by index, and starts as every
+  // line you have not already ticked off as gathered.
+  const [listOpen, setListOpen] = useState(false)
+  const [listPicked, setListPicked] = useState(() => new Set())
+  const [listSending, setListSending] = useState(false)
+  const [listed, setListed] = useState(null)
+
   const [cooking, setCooking] = useState(false)
+
+  // Held for as long as the recipe is open, not only in cook mode: reading a
+  // recipe off a phone propped on the counter is the same job. Paprika buries
+  // this in a setting and people complain about it.
+  useWakeLock()
 
   // The scaler (finding 12). Like everything else in this sheet it is per
   // opening and unstored: a recipe you cooked double for six people once is not
@@ -143,22 +194,44 @@ export default function RecipeDetail({
   // careful not to invent.
   const base = baseServings(recipe)
   const [servings, setServings] = useState(base)
+
+  // Starts as the standing setting (account sheet) and can be flipped for this
+  // one recipe without changing it. Per opening and unstored, like the scale.
+  const standingUnits = useUnits()
+  const [units, setLocalUnits] = useState(standingUnits)
   const factor = base && servings ? servings / base : 1
 
   const today = new Date()
   const planDays = Array.from({ length: PLAN_DAYS }, (_, i) => addDays(today, i))
 
+  // The step you are on: the first not ticked. Derived, so ticking moves it and
+  // nothing else has to be kept in step. -1 once every step is ticked.
+  const currentStep = recipe.instructions.findIndex((_, n) => !done.has(n))
+
+  // The lines as shown (scaled, in the chosen units) and the width of the one
+  // quantity column they share. Both lists on this sheet use the same two.
+  const ingLines = recipe.ingredients.map((ing) => displayIngredient(ing.raw, { factor, units }))
+  const qtyCh = qtyColumnCh(ingLines)
+  // What each step uses (lib/stepIngredients), shown under the step.
+  const stepMap = useMemo(() => stepIngredientMap(recipe), [recipe])
+  // The named parts the ingredients and the steps are divided into, when the
+  // source had any (lib/sections). Null for a recipe with none.
+  const ingGroups = useMemo(() => ingredientGroups(recipe.ingredients), [recipe.ingredients])
+  const stepGroups = useMemo(() => sectionsFor(recipe), [recipe])
+
   const host = hostOf(recipe.source_url)
   const tags = recipe.tags || []
   const empty = recipe.ingredients.length === 0 && recipe.instructions.length === 0
 
-  function toggle(setter, index) {
-    setter((prev) => {
-      const next = new Set(prev)
-      if (next.has(index)) next.delete(index)
-      else next.add(index)
-      return next
-    })
+  // Saved from the handler, not an effect: an effect would also run on open and
+  // refresh the saved time of progress you never touched.
+  function toggle(kind, index) {
+    const [current, setter] = kind === 'gathered' ? [gathered, setGathered] : [done, setDone]
+    const next = new Set(current)
+    if (next.has(index)) next.delete(index)
+    else next.add(index)
+    setter(next)
+    saveProgress(recipe.id, { [kind]: [...next] })
   }
 
   // What the chosen day is called, used by both the commit button and the
@@ -171,9 +244,87 @@ export default function RecipeDetail({
   }
 
   function addToPlan() {
-    onAssign(recipe.id, planDate, planSlot)
+    // A recipe scaled on this sheet is planned at that scale: the stepper says
+    // how many you are cooking for, and the shopping list should buy for it.
+    // Untouched, it is null, which means "as the recipe says".
+    onAssign(recipe.id, planDate, planSlot, factor !== 1 ? servings : null)
     setPlanned(`${chosenLabel} ${SLOT_LABELS[planSlot].toLowerCase()}`)
     setPlanOpen(false)
+  }
+
+  async function markCooked() {
+    if (cookBusy) return
+    setCookBusy(true)
+    try {
+      setLastCookId(await onCooked(recipe.id))
+    } finally {
+      setCookBusy(false)
+    }
+  }
+
+  async function undoCooked() {
+    const id = lastCookId
+    setLastCookId(null)
+    if (id) await onUndoCooked(id)
+  }
+
+  function openNote() {
+    setNoteDraft(recipe.notes || '')
+    setNoteError('')
+    setNoteOpen(true)
+  }
+
+  async function saveNote() {
+    if (noteSaving) return
+    setNoteSaving(true)
+    setNoteError('')
+    try {
+      await onSaveNotes(recipe, noteDraft)
+      setNoteOpen(false)
+    } catch {
+      // The draft stays exactly as typed.
+      setNoteError("Couldn't save the note. Your text is still here, try again.")
+    } finally {
+      setNoteSaving(false)
+    }
+  }
+
+  function openList() {
+    setPlanOpen(false)
+    setPlanned(null)
+    setListed(null)
+    if (!listOpen) {
+      setListPicked(new Set(recipe.ingredients.map((_, n) => n).filter((n) => !gathered.has(n))))
+    }
+    setListOpen((v) => !v)
+  }
+
+  function toggleListed(n) {
+    setListPicked((prev) => {
+      const next = new Set(prev)
+      if (next.has(n)) next.delete(n)
+      else next.add(n)
+      return next
+    })
+  }
+
+  // The lines go on as written on screen, scaled and in the units shown, since
+  // that is what the person was looking at when they chose them.
+  async function addToList() {
+    const lines = recipe.ingredients
+      .map((_, n) => (listPicked.has(n) ? ingLines[n] : null))
+      .filter(Boolean)
+    if (lines.length === 0 || listSending) return
+    setListSending(true)
+    try {
+      const weekLabel = await onToList(recipe, lines)
+      setListed(`${lines.length} ${lines.length === 1 ? 'line' : 'lines'} added to the list for ${weekLabel}.`)
+      setListOpen(false)
+    } catch {
+      setListed("Couldn't add them. Try again.")
+    } finally {
+      setListSending(false)
+    }
   }
 
   return (
@@ -217,7 +368,7 @@ export default function RecipeDetail({
               <span aria-hidden="true">⋯</span>
             </button>
             {menuOpen && (
-              <OverflowMenu recipe={recipe} onClose={() => setMenuOpen(false)} onDelete={onDelete} />
+              <OverflowMenu recipe={recipe} onClose={() => setMenuOpen(false)} onEdit={onEdit} onDelete={onDelete} />
             )}
           </span>
         </>
@@ -245,6 +396,23 @@ export default function RecipeDetail({
           </Fragment>
         ))}
       </p>
+
+      {/* The cooked log, said in one line, and the one tap that adds to it. Cook
+          mode's Done logs a cook by itself; this is for a meal made without it.
+          Undo is offered for the cook logged from this open sheet only: a mistaken
+          tap is one row to take back, and an old cook is not something a stray
+          tap here should be able to erase. */}
+      <div className="detail-cooked">
+        {cookedLabel(cookStat) && <span className="detail-cooked-label">{cookedLabel(cookStat)}</span>}
+        <button type="button" className="btn btn-quiet" onClick={markCooked} disabled={cookBusy}>
+          I cooked this
+        </button>
+        {lastCookId && (
+          <button type="button" className="btn btn-quiet" onClick={undoCooked}>
+            Undo
+          </button>
+        )}
+      </div>
 
       {/* Read-only (finding 15). Every tag used to carry a remove cross and an
           "Add a tag" field sat open underneath, so reading a recipe put you one
@@ -296,22 +464,33 @@ export default function RecipeDetail({
         </div>
       )}
 
+      {/* Units for this recipe only. Beside the servings stepper because both change
+          what the lines below say, and Original is the first choice so the recipe
+          opens as it was written unless the person has asked otherwise. */}
+      {recipe.ingredients.length > 0 && (
+        <div className="detail-units">
+          <UnitsToggle value={units} onChange={setLocalUnits} label="Measurements for this recipe" />
+        </div>
+      )}
+
       {/* The one verb this screen exists for, so it gets the width and the fill.
           It drops to secondary while the plan panel is open for the same reason
           Add to plan does — one filled accent per region. A recipe with no steps
           (a link card, or one still being filled in by hand) has nothing to cook
           from, and offering the button would open an empty screen. */}
-      {recipe.instructions.length > 0 && (
-        <button
-          type="button"
-          className={planOpen ? 'btn btn-secondary btn-block detail-cook' : 'btn btn-primary btn-block detail-cook'}
-          onClick={() => setCooking(true)}
-        >
-          Start cooking
-        </button>
-      )}
-
       <div className="detail-actions">
+        {/* One row, not a full-width button above a row of three: the ingredients
+            are what a person came for and they were starting at y=709 of 844 at
+            390px. Edit moved into the ⋯ menu to make the room. */}
+        {recipe.instructions.length > 0 && (
+          <button
+            type="button"
+            className={planOpen || listOpen ? 'btn btn-secondary' : 'btn btn-primary'}
+            onClick={() => setCooking(true)}
+          >
+            Start cooking
+          </button>
+        )}
         {/* Secondary once the panel is open. It has become the disclosure that
             opened the thing, and the accent belongs on the one button that
             actually commits — one filled accent per region, or "how important is
@@ -322,14 +501,17 @@ export default function RecipeDetail({
           aria-expanded={planOpen}
           onClick={() => {
             setPlanned(null)
+            setListOpen(false)
             setPlanOpen((v) => !v)
           }}
         >
           Add to plan
         </button>
-        <button type="button" className="btn btn-secondary" onClick={() => onEdit(recipe)}>
-          Edit
-        </button>
+        {recipe.ingredients.length > 0 && (
+          <button type="button" className="btn btn-secondary" aria-expanded={listOpen} onClick={openList}>
+            To list
+          </button>
+        )}
       </div>
 
       {/* Inline rather than a second sheet stacked on this one. The recipe you
@@ -378,9 +560,39 @@ export default function RecipeDetail({
         </div>
       )}
 
+      {listOpen && (
+        <div className="detail-plan">
+          <ul className="detail-tolist-lines">
+            {recipe.ingredients.map((ing, n) => (
+              <li key={n}>
+                <label>
+                  <input type="checkbox" checked={listPicked.has(n)} onChange={() => toggleListed(n)} />
+                  <IngredientLine text={ingLines[n]} ch={qtyCh} />
+                </label>
+              </li>
+            ))}
+          </ul>
+          <button
+            type="button"
+            className="btn btn-primary btn-block"
+            disabled={listPicked.size === 0 || listSending}
+            onClick={addToList}
+          >
+            {listPicked.size === 0
+              ? 'Choose lines to add'
+              : `Add ${listPicked.size} to this week's list`}
+          </button>
+        </div>
+      )}
+
       {planned && (
         <p className="detail-planned" role="status">
           Added to {planned}.
+        </p>
+      )}
+      {listed && (
+        <p className="detail-planned" role="status">
+          {listed}
         </p>
       )}
 
@@ -388,34 +600,53 @@ export default function RecipeDetail({
         <>
           {recipe.description && <p className="recipes-caption">{recipe.description}</p>}
           <p className="detail-meta">
-            No recipe was readable from this post. Fill it in by hand with Edit above, or open the
+            No recipe was readable from this post. Fill it in by hand with Edit recipe in the ⋯ menu, or open the
             source and paste the text into the + button's Paste recipe text.
           </p>
         </>
       ) : (
-        <>
+        // One column on a phone. From 900px the ingredients stay on the left
+        // (sticky) while the steps scroll beside them, which is how a recipe is
+        // read at a laptop or on a propped tablet.
+        <div className="detail-cols">
+          <div className="detail-col-ing">
           <h3 className="detail-heading">Ingredients</h3>
           <ul className="detail-checks">
             {recipe.ingredients.map((ing, n) => (
-              <li key={n} className={gathered.has(n) ? 'detail-check detail-check-on' : 'detail-check'}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={gathered.has(n)}
-                    onChange={() => toggle(setGathered, n)}
-                  />
-                  {/* Scaled, but only where a quantity was actually found at
-                      the head of this line. Anything else is the line as
-                      written — the same rule the shopping list follows, and the
-                      reason a scaled recipe can't produce a number the recipe
-                      never gave. */}
-                  <span>{scaleIngredientText(ing.raw, factor)}</span>
-                </label>
-              </li>
+              <Fragment key={n}>
+                {headingAt(ingGroups, n) && (
+                  <li className="detail-group" role="presentation">
+                    {headingAt(ingGroups, n)}
+                  </li>
+                )}
+                <li className={gathered.has(n) ? 'detail-check detail-check-on' : 'detail-check'}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={gathered.has(n)}
+                      onChange={() => toggle('gathered', n)}
+                    />
+                    {/* Scaled, but only where a quantity was actually found at
+                        the head of this line. Anything else is the line as
+                        written — the same rule the shopping list follows, and the
+                        reason a scaled recipe can't produce a number the recipe
+                        never gave. */}
+                    <IngredientLine text={ingLines[n]} ch={qtyCh} />
+                  </label>
+                </li>
+              </Fragment>
             ))}
           </ul>
+          </div>
 
+          <div className="detail-col-steps">
           <h3 className="detail-heading">Steps</h3>
+          {recipe.instructions.length > 0 && (
+            <p className="detail-awake">
+              {navigator.wakeLock ? 'Screen stays on while this is open. ' : ''}
+              Tap a time in a step to start a timer.
+            </p>
+          )}
           {/* Ingredients but no method is a normal import, not a failure: TikTok
               and Instagram creators routinely list what goes in and leave the
               how to the video. The `empty` branch above never catches it, so
@@ -424,29 +655,101 @@ export default function RecipeDetail({
           {recipe.instructions.length === 0 ? (
             <p className="detail-meta">
               The source listed ingredients but no method, usually because the steps are only in
-              the video. Add them with Edit below, or paste them into the + button&rsquo;s Paste
+              the video. Add them with Edit recipe in the ⋯ menu, or paste them into the + button&rsquo;s Paste
               recipe text.
             </p>
           ) : (
             <ol className="detail-checks detail-steps">
               {recipe.instructions.map((step, n) => (
-                <li key={n} className={done.has(n) ? 'detail-check detail-check-on' : 'detail-check'}>
+                <Fragment key={n}>
+                {headingAt(stepGroups, n) && (
+                  <li className="detail-group" role="presentation">
+                    {headingAt(stepGroups, n)}
+                  </li>
+                )}
+                <li
+                  aria-current={n === currentStep ? 'step' : undefined}
+                  className={
+                    done.has(n)
+                      ? 'detail-check detail-check-on'
+                      : n === currentStep
+                        ? 'detail-check detail-check-current'
+                        : 'detail-check'
+                  }
+                >
                   <label>
-                    <input type="checkbox" checked={done.has(n)} onChange={() => toggle(setDone, n)} />
+                    <input type="checkbox" checked={done.has(n)} onChange={() => toggle('done', n)} />
                     {/* The number is drawn rather than left to the <ol> marker,
                         because a marker sits outside the label and the whole row
                         has to be the tap target. */}
                     <span className="detail-step-n" aria-hidden="true">
                       {n + 1}
                     </span>
-                    <span>{step}</span>
+                    <span>
+                      <StepText text={step} recipe={recipe} step={n} units={units} />
+                      {stepMap[n]?.map((m) => (
+                        <span key={m.index} className="detail-step-needs">
+                          {ingLines[m.index]}
+                          {m.shared && m.group ? ` (${m.group})` : ''}
+                        </span>
+                      ))}
+                    </span>
                   </label>
                 </li>
+                </Fragment>
               ))}
             </ol>
           )}
-        </>
+          </div>
+        </div>
       )}
+
+      {/* What you learned cooking it. Below the method, because you read it after
+          cooking and before the next time; searchable from the list. Plain text,
+          shown exactly as typed. */}
+      <section className="detail-notes" aria-labelledby="detail-notes-title">
+        <h3 id="detail-notes-title" className="detail-heading">
+          Notes
+        </h3>
+        {noteOpen ? (
+          <div className="detail-note-edit">
+            <textarea
+              className="field"
+              rows={4}
+              maxLength={4000}
+              value={noteDraft}
+              onChange={(e) => setNoteDraft(e.target.value)}
+              placeholder="Used half the sugar, baked 5 minutes longer…"
+              aria-label="Notes on this recipe"
+              autoFocus
+            />
+            {noteError && (
+              <p className="rb-error" role="alert">
+                {noteError}
+              </p>
+            )}
+            <div className="detail-note-actions">
+              <button type="button" className="btn btn-quiet" onClick={() => setNoteOpen(false)} disabled={noteSaving}>
+                Cancel
+              </button>
+              <button type="button" className="btn btn-primary" onClick={saveNote} disabled={noteSaving}>
+                {noteSaving ? 'Saving…' : 'Save note'}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {recipe.notes ? (
+              <p className="detail-note-text">{recipe.notes}</p>
+            ) : (
+              <p className="detail-meta">Nothing yet. Write down what you would change next time.</p>
+            )}
+            <button type="button" className="btn btn-secondary" onClick={openNote}>
+              {recipe.notes ? 'Edit note' : 'Add a note'}
+            </button>
+          </>
+        )}
+      </section>
 
       {/* Opens over this sheet rather than replacing it, so closing cook mode
           puts you back on the recipe you were reading. That is the stacking case
@@ -456,6 +759,8 @@ export default function RecipeDetail({
           recipe={recipe}
           servings={base === null ? null : servingsLabel(recipe, servings)}
           factor={factor}
+          units={units}
+          onFinished={markCooked}
           onClose={() => setCooking(false)}
         />
       )}

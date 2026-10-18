@@ -13,14 +13,37 @@ const stored = localRows('recipebox:recipes')
 const COLS =
   'id,title,source_url,source_type,image_url,image_thumb_url,image_blur,description,' +
   'ingredients,instructions,prep_min,cook_min,total_min,servings,tags,favorite,' +
-  'created_at,updated_at'
+  'notes,instruction_groups,created_at,updated_at'
 
 const SOURCE_TYPES = new Set(['web', 'tiktok', 'instagram', 'manual'])
 
 // Extraction output may omit fields, and the DB check constraint rejects
 // unknown source_type values — shape every write to match supabase/schema.sql.
-function toRow(recipe) {
+// The step sections to write: the array only if it lines up with the steps (the
+// same length, strings and nulls), otherwise null. A list that is one short would
+// hand every later step the wrong section.
+export function stepSections(groups, steps) {
+  if (!Array.isArray(groups) || !Array.isArray(steps) || groups.length !== steps.length) return null
+  if (!groups.every((g) => g === null || typeof g === 'string')) return null
+  return groups.some(Boolean) ? groups : null
+}
+
+export function toRow(recipe) {
   return {
+    // Notes are the one column a write may not know about: a recipe object read
+    // before the column existed (an old offline copy) has no `notes` key at all,
+    // and writing null for it would erase notes saved from another device. An
+    // upsert leaves an omitted column alone, so it is left out unless the object
+    // actually carries it (null means "cleared", and is written).
+    ...(recipe.notes !== undefined && { notes: recipe.notes ? String(recipe.notes).slice(0, 4000) : null }),
+    // The same rule for step sections: one name (or null) per step, parallel to
+    // `instructions`. A copy read before the column existed has no key at all and
+    // must not write null over sections saved elsewhere; null means "none".
+    // Anything but an array of strings and nulls is stored as null rather than
+    // refused, since a bad value here should cost the sections, not the recipe.
+    ...(recipe.instruction_groups !== undefined && {
+      instruction_groups: stepSections(recipe.instruction_groups, recipe.instructions),
+    }),
     id: recipe.id || crypto.randomUUID(),
     title: recipe.title || 'Untitled recipe',
     source_url: recipe.source_url || null,

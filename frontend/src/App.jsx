@@ -1,13 +1,16 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
-import { extractRecipe, mirrorRecipeImage, structureImage, structureText } from './lib/api.js'
+import { extractRecipe, mirrorRecipeImage, structureImage, structureText, uploadRecipeImage } from './lib/api.js'
 import { PhotoError, readPhoto } from './lib/photo.js'
 import { getSupabase, supabaseEnabled } from './lib/supabase.js'
 import { makeStore, migrateLocalRecipes } from './lib/store.js'
 import { makePlanStore, migrateLocalPlan } from './lib/plan.js'
-import { makeShoppingStore, migrateLocalShopping } from './lib/shopping.js'
-import { cacheKeys, seedRecipes, withMirror } from './lib/cache.js'
+import { KEEP_WEEKS, makeShoppingStore, migrateLocalShopping } from './lib/shopping.js'
+import { makePrefsStore, migrateLocalPrefs } from './lib/prefs.js'
+import { makeCookStore, migrateLocalCookLog } from './lib/cooklog.js'
+import { cookStats as statsOf } from './lib/cooked.js'
+import { cacheKeys, seedRecipes, updateMirror, withMirror } from './lib/cache.js'
 import { MIRROR_CONCURRENCY, mirrorSource, needsGlyphRepair, needsMirror } from './lib/images.js'
-import { addDays, fromISODate, startOfWeek, toISODate } from './lib/dates.js'
+import { addDays, fromISODate, startOfWeek, toISODate, weekRangeLabel } from './lib/dates.js'
 import { setBusy } from './lib/pwa.js'
 import { useSession } from './lib/useSession.js'
 import { PULL_MIN_SPIN, PULL_TRIGGER, usePullToRefresh } from './lib/usePullToRefresh.js'
@@ -15,6 +18,8 @@ import Account from './components/Account.jsx'
 import CaptureSheet from './components/CaptureSheet.jsx'
 import InstallPrompt from './components/InstallPrompt.jsx'
 import { FeedbackSheet, NewsBanner, WhatsNewSheet } from './components/News.jsx'
+import { TimerTray, TimersButton, TimersSheet } from './components/Timers.jsx'
+import { OPEN_RECIPE_EVENT, useTimers } from './lib/useTimers.jsx'
 import { latestNews, markNewsSeen, newsSeen } from './lib/news.js'
 import Planner from './components/Planner.jsx'
 import RecipeEditor from './components/RecipeEditor.jsx'
@@ -105,7 +110,11 @@ export default function App() {
   const [photo, setPhoto] = useState(null)
   const inputRef = useRef(null)
   const [error, setError] = useState('')
-  const [openId, setOpenId] = useState(null)
+  // A timer alert's notification opens the app at `/?recipe=<id>` (the push
+  // payload's navigate URL, server side in app/push.py). The id is only compared
+  // to recipe ids, so nothing in it is trusted as anything else. If the list
+  // hasn't loaded yet the recipe opens when it arrives.
+  const [openId, setOpenId] = useState(() => new URLSearchParams(window.location.search).get('recipe'))
   // null when closed, { recipe } when open — with recipe null for a new one.
   // An object rather than two booleans so "editing this recipe" can't drift out
   // of step with "the editor is open".
@@ -129,8 +138,9 @@ export default function App() {
   // share keys are removed; Supabase's auth callback params must survive.
   useEffect(() => {
     const params = new URLSearchParams(window.location.search)
-    if (!SHARE_PARAMS.some((p) => params.has(p))) return
+    if (!SHARE_PARAMS.some((p) => params.has(p)) && !params.has('recipe')) return
     SHARE_PARAMS.forEach((p) => params.delete(p))
+    params.delete('recipe')
     const qs = params.toString()
     // The hash has to be carried through. A magic-link callback puts its tokens
     // there, and since audit item 15 the Supabase client is built inside the
@@ -147,9 +157,18 @@ export default function App() {
   // it out of the entry chunk — see the note in useSession.js.
   const { session, userId, ready: authReady } = useSession()
 
+  // The timers provider sits above this component, so it is told who is signed
+  // in rather than asking: alerts are only mirrored for a signed-in user.
+  const { setSignedIn } = useTimers()
+  useEffect(() => {
+    setSignedIn(Boolean(userId))
+  }, [userId, setSignedIn])
+
   const store = useMemo(() => makeStore(userId), [userId])
   const planStore = useMemo(() => makePlanStore(userId), [userId])
   const shoppingStore = useMemo(() => makeShoppingStore(userId), [userId])
+  const prefsStore = useMemo(() => makePrefsStore(userId), [userId])
+  const cookStore = useMemo(() => makeCookStore(userId), [userId])
 
   // Recipes this session has already handed to the mirror, successfully or not.
   // Success needs it because the list re-renders and reloads constantly and the
@@ -158,6 +177,11 @@ export default function App() {
   // without this every resume would spend a serverless invocation rediscovering
   // that. A reload clears it, which is the retry.
   const mirrored = useRef(new Set())
+  // {id, created_at} of a recipe the editor created but whose photo upload failed;
+  // see handleEditorSave. Cleared when the editor closes.
+  const newDraft = useRef(null)
+  // Ids whose photo the person uploaded this session; the mirror queue skips them.
+  const uploaded = useRef(new Set())
 
   // Phase 7. Fetch the photo while its URL still works and store it under our
   // own account, so it stops mattering that the origin will take it away.
@@ -201,6 +225,10 @@ export default function App() {
       async function worker() {
         while (queue.length > 0) {
           const recipe = queue.shift()
+          // Claimed up front, so a recipe may wait here while the person uploads
+          // a photo for it. The entry is the old list's; mirroring it now would
+          // overwrite their upload with the old link's picture.
+          if (uploaded.current.has(recipe.id)) continue
           try {
             const columns = await mirrorRecipeImage(recipe.id, mirrorSource(recipe), token)
             const saved = await store.saveImage(recipe.id, columns)
@@ -222,8 +250,63 @@ export default function App() {
 
   const [weekStart, setWeekStart] = useState(() => startOfWeek(new Date()))
   const [plan, setPlan] = useState([])
+  // Every time a recipe was cooked (cook_log), whole: it is one small row per
+  // cook, and the count, last date and sorts all derive from it.
+  const [cookLog, setCookLog] = useState([])
+  const cookStats = useMemo(() => statsOf(cookLog), [cookLog])
   // Checks and hand-added items. The list itself is derived from the plan.
   const [overlay, setOverlay] = useState([])
+
+  // Staples, moved aisles and aisle order (lib/prefs.js). Null until they have
+  // loaded, and the list offers no way to change them while null: saving is an
+  // upsert of the whole object, so editing a copy that failed to load would
+  // overwrite the real one with nearly nothing.
+  const [prefs, setPrefs] = useState(null)
+  const prefsQueue = useRef(Promise.resolve())
+
+  useEffect(() => {
+    if (!authReady) return
+    let cancelled = false
+    setPrefs(null)
+    ;(async () => {
+      try {
+        if (userId) await migrateLocalPrefs(userId)
+        const loaded = await prefsStore.load()
+        if (!cancelled) setPrefs(loaded)
+      } catch {
+        // Display-only, so a failed read costs the staples and aisle choices
+        // for this visit, not the list. The controls stay off (prefs stays null).
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [authReady, userId, prefsStore])
+
+  // Saves go one after another: two quick taps are two upserts of the whole
+  // object, and the later one must land last or the earlier tap wins.
+  function handleChangePrefs(next) {
+    setPrefs(next)
+    prefsQueue.current = prefsQueue.current
+      .then(() => prefsStore.save(next))
+      .catch(async (err) => {
+        setError(writeError(err))
+        try {
+          setPrefs(await prefsStore.load())
+        } catch {
+          setPrefs(null)
+        }
+      })
+  }
+
+  // Shopping rows for weeks long gone (AUDIT 10), once per visit. Ticks and
+  // hand-added items are only read for the week on screen. Quiet on failure:
+  // housekeeping is not worth an error banner.
+  useEffect(() => {
+    if (!authReady || !navigator.onLine) return
+    const cutoff = toISODate(addDays(startOfWeek(new Date()), -7 * KEEP_WEEKS))
+    shoppingStore.prune(cutoff).catch(() => {})
+  }, [authReady, shoppingStore])
 
   // The recipe migration, published for the plan effect to wait on. Both load
   // effects fire in the same tick, so the ordering the foreign key needs cannot
@@ -325,6 +408,52 @@ export default function App() {
     }
   }, [authReady, userId, loadPlan, loadOverlay])
 
+  // The cooked log is not week-scoped, so it loads once per account rather than
+  // with the plan. Declared after the recipes effect on purpose: it waits on the
+  // same migration ref, since cook_log.recipe_id is a foreign key into recipes.
+  const loadCookLog = useCallback(
+    () => withMirror(userId && cacheKeys.cooklog(userId), () => cookStore.list()),
+    [cookStore, userId],
+  )
+
+  useEffect(() => {
+    if (!authReady) return
+    let cancelled = false
+    // A different account (or none) starts from an empty log: the merge below
+    // keeps rows already in state, which must not be the last account's.
+    setCookLog([])
+    ;(async () => {
+      try {
+        if (recipesMigratedRef.current) await recipesMigratedRef.current
+        if (userId) {
+          // On its own: a failed upload (the local key survives, so it retries
+          // next visit) must not stop the log that is already in the cloud loading.
+          try {
+            await migrateLocalCookLog(userId)
+          } catch {
+            // Retried on the next load; the local rows are untouched.
+          }
+        }
+        const logged = await loadCookLog()
+        // Merged, not assigned: a cook logged while this load was in flight is
+        // already in state and not yet in what came back, and replacing the list
+        // would drop it from the counts until the next refresh.
+        if (!cancelled) {
+          setCookLog((prev) => {
+            const have = new Set(logged.rows.map((r) => r.id))
+            return [...logged.rows, ...prev.filter((r) => !have.has(r.id))]
+          })
+        }
+      } catch {
+        // Display only: without it the counts and the cooked sorts read as
+        // "never cooked" for this visit, and nothing else is affected.
+      }
+    })()
+    return () => {
+      cancelled = true
+    }
+  }, [authReady, userId, loadCookLog])
+
   // Re-read the store without the auth/migrate work the mount effect does.
   // An installed PWA is resumed, not reloaded, so without this it shows the
   // list it fetched the first time it opened — a capture made in the browser
@@ -340,14 +469,19 @@ export default function App() {
       // Both, in parallel: the plan goes stale on resume for exactly the same
       // reason the recipe list does, and a plan row is meaningless without the
       // recipe it points at.
-      const [listed, planned, overlaid] = await Promise.all([
+      const [listed, planned, overlaid, logged] = await Promise.all([
         withMirror(userId && cacheKeys.recipes(userId), () => store.list()),
         loadPlan(),
         loadOverlay(),
+        // A failed read of the log must not fail the refresh: counts are display.
+        loadCookLog().catch(() => null),
       ])
       setRecipes(listed.rows)
       setPlan(planned.rows)
       setOverlay(overlaid.rows)
+      // Not when it came from the mirror: a failed read serves the last copy, and
+      // that would replace a log this session has already added to or taken from.
+      if (logged && !logged.stale) setCookLog(logged.rows)
       setOffline(listed.stale || planned.stale || overlaid.stale)
       setError('')
       // Catches anything captured on another device since this one last looked,
@@ -370,7 +504,7 @@ export default function App() {
       refreshingRef.current = false
       setRefreshing(false)
     }
-  }, [store, userId, loadPlan, loadOverlay, mirrorImages])
+  }, [store, userId, loadPlan, loadOverlay, loadCookLog, mirrorImages])
 
   // The gesture and the resume-time refetch, both of which only ever call
   // `refresh`. Gated on authReady: a refetch before then runs against the
@@ -569,30 +703,122 @@ export default function App() {
     return updateRecipe(recipe, { favorite: !recipe.favorite })
   }
 
+  // Log a cook. Optimistic, like the planner: the line on the open recipe should
+  // say "Cooked once" the instant the button is pressed. Returns the row's id so
+  // the sheet can offer to take it back; a failed write removes the row again and
+  // says so, and returns null (never throws, because cook mode's Done calls this
+  // on its way out and must not be stopped by it).
+  async function handleCooked(recipeId) {
+    const row = { id: crypto.randomUUID(), recipe_id: recipeId, cooked_at: new Date().toISOString() }
+    setCookLog((prev) => [...prev, row])
+    try {
+      const saved = await cookStore.add(row)
+      setCookLog((prev) => prev.map((r) => (r.id === row.id ? saved : r)))
+      // Not appended twice: a refresh that landed between the insert and here has
+      // already written this row into the mirror.
+      updateMirror(userId && cacheKeys.cooklog(userId), (rows) =>
+        rows.some((r) => r.id === saved.id) ? rows : [...rows, saved],
+      )
+      return saved.id
+    } catch (err) {
+      setCookLog((prev) => prev.filter((r) => r.id !== row.id))
+      setError(writeError(err))
+      return null
+    }
+  }
+
+  async function handleUndoCooked(id) {
+    const before = cookLog
+    setCookLog((prev) => prev.filter((r) => r.id !== id))
+    try {
+      await cookStore.remove(id)
+      updateMirror(userId && cacheKeys.cooklog(userId), (rows) => rows.filter((r) => r.id !== id))
+    } catch (err) {
+      setCookLog(before)
+      setError(writeError(err))
+    }
+  }
+
+  // Notes, like the editor's save and unlike updateRecipe: it throws, so the
+  // sheet keeps the draft and says the note did not save instead of closing on a
+  // lie. Blank clears the note.
+  async function handleSaveNotes(recipe, text) {
+    const notes = text.trim() ? text.trim().slice(0, 4000) : null
+    const saved = await store.save({ ...recipe, notes })
+    setRecipes((prev) => prev.map((r) => (r.id === saved.id ? saved : r)))
+  }
+
   // The editor's save, which is deliberately not updateRecipe: that one is
   // optimistic and swallows its failure into the error strip, which is right for
   // a star and wrong for a form. Here the sheet stays open and shows what went
   // wrong, so the typing isn't lost — hence the throw rather than a catch.
   async function handleEditorSave(values) {
+    // `photo` is bytes for the upload below, not a column: it never reaches the store.
+    const { photo, ...fields } = values
     const target = editing?.recipe
     const previousImage = target?.image_url || null
+    // A new recipe whose photo failed to upload is already saved. Saving again
+    // must update that row, not create a second recipe with the same title.
+    const draft = newDraft.current
+
+    // Step sections (`instruction_groups`) run parallel to the steps, and the
+    // editor knows nothing of them. Where the steps were added, removed or
+    // reordered the old array no longer lines up with them, and the step
+    // ingredients would show the wrong section's lines: so it goes. (`toRow`
+    // writes the null, which clears the column.)
+    const stepsChanged =
+      target?.instruction_groups &&
+      JSON.stringify(target.instructions) !== JSON.stringify(fields.instructions)
 
     const saved = await store.save(
       target
-        ? { ...target, ...values }
+        ? { ...target, ...fields, ...(stepsChanged && { instruction_groups: null }) }
         : {
-            ...values,
+            ...fields,
             source_type: 'manual',
             favorite: false,
-            id: crypto.randomUUID(),
-            created_at: new Date().toISOString(),
+            id: draft?.id || crypto.randomUUID(),
+            created_at: draft?.created_at || new Date().toISOString(),
           },
     )
 
-    setRecipes((prev) =>
-      target ? prev.map((r) => (r.id === saved.id ? saved : r)) : [saved, ...prev],
-    )
+    // Replaced if it is already in the list (an edit, or a retry after a failed
+    // photo), added otherwise.
+    const place = (row) => (prev) =>
+      prev.some((r) => r.id === row.id) ? prev.map((r) => (r.id === row.id ? row : r)) : [row, ...prev]
+    setRecipes(place(saved))
     setOpenId(saved.id)
+
+    // A photo the person picked. It goes up after the save because the backend
+    // checks the recipe is theirs, and in place of the link mirror: the link
+    // field was cleared when the photo was picked.
+    if (photo) {
+      uploaded.current.add(saved.id)
+      try {
+        const supabase = await getSupabase()
+        const { data } = await supabase.auth.getSession()
+        const token = data?.session?.access_token
+        if (!token) throw new Error('not signed in')
+        const columns = await uploadRecipeImage(saved.id, photo, token)
+        const withPhoto = await store.saveImage(saved.id, columns)
+        if (!withPhoto) throw new Error('recipe not found')
+        setRecipes(place(withPhoto))
+        newDraft.current = null
+        return withPhoto
+      } catch (err) {
+        // The upload did not land, so the old link's mirror is the right thing again.
+        uploaded.current.delete(saved.id)
+        if (!target) newDraft.current = { id: saved.id, created_at: saved.created_at }
+        // The editor keeps its sheet and the picked photo when this throws, so
+        // saving again retries just the photo.
+        throw new Error(
+          navigator.onLine
+            ? "The recipe is saved, but the photo didn't upload. Save again to retry the photo."
+            : "You're offline. The recipe is saved, but the photo didn't upload. Save again when you're back online.",
+          { cause: err },
+        )
+      }
+    }
 
     // A pasted photo link is mirrored on exactly the same terms as an imported
     // one. The per-session set is keyed by recipe id, so a recipe whose earlier
@@ -616,6 +842,21 @@ export default function App() {
     setFavoritesOnly(false)
   }
 
+  // "Open recipe" on a finished timer (components/Timers.jsx). Filters are
+  // cleared first: the list only opens a recipe it is currently showing, so a
+  // search left in the box would swallow the jump.
+  useEffect(() => {
+    function onOpenRecipe(e) {
+      setTab('recipes')
+      setQuery('')
+      setActiveTags([])
+      setFavoritesOnly(false)
+      setOpenId(e.detail)
+    }
+    window.addEventListener(OPEN_RECIPE_EVENT, onOpenRecipe)
+    return () => window.removeEventListener(OPEN_RECIPE_EVENT, onOpenRecipe)
+  }, [])
+
   async function handleDelete(id) {
     try {
       await store.remove(id)
@@ -625,6 +866,9 @@ export default function App() {
       // so drop them from view without a refetch.
       await planStore.removeByRecipe(id)
       setPlan((prev) => prev.filter((e) => e.recipe_id !== id))
+      await cookStore.removeByRecipe(id)
+      setCookLog((prev) => prev.filter((r) => r.recipe_id !== id))
+      updateMirror(userId && cacheKeys.cooklog(userId), (rows) => rows.filter((r) => r.recipe_id !== id))
       if (openId === id) setOpenId(null)
     } catch (err) {
       setError(writeError(err))
@@ -636,12 +880,16 @@ export default function App() {
     setWeekStart((prev) => (direction === 0 ? startOfWeek(new Date()) : addDays(prev, direction * 7)))
   }
 
-  async function handleAssign(recipeId, dateISO, slot) {
+  // `servings` is how many the meal is for; null/undefined means "as the recipe
+  // says". It only moves the quantities the shopping list gathers.
+  async function handleAssign(recipeId, dateISO, slot, servings = null, leftover = false) {
     const entry = {
       id: crypto.randomUUID(),
       recipe_id: recipeId,
       plan_date: dateISO,
       slot,
+      servings,
+      leftover: Boolean(leftover),
       created_at: new Date().toISOString(),
     }
     // Optimistic: the sheet closes on tap, so waiting on the round trip would
@@ -667,9 +915,60 @@ export default function App() {
   // After the write, not before: the week change is what `loadPlan` keys off,
   // and a refetch that beat the insert would come back without the new row and
   // replace the optimistic copy with nothing.
-  async function handlePlanFromRecipe(recipeId, dateISO, slot) {
-    const added = await handleAssign(recipeId, dateISO, slot)
+  async function handlePlanFromRecipe(recipeId, dateISO, slot, servings) {
+    const added = await handleAssign(recipeId, dateISO, slot, servings)
     if (added) setWeekStart(startOfWeek(fromISODate(dateISO)))
+  }
+
+  // Change a planned meal's day, slot or servings. Optimistic, and put back
+  // exactly as it was if the write fails.
+  async function handleUpdateEntry(id, patch) {
+    const before = plan.find((e) => e.id === id)
+    if (!before) return
+    setPlan((prev) => prev.map((e) => (e.id === id ? { ...e, ...patch } : e)))
+    try {
+      const saved = await planStore.update(id, patch)
+      if (saved) setPlan((prev) => prev.map((e) => (e.id === id ? saved : e)))
+    } catch (err) {
+      setPlan((prev) => prev.map((e) => (e.id === id ? before : e)))
+      setError(writeError(err))
+    }
+  }
+
+  // The planner row's "Open recipe". Filters are cleared for the same reason the
+  // timer jump clears them: the list only opens a recipe it is showing.
+  function handleOpenRecipe(id) {
+    setTab('recipes')
+    clearFilters()
+    setOpenId(id)
+  }
+
+  // "To list" on the recipe sheet: ingredient lines added as hand-style items to
+  // the week on screen, each remembering which recipe it came from. Throws on a
+  // failed write (after taking the optimistic rows back out) so the sheet can say
+  // so, and resolves to the week's label for its confirmation.
+  async function handleAddToList(recipe, lines) {
+    const week = toISODate(weekStart)
+    const rows = lines.slice(0, 80).map((text) => ({
+      id: crypto.randomUUID(),
+      recipe_id: recipe.id,
+      week_start: week,
+      name: text.slice(0, 200),
+      kind: 'manual',
+      checked: false,
+      created_at: new Date().toISOString(),
+    }))
+    setOverlay((prev) => [...prev, ...rows])
+    try {
+      const saved = await Promise.all(rows.map((row) => shoppingStore.add(row)))
+      const byId = new Map(saved.map((s, i) => [rows[i].id, s]))
+      setOverlay((prev) => prev.map((r) => byId.get(r.id) || r))
+      return weekRangeLabel(weekStart)
+    } catch (err) {
+      const ids = new Set(rows.map((r) => r.id))
+      setOverlay((prev) => prev.filter((r) => !ids.has(r.id)))
+      throw err
+    }
   }
 
   // Ticking a derived line writes a check row the first time and updates it
@@ -810,12 +1109,22 @@ export default function App() {
       </div>
       <header className="rb-header">
         <div className="rb-header-row">
-          <h1 className="rb-wordmark">Recipe Box</h1>
-          <Account
-            session={session}
-            onWhatsNew={() => setNewsSheet('whatsnew')}
-            onFeedback={() => setNewsSheet('feedback')}
-          />
+          <div className="rb-brand">
+            <h1 className="rb-wordmark">Recipe Box</h1>
+            {import.meta.env.VITE_APP_STAGE === 'staging' && (
+              <span className="rb-stage-badge">Staging</span>
+            )}
+          </div>
+          <div className="rb-header-actions">
+            <TimersButton />
+            <Account
+              session={session}
+              recipes={recipes}
+              exportReady={!loading && !offline}
+              onWhatsNew={() => setNewsSheet('whatsnew')}
+              onFeedback={() => setNewsSheet('feedback')}
+            />
+          </div>
         </div>
       </header>
 
@@ -823,7 +1132,7 @@ export default function App() {
           equally, and the shopping tab is where it matters most. */}
       {offline && (
         <p className="rb-offline" role="status">
-          <span>Offline. Showing the copy saved on this device.</span>
+          <span>No connection. Showing the copy saved on this device.</span>
           <button
             type="button"
             className="btn btn-quiet rb-offline-retry"
@@ -843,7 +1152,6 @@ export default function App() {
             <NewsBanner
               entry={news}
               onWhatsNew={() => setNewsSheet('whatsnew')}
-              onFeedback={() => setNewsSheet('feedback')}
               onDismiss={(e) => {
                 markNewsSeen(news.id)
                 setNewsClosed(true)
@@ -905,8 +1213,14 @@ export default function App() {
             onDelete={handleDelete}
             onToggleFavorite={handleToggleFavorite}
             onAssign={handlePlanFromRecipe}
+            onToList={handleAddToList}
+            cookStats={cookStats}
+            onCooked={handleCooked}
+            onUndoCooked={handleUndoCooked}
+            onSaveNotes={handleSaveNotes}
             onEdit={(recipe) => setEditing({ recipe })}
             onWrite={() => setEditing({ recipe: null })}
+            onCapture={() => setCaptureOpen(true)}
           />
         </main>
       )}
@@ -921,6 +1235,8 @@ export default function App() {
             onWeekChange={changeWeek}
             onAssign={handleAssign}
             onUnassign={handleUnassign}
+            onUpdate={handleUpdateEntry}
+            onOpenRecipe={handleOpenRecipe}
           />
           {error && (
             <p className="rb-error" role="alert">
@@ -937,11 +1253,14 @@ export default function App() {
             plan={plan}
             recipes={recipes}
             overlay={overlay}
+            prefs={prefs}
+            onChangePrefs={handleChangePrefs}
             onWeekChange={changeWeek}
             onToggleDerived={handleToggleDerived}
             onToggleManual={handleToggleManual}
             onAddManual={handleAddManual}
             onRemoveManual={handleRemoveManual}
+            onUnassign={handleUnassign}
           />
           {error && (
             <p className="rb-error" role="alert">
@@ -1001,7 +1320,11 @@ export default function App() {
           key={editing.recipe?.id || 'new'}
           recipe={editing.recipe}
           onSave={handleEditorSave}
-          onClose={() => setEditing(null)}
+          onClose={() => {
+            newDraft.current = null
+            setEditing(null)
+          }}
+          canUploadPhoto={Boolean(userId && supabaseEnabled)}
         />
       )}
 
@@ -1014,7 +1337,18 @@ export default function App() {
 
       {/* One card at a time: the install card waits until the news is closed,
           or the Recipes tab opens with a notice at each end of the list. */}
-      <InstallPrompt ready={recipes.length > 0 && newsClosed} />
+      {/* Shown on the Recipes tab only. The card pins above the tab bar while
+          there is more below it, which on the planner and the shopping list meant
+          it sat over the rows being read or ticked (measured at 390px, iOS UA).
+          It stays MOUNTED on every tab, though: Chrome fires beforeinstallprompt
+          once per page load, and an unmounted card has no listener to catch it
+          (found in review). */}
+      <InstallPrompt ready={tab === 'recipes' && recipes.length > 0 && newsClosed} />
+
+      {/* After every other sheet in the tree, so the list opens on top of a
+          recipe or cook mode rather than behind it. */}
+      <TimersSheet />
+      <TimerTray current={openId} />
 
       <TabBar tab={tab} onChange={setTab} />
     </div>

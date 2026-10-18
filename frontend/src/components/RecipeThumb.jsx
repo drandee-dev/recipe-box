@@ -24,23 +24,32 @@ import { thumbSources } from '../lib/images.js'
 // problem a card does.
 //
 // `md` stopped being a fixed 128px box in pass 3: it is a grid cell now, one of
-// two across the content column, so like the hero it carries a `sizes` string
-// rather than a width. The column is `.rb-app` — 640px capped, 16px of padding
-// each side — and the grid's gap is 13px, so a cell is (608 − 13) / 2 = 298px at
-// full width and (100vw − 45) / 2 below that. `w`/`h` stay to give the <img> its
-// intrinsic 4:3 ratio.
+// several across the content column, so like the hero it carries a `sizes` string
+// rather than a width. On a phone the column is the viewport with 16px of padding
+// each side and the grid has two columns and a 13px gap, so a cell is
+// (100vw − 45) / 2. On a tablet or laptop the column is 920px or 1160px wide with
+// three or four columns, which is about 270 to 290px a cell; the 298px below is
+// the two-column figure and slightly over-states those, which costs a marginally
+// larger download and nothing else. `w`/`h` stay to give the <img> its intrinsic
+// 4:3 ratio.
 const SIZES = {
   md: { w: 320, h: 240, sizes: '(min-width: 640px) 298px, calc(50vw - 22px)' },
   sm: { w: 56, h: 42 },
-  hero: { w: 640, h: 360, sizes: 'min(100vw, 640px)' },
+  // 960 because the detail sheet is up to 960px wide on a laptop.
+  hero: { w: 640, h: 360, sizes: 'min(100vw, 960px)' },
 }
 
 export default function RecipeThumb({ recipe, priority = false, size = 'md' }) {
-  const [failed, setFailed] = useState(false)
+  // The link that failed, not a bare "failed" flag. This component stays mounted
+  // while its recipe changes underneath it: the list paints from the offline copy
+  // first, where a photo link may be dead, and the refetch then brings the real
+  // one; an upload or an edit swaps the link too. A flag that outlived the link it
+  // was set for kept the tile on screen until the page was reloaded.
+  const [failedSrc, setFailedSrc] = useState(null)
 
   const box = SIZES[size] || SIZES.md
   const photo = thumbSources(recipe, box.sizes || box.w)
-  const showPhoto = Boolean(photo) && !failed
+  const showPhoto = Boolean(photo) && photo.src !== failedSrc
   const cls = size === 'md' ? 'recipes-thumb' : `recipes-thumb recipes-thumb-${size}`
 
   if (showPhoto) {
@@ -66,7 +75,7 @@ export default function RecipeThumb({ recipe, priority = false, size = 'md' }) {
           fetchPriority={priority ? 'high' : 'auto'}
           // Not onerror-swaps-the-src: a fallback src that also fails would loop.
           // A state flag renders a different element and can only fire once.
-          onError={() => setFailed(true)}
+          onError={() => setFailedSrc(photo.src)}
         />
       </div>
     )
@@ -88,7 +97,7 @@ export default function RecipeThumb({ recipe, priority = false, size = 'md' }) {
             ? 'recipes-thumb-fallback recipes-thumb-glyph'
             : 'recipes-thumb-fallback recipes-thumb-mono'
         }
-        style={{ background: tileTint(recipe.title) }}
+        style={{ '--tile': tileTint(recipe.title) }}
         aria-hidden="true"
       >
         {glyph ? <TagGlyph name={glyph} /> : monogramLetter(recipe.title)}

@@ -2,6 +2,7 @@ import { Fragment, useCallback, useEffect, useMemo, useRef, useState } from 'rea
 import { filterRecipes, tagCounts } from '../lib/tags.js'
 import { usePendingCommit } from '../lib/usePendingCommit.js'
 import { groupByRecency, metaParts } from '../lib/recipes.js'
+import { SORT_LABELS, SORT_MODES, cookedShort, sortRecipes } from '../lib/cooked.js'
 import RecipeDetail from './RecipeDetail.jsx'
 import RecipeThumb from './RecipeThumb.jsx'
 
@@ -10,6 +11,8 @@ import RecipeThumb from './RecipeThumb.jsx'
 // than saving anything. Two columns put two cells per row, so this covers the
 // first two rows — all of which are above the fold on a 390×844 phone.
 const EAGER_CARDS = 4
+
+const SORT_KEY = 'recipebox:sort'
 
 // Same window the planner's meal removal uses, and for the same reason: long
 // enough to notice the toast, short enough that you aren't left wondering
@@ -30,8 +33,14 @@ export default function RecipeList({
   onDelete,
   onToggleFavorite,
   onAssign,
+  onToList,
+  cookStats,
+  onCooked,
+  onUndoCooked,
+  onSaveNotes,
   onEdit,
   onWrite,
+  onCapture,
 }) {
   // Deleting is the one action here whose failure mode is losing a recipe, so it
   // gets an undo window rather than a confirm dialog — undo costs one tap and
@@ -62,9 +71,30 @@ export default function RecipeList({
   const chips = useMemo(() => tagCounts(shown), [shown])
   const favoriteCount = useMemo(() => shown.filter((r) => r.favorite).length, [shown])
 
+  // How the grid is ordered. Newest saved is the order the store already returns,
+  // so it is the default and the only one that gets the recency bands. The choice
+  // is kept on this device.
+  const [sort, setSort] = useState(() => {
+    try {
+      const saved = localStorage.getItem(SORT_KEY)
+      return SORT_MODES.includes(saved) ? saved : 'recent'
+    } catch {
+      return 'recent'
+    }
+  })
+
+  function changeSort(mode) {
+    setSort(mode)
+    try {
+      localStorage.setItem(SORT_KEY, mode)
+    } catch {
+      // The order holds for this visit even if it cannot be kept.
+    }
+  }
+
   const visible = useMemo(
-    () => filterRecipes(shown, { query, tags: activeTags, favoritesOnly }),
-    [shown, query, activeTags, favoritesOnly],
+    () => sortRecipes(filterRecipes(shown, { query, tags: activeTags, favoritesOnly }), sort, cookStats),
+    [shown, query, activeTags, favoritesOnly, sort, cookStats],
   )
 
   const filtering = query.trim().length > 0 || activeTags.length > 0 || favoritesOnly
@@ -75,11 +105,13 @@ export default function RecipeList({
   // is worse than none, and "when did I save this" is not what a search is
   // asking. A single band drops them too: one label over the entire list is a
   // title for the screen, which the wordmark already is.
+  // Bands say "when did I save this", which only means something in the order
+  // they fall out of: any other sort drops them.
   const sections = useMemo(() => {
-    if (filtering) return [{ label: null, recipes: visible }]
+    if (filtering || sort !== 'recent') return [{ label: null, recipes: visible }]
     const groups = groupByRecency(visible)
     return groups.length > 1 ? groups : [{ label: null, recipes: visible }]
-  }, [visible, filtering])
+  }, [visible, filtering, sort])
 
   // Eagerness counts down the whole grid, not each section: the first two rows
   // are above the fold whichever band they fall in, and a per-section index
@@ -93,11 +125,26 @@ export default function RecipeList({
           <div className="recipes-search">
             <input
               type="search"
-              placeholder="Search recipes, ingredients, tags"
+              placeholder="Search recipes"
               value={query}
               onChange={(e) => onQueryChange(e.target.value)}
               aria-label="Search recipes"
             />
+            {/* A native select: it is the control a phone already knows how to
+                use, and its picker is the platform's own. Sixteen-pixel text so
+                iOS does not zoom the page when it opens. */}
+            <select
+              className="recipes-sort"
+              value={sort}
+              onChange={(e) => changeSort(e.target.value)}
+              aria-label="Sort recipes"
+            >
+              {SORT_MODES.map((mode) => (
+                <option key={mode} value={mode}>
+                  {SORT_LABELS[mode]}
+                </option>
+              ))}
+            </select>
           </div>
           <div className="recipes-chips">
             {favoriteCount > 0 && (
@@ -146,10 +193,14 @@ export default function RecipeList({
 
       {shown.length === 0 && !loading && (
         <p className="rb-empty">
-          <strong>The box is empty</strong>
-          Tap the + button to paste a link, paste recipe text, or write one in.
-          <button type="button" className="btn btn-secondary btn-sm" onClick={onWrite}>
-            Write one yourself
+          <strong>Your recipe box is empty</strong>
+          Save a recipe from a link, a caption, a photo of a page or your own typing. It all
+          lands here, ready to plan and shop from.
+          <button type="button" className="btn btn-primary" onClick={onCapture}>
+            Add your first recipe
+          </button>
+          <button type="button" className="btn btn-quiet btn-sm" onClick={onWrite}>
+            Or write one yourself
           </button>
         </p>
       )}
@@ -192,7 +243,7 @@ export default function RecipeList({
                   {/* Fragment, not a wrapping span: the separator dot is sized
                       as a flex item, so it has to be a direct child of the flex
                       container or its width and height are ignored. */}
-                  {metaParts(r).map((part, n) => (
+                  {[...metaParts(r), cookedShort(cookStats?.get(r.id))].filter(Boolean).map((part, n) => (
                     <Fragment key={part}>
                       {n > 0 && <span className="recipes-meta-dot" />}
                       <span>{part}</span>
@@ -230,6 +281,11 @@ export default function RecipeList({
           onDelete={() => startDelete(open)}
           onToggleFavorite={onToggleFavorite}
           onAssign={onAssign}
+          onToList={onToList}
+          cookStat={cookStats?.get(open.id)}
+          onCooked={onCooked}
+          onUndoCooked={onUndoCooked}
+          onSaveNotes={onSaveNotes}
         />
       )}
 

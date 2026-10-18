@@ -155,3 +155,200 @@ create policy "file own feedback" on feedback
   with check (auth.uid() = user_id);
 
 create index if not exists feedback_created_idx on feedback (created_at desc);
+
+-- A2: timer alerts on a locked phone. Additive only (new tables nothing else
+-- reads), so the live app is unaffected until it is released.
+--
+-- push_subscriptions: where to send a user's alerts. One row per installed app
+-- per user; the endpoint is the push service's address for that phone.
+create table if not exists push_subscriptions (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  endpoint text not null check (char_length(endpoint) <= 2000),
+  -- (host allow-list is added just below as push_endpoint_is_push_service)
+  p256dh text not null check (char_length(p256dh) <= 200),
+  auth text not null check (char_length(auth) <= 100),
+  user_agent text check (char_length(user_agent) <= 400),
+  created_at timestamptz not null default now(),
+  unique (user_id, endpoint)
+);
+
+alter table push_subscriptions enable row level security;
+
+drop policy if exists "own push subscriptions" on push_subscriptions;
+create policy "own push subscriptions" on push_subscriptions
+  for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- cook_timers: a running timer, mirrored so a server can fire it. The client
+-- inserts on start and deletes on stop or when it rings in the page (so the page
+-- and the push never both alert). `client_id` is the app's own timer id;
+-- `sent_at` is the server's claim, set once per row (app/push.py).
+create table if not exists cook_timers (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null default auth.uid() references auth.users (id) on delete cascade,
+  client_id text not null check (char_length(client_id) <= 80),
+  ends_at timestamptz not null,
+  label text check (char_length(label) <= 60),
+  recipe_title text check (char_length(recipe_title) <= 200),
+  open_url text check (char_length(open_url) <= 500),
+  sent_at timestamptz,
+  created_at timestamptz not null default now(),
+  unique (user_id, client_id)
+);
+
+alter table cook_timers enable row level security;
+
+drop policy if exists "own cook timers" on cook_timers;
+create policy "own cook timers" on cook_timers
+  for all to authenticated
+  using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- What the cron job scans every few seconds: only unsent rows, by due time.
+create index if not exists cook_timers_due_idx on cook_timers (ends_at) where sent_at is null;
+
+-- A2 hardening (review): the API POSTs to whatever endpoint a user stored, and
+-- sign-in is open to anyone, so the table only accepts addresses of real push
+-- services (the API checks the same list, app/push.py allowed_endpoint), and one
+-- user cannot hold unbounded rows that crowd everyone else's alerts out of the
+-- cron batch. Added as alters so a project that already has the tables gets
+-- them. Safe to add outright: the tables were empty when this was written.
+alter table push_subscriptions drop constraint if exists push_endpoint_is_push_service;
+alter table push_subscriptions add constraint push_endpoint_is_push_service check (
+  endpoint ~* '^https://(web\.push\.apple\.com|fcm\.googleapis\.com|updates\.push\.services\.mozilla\.com|[a-z0-9.-]+\.(push\.apple\.com|push\.services\.mozilla\.com|notify\.windows\.com))(/|\?|$)'
+);
+
+create or replace function cap_push_rows() returns trigger
+language plpgsql
+set search_path = pg_catalog, public
+as $$
+begin
+  if tg_table_name = 'push_subscriptions'
+     and (select count(*) from public.push_subscriptions where user_id = new.user_id) >= 10 then
+    raise exception 'too many push subscriptions';
+  end if;
+  if tg_table_name = 'cook_timers'
+     and (select count(*) from public.cook_timers where user_id = new.user_id and sent_at is null) >= 20 then
+    raise exception 'too many timers';
+  end if;
+  return new;
+end;
+$$;
+
+drop trigger if exists push_subscriptions_cap on push_subscriptions;
+create trigger push_subscriptions_cap before insert on push_subscriptions
+  for each row execute function cap_push_rows();
+
+drop trigger if exists cook_timers_cap on cook_timers;
+create trigger cook_timers_cap before insert on cook_timers
+  for each row execute function cap_push_rows();
+
+-- A2 repeats: a finished timer is sent again every 30 seconds, up to 6 times in
+-- all, until the app deletes the row (opening it or dismissing the timer). The
+-- count is what the server's claim compares against, so two overlapping runs
+-- cannot both send the same one. Numbers match app/push.py REPEAT_SECONDS and
+-- MAX_NOTIFICATIONS, and supabase/push-cron.sql.
+alter table cook_timers add column if not exists notify_count integer not null default 0;
+
+-- Rows the server already sent before this column existed have a count of 0 and
+-- would look like unsent first sends. Close them out so none is sent again.
+update cook_timers set notify_count = 6 where sent_at is not null and notify_count = 0;
+
+create index if not exists cook_timers_active_idx on cook_timers (ends_at) where notify_count < 6;
+
+-- Pass C (planner and shopping list). Additive only: a nullable column the live
+-- app never selects, and a new table it never reads.
+--
+-- meal_plan.servings: how many servings this planned meal is for. Null means "as
+-- the recipe says", which is every row that exists today, so nothing changes for
+-- them. It scales the quantities the shopping list gathers from this meal and
+-- touches nothing else: the list's merge keys (name|dimension) are unchanged, so
+-- the ticks stored in shopping_items keep meaning what they meant.
+alter table meal_plan add column if not exists servings smallint;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'meal_plan_servings_check') then
+    alter table meal_plan
+      add constraint meal_plan_servings_check check (servings is null or servings between 1 and 500);
+  end if;
+end $$;
+
+-- shopping_prefs: one row per person. Display-only choices about the list, kept
+-- apart from shopping_items on purpose: they decide where a line is shown and
+-- whether it is collapsed, never what the line's merge key is.
+--   staples      normalised item names kept in a collapsed "Staples" section
+--   aisle_map    normalised item name -> the aisle you moved it to
+--   aisle_order  your shop's aisle order (empty = the built-in order)
+-- The size checks stop a bad client filling the free tier through one row.
+create table if not exists shopping_prefs (
+  user_id uuid primary key references auth.users (id) on delete cascade,
+  staples text[] not null default '{}',
+  aisle_map jsonb not null default '{}',
+  aisle_order text[] not null default '{}',
+  updated_at timestamptz not null default now(),
+  constraint shopping_prefs_size check (
+    cardinality(staples) <= 400
+    and cardinality(aisle_order) <= 20
+    and jsonb_typeof(aisle_map) = 'object'
+    and pg_column_size(staples) < 32768
+    and pg_column_size(aisle_map) < 65536
+  )
+);
+
+alter table shopping_prefs enable row level security;
+
+drop policy if exists "own shopping prefs" on shopping_prefs;
+create policy "own shopping prefs" on shopping_prefs
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+-- Notes and the cooked log. Additive only: a nullable column the live app never
+-- selects, and a new table it never reads.
+--
+-- recipes.notes: what you learned cooking it ("used half the sugar"). Searchable
+-- from the client; the steps deliberately are not (SPEC 5a). Capped so one field
+-- cannot fill the free tier.
+alter table recipes add column if not exists notes text;
+
+do $$
+begin
+  if not exists (select 1 from pg_constraint where conname = 'recipes_notes_check') then
+    alter table recipes
+      add constraint recipes_notes_check check (notes is null or char_length(notes) <= 4000);
+  end if;
+end $$;
+
+-- cook_log: one dated row per time a recipe was cooked, rather than a counter.
+-- The count, the last date and the "Recently cooked" and "Most cooked" sorts all
+-- come from the same rows, and a mistaken tap is one row deleted. Deleting a
+-- recipe deletes its log.
+create table if not exists cook_log (
+  id uuid primary key default gen_random_uuid(),
+  user_id uuid not null references auth.users (id) on delete cascade,
+  recipe_id uuid not null references recipes (id) on delete cascade,
+  cooked_at timestamptz not null default now()
+);
+
+alter table cook_log enable row level security;
+
+drop policy if exists "own cook log" on cook_log;
+create policy "own cook log" on cook_log
+  for all using (auth.uid() = user_id) with check (auth.uid() = user_id);
+
+create index if not exists cook_log_user_recipe_idx on cook_log (user_id, recipe_id, cooked_at desc);
+
+-- Leftovers in the planner. Additive only: a boolean the live app never selects
+-- or writes. It defaults to false, which is what every existing row and every row
+-- the live app inserts means: a meal that has to be bought for. A planned meal
+-- flagged true is eaten from what was cooked earlier, so the shopping list leaves
+-- it out.
+alter table meal_plan add column if not exists leftover boolean not null default false;
+
+-- Step sections ("For the crust"). Additive only: a nullable jsonb column the live
+-- app never selects or writes, so it ignores it. One entry per step in
+-- `instructions`, in order: the name of the section the step sits under, or null.
+-- A parallel array rather than a change to `instructions` itself, because the live
+-- app reads that column as an array of strings. Null means the recipe has no
+-- sections. Ingredient sections need no column: they are a `group` key inside the
+-- existing `ingredients` jsonb.
+alter table recipes add column if not exists instruction_groups jsonb;

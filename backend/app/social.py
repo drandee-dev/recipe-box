@@ -15,8 +15,9 @@ from urllib.parse import quote, urlparse
 import httpx
 from bs4 import BeautifulSoup
 
+from . import sections
 from .tags import drop_unsupported, hashtags_in, infer_tags, merge_tags, strip_hashtags
-from .extract import ExtractError, assert_public_host, fetch_html, guarded_client
+from .extract import ExtractError, absolute_url, assert_public_host, fetch_html, guarded_client
 
 log = logging.getLogger("recipe.social")
 
@@ -162,7 +163,8 @@ def _og_tags(url: str) -> dict:
 
     return {
         "caption": caption,
-        "image_url": tags.get("og:image") or tags.get("twitter:image") or "",
+        # Resolved against the page: plenty of sites write og:image as a path.
+        "image_url": absolute_url(url, tags.get("og:image") or tags.get("twitter:image") or ""),
         "title": title_body,
     }
 
@@ -230,6 +232,7 @@ def link_card(url: str, source_type: str, post: dict, structured: dict | None = 
         "description": strip_hashtags(caption)[:2000] or None,
         "ingredients": [],
         "instructions": [],
+        "instruction_groups": None,
         "prep_min": None,
         "cook_min": None,
         "total_min": None,
@@ -239,19 +242,46 @@ def link_card(url: str, source_type: str, post: dict, structured: dict | None = 
     }
 
 
+def _step_sections(listed, named) -> list[str | None] | None:
+    """The model's `instruction_groups`, kept only if it can be trusted.
+
+    It has to be a list with exactly one entry per instruction the model returned:
+    the schema cannot say so, and a list one short would hand every later step the
+    wrong section. Blank instructions are dropped from the recipe, so they are
+    dropped here by the same test, at the same positions."""
+    if not isinstance(named, list) or not isinstance(listed, list) or len(named) != len(listed):
+        return None
+    kept = [
+        sections.clean_name(name)
+        for step, name in zip(listed, named)
+        if isinstance(step, str) and step.strip()
+    ]
+    return sections.informative(kept)
+
+
 def to_recipe(structured: dict, url: str, source_type: str, post: dict) -> dict:
     """Merge Haiku's output with the metadata we fetched ourselves."""
+    lines = [
+        i for i in structured.get("ingredients", []) if isinstance(i, dict) and (i.get("raw") or "").strip()
+    ]
+    # Section names are the model's reading of the source's own headings, so they
+    # get the same tests a page's would: a single section, or a label like
+    # "Ingredients", is not a section and every `group` is dropped.
+    names = [sections.clean_name(i.get("group")) for i in lines]
+    keep_groups = sections.informative(names) is not None
     ingredients = [
         {
             "raw": (i.get("raw") or "").strip(),
             "item": i.get("item"),
             "qty": i.get("qty"),
             "unit": i.get("unit"),
+            **({"group": names[n]} if keep_groups and names[n] else {}),
         }
-        for i in structured.get("ingredients", [])
-        if isinstance(i, dict) and (i.get("raw") or "").strip()
+        for n, i in enumerate(lines)
     ]
-    steps = [s.strip() for s in structured.get("instructions", []) if isinstance(s, str) and s.strip()]
+    listed = structured.get("instructions", [])
+    steps = [s.strip() for s in listed if isinstance(s, str) and s.strip()]
+    instruction_groups = _step_sections(listed, structured.get("instruction_groups"))
     caption = post.get("caption") or ""
     total_min = structured.get("total_min")
     return {
@@ -262,6 +292,7 @@ def to_recipe(structured: dict, url: str, source_type: str, post: dict) -> dict:
         "description": (structured.get("description") or "").strip()[:2000] or None,
         "ingredients": ingredients,
         "instructions": steps,
+        "instruction_groups": instruction_groups,
         "prep_min": structured.get("prep_min"),
         "cook_min": structured.get("cook_min"),
         "total_min": structured.get("total_min"),
@@ -303,6 +334,8 @@ def graft_written_recipe(recipe: dict, linked: dict | None) -> dict:
         return recipe
     if not recipe.get("instructions") and linked.get("instructions"):
         recipe["instructions"] = linked["instructions"]
+        # Section names go with the steps they label, or not at all.
+        recipe["instruction_groups"] = linked.get("instruction_groups")
     for field in ("prep_min", "cook_min", "total_min", "servings"):
         if recipe.get(field) is None and linked.get(field) is not None:
             recipe[field] = linked[field]

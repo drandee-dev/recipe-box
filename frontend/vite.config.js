@@ -2,9 +2,18 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 
+// Set only on the staging branch's Vercel scope. Staging installs as its own
+// home-screen app, so it needs its own name on the icon and in the manifest.
+const staging = process.env.VITE_APP_STAGE === 'staging'
+
 export default defineConfig({
   plugins: [
     react(),
+    {
+      name: 'stage-title',
+      transformIndexHtml: (html) =>
+        staging ? html.replace('title" content="Recipes"', 'title" content="Recipes β"') : html,
+    },
     VitePWA({
       registerType: 'autoUpdate',
       // src/lib/pwa.js imports virtual:pwa-register and registers the worker
@@ -22,6 +31,10 @@ export default defineConfig({
         'fonts/*.woff2',
       ],
       workbox: {
+        // Push handling (public/push-sw.js) is loaded into the generated worker
+        // rather than switching the plugin to injectManifest and owning the whole
+        // file. A new worker lets the next load pick it up via the autoUpdate.
+        importScripts: ['push-sw.js'],
         runtimeCaching: [
           {
             // Recipe photos come from arbitrary sites and CDNs, so they can't be
@@ -41,11 +54,15 @@ export default defineConfig({
         ],
       },
       manifest: {
-        name: 'Recipe Box',
-        short_name: 'Recipes',
+        name: staging ? 'Recipe Box β' : 'Recipe Box',
+        short_name: staging ? 'Recipes β' : 'Recipes',
         description: 'Save recipes from anywhere, plan the week',
         theme_color: '#1c7c54',
-        background_color: '#ffffff',
+        // The light page ground, not white: this is the launch splash on Android
+        // and a manifest has one value, so it cannot follow dark mode (the
+        // dark-colours manifest member has not shipped). The ground is close
+        // enough to the app's first paint that the hand-off does not flash.
+        background_color: '#f4f1e9',
         display: 'standalone',
         start_url: '/',
         // Two sets, deliberately not one "any maskable" entry. Android crops a

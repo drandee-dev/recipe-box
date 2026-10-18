@@ -48,6 +48,9 @@ export function needsMirror(recipe) {
 // this is one pass over the Instagram recipes in the box and then never again.
 export function needsGlyphRepair(recipe) {
   if (recipe?.source_type !== 'instagram' || !isMirrored(recipe)) return false
+  // `&u=` marks a photo the person uploaded themselves. A repair goes back to the
+  // post and would replace their picture with the post's cover.
+  if (recipe.image_url.includes('&u=')) return false
   return !recipe.image_url.includes(`?v=${MIRROR_VERSION}`)
 }
 
@@ -76,8 +79,8 @@ export function mirrorSource(recipe) {
 //
 // `box` is a number of CSS pixels for the fixed boxes (card thumb, picker row),
 // or a ready-made `sizes` string for one that isn't fixed — the detail sheet's
-// hero is as wide as the sheet, which is the viewport up to 640px, and there is
-// no single number that describes it.
+// hero is as wide as the sheet, which is the viewport up to 640px (960px on a
+// laptop), and there is no single number that describes it.
 export function thumbSources(recipe, box) {
   const full = recipe?.image_url
   const small = recipe?.image_thumb_url
@@ -87,5 +90,22 @@ export function thumbSources(recipe, box) {
     src: small,
     srcSet: `${small} 320w, ${full} 960w`,
     sizes: typeof box === 'number' ? `${box}px` : box,
+  }
+}
+
+// A saved photo link that is not a full link, made into one. The importer used to
+// keep a page's `/images/uploads/x.jpg` as written, which means nothing away from
+// the page: it never loads, and the editor refuses to save the recipe while the
+// link is not a full one. Resolved against the recipe's own source page, it is the
+// photo the page meant. Anything that cannot be resolved to a web link comes back
+// exactly as it was, so the editor still says what is wrong with it.
+export function fullPhotoLink(image, source) {
+  const value = String(image || '').trim()
+  if (!value || /^https?:\/\//i.test(value)) return value
+  try {
+    const url = new URL(value, source)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : value
+  } catch {
+    return value
   }
 }

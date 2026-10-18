@@ -135,6 +135,10 @@ class RecipeShape(unittest.TestCase):
             "title", "source_url", "source_type", "image_url", "description",
             "ingredients", "instructions", "prep_min", "cook_min", "total_min",
             "servings", "tags", "favorite",
+            # Step sections, one name (or null) per step: the `instruction_groups`
+            # column in supabase/schema.sql, selected and written by store.js.
+            # App.jsx's handleEditorSave clears it when the steps change.
+            "instruction_groups",
         }
         for name, recipe in self.all_four().items():
             with self.subTest(constructor=name):

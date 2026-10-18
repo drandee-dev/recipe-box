@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { isMirrored, mirrorSource, needsGlyphRepair, needsMirror } from './images.js'
+import { fullPhotoLink, isMirrored, mirrorSource, needsGlyphRepair, needsMirror } from './images.js'
 
 const BUCKET = 'https://ref.supabase.co/storage/v1/object/public/recipe-images'
 const OURS = `${BUCKET}/user-1/recipe-1-lg.jpg?v=3`
@@ -61,6 +61,11 @@ test('a repaired photo is not repaired again', () => {
   assert.equal(needsGlyphRepair({ source_type: 'instagram', image_url: OURS }), false)
 })
 
+test('a photo the person uploaded is never repaired from the post, whatever its version', () => {
+  const uploaded = `${BUCKET}/user-1/recipe-1-lg.jpg?v=2&u=1760000000`
+  assert.equal(needsGlyphRepair({ source_type: 'instagram', image_url: uploaded }), false)
+})
+
 test('only Instagram is repaired', () => {
   // TikTok's oEmbed thumbnail is a clean cover frame and a recipe site's photo
   // is a photo. Repairing those would be a re-upload that changes nothing.
@@ -94,4 +99,27 @@ test('a photo we do not hold yet is a mirror, not a repair', () => {
   const fresh = { source_type: 'instagram', image_url: THEIRS }
   assert.equal(needsMirror(fresh), true)
   assert.equal(needsGlyphRepair(fresh), false)
+})
+
+// A photo link saved as a bare path (an old import from a site that writes og:image
+// without the domain) is opened in the editor as the link it meant.
+test('a bare path is resolved against the recipe\'s own source page', () => {
+  const source = 'https://www.oliveandmango.com/apple-crumble-cheesecake-bars/'
+  assert.equal(
+    fullPhotoLink('/images/uploads/bars_1.jpg', source),
+    'https://www.oliveandmango.com/images/uploads/bars_1.jpg',
+  )
+  assert.equal(fullPhotoLink('//cdn.example.com/a.jpg', source), 'https://cdn.example.com/a.jpg')
+  assert.equal(fullPhotoLink('bars.jpg', source), 'https://www.oliveandmango.com/apple-crumble-cheesecake-bars/bars.jpg')
+})
+
+test('a full link, an empty one, and one that cannot be resolved come back as they were', () => {
+  const source = 'https://example.com/r/'
+  assert.equal(fullPhotoLink('https://img.example.com/a.jpg', source), 'https://img.example.com/a.jpg')
+  assert.equal(fullPhotoLink('', source), '')
+  assert.equal(fullPhotoLink(null, source), '')
+  assert.equal(fullPhotoLink('/a.jpg', undefined), '/a.jpg')
+  assert.equal(fullPhotoLink('/a.jpg', 'not a url'), '/a.jpg')
+  assert.equal(fullPhotoLink('data:image/png;base64,AAAA', source), 'data:image/png;base64,AAAA')
+  assert.equal(fullPhotoLink('javascript:alert(1)', source), 'javascript:alert(1)')
 })

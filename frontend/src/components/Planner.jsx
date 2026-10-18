@@ -9,11 +9,15 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { usePendingCommit } from '../lib/usePendingCommit.js'
+import { SWIPE_SLOP, useWeekSwipe } from '../lib/useWeekSwipe.js'
+import { SERVINGS_MAX_FACTOR, baseServings, servingsLabel } from '../lib/recipes.js'
 import RecipeThumb from './RecipeThumb.jsx'
 import Sheet from './Sheet.jsx'
+import SwipeHint from './SwipeHint.jsx'
 import {
   SLOTS,
   dayName,
+  fromISODate,
   isSameDay,
   shortDate,
   toISODate,
@@ -34,17 +38,15 @@ const SWIPE_REVEAL = 72
 const SWIPE_DELETE = 132
 const SWIPE_OVERSHOOT = 40
 const LONG_PRESS_MS = 500
-const SWIPE_SLOP = 8
 
-// Week swipe (finding 20). Smaller threshold than the row's delete swipe —
-// this gesture only has one outcome, not "reveal vs delete".
-const WEEK_SWIPE_THRESHOLD = 56
+// The slots a day actually has meals in, in the day's order.
+const slotsOf = (entries) => SLOTS.filter((s) => entries.some((e) => e.slot === s))
 
-// Both gestures in this file decide their axis the same way: ignore everything
-// inside a slop, then commit once and for all to horizontal or vertical. Only
-// the horizontal half is ours, and `preventDefault` is deliberately left to the
-// caller — it must not fire until after the decision, or a vertical drag stops
-// scrolling the page.
+// The row swipe decides its axis the way the week swipe (lib/useWeekSwipe) does:
+// ignore everything inside a slop, then commit once and for all to horizontal or
+// vertical. Only the horizontal half is ours, and `preventDefault` is
+// deliberately left to the caller — it must not fire until after the decision,
+// or a vertical drag stops scrolling the page.
 //
 // Returns the axis just decided, or null while still inside the slop. `g.axis`
 // having a value already means the decision was made on an earlier move.
@@ -62,10 +64,19 @@ export default function Planner({
   onWeekChange,
   onAssign,
   onUnassign,
+  onUpdate,
+  onOpenRecipe,
 }) {
   // { dateISO, dayLabel } while the picker is open, null otherwise.
   const [picking, setPicking] = useState(null)
+  // The planned meal whose sheet is open (servings, day, open the recipe). Held
+  // as an id and looked up from `plan` each render, so a change made in the
+  // sheet shows in it straight away.
+  const [editingId, setEditingId] = useState(null)
   const [slot, setSlot] = useState('dinner')
+  // The picker's "Leftovers" choice: the meal is eaten from what was cooked
+  // earlier, so it is left off the shopping list.
+  const [leftover, setLeftover] = useState(false)
   const [query, setQuery] = useState('')
 
   // Only one row's remove action is ever revealed at a time.
@@ -92,57 +103,17 @@ export default function Planner({
     startRemoval({ entry, label })
   }
 
-  // Week swipe state. slideDir only drives the entrance animation of the new
-  // week's content — the dragged-out old content isn't animated separately,
-  // the key change below remounts straight into the new week.
-  const [slideDir, setSlideDir] = useState(null)
-  const [weekDragX, setWeekDragX] = useState(0)
-  const [weekDragging, setWeekDragging] = useState(false)
-  const weekGesture = useRef(null)
-  const weekDragXRef = useRef(0)
-
-  function goWeek(direction) {
-    setSlideDir(direction > 0 ? 'right' : direction < 0 ? 'left' : null)
-    onWeekChange(direction)
-  }
-
-  function setWeekDrag(x) {
-    weekDragXRef.current = x
-    setWeekDragX(x)
-  }
-
-  function handleWeekPointerDown(e) {
-    if (e.target.closest('.planner-entry-swipe, button, a, input')) return
-    weekGesture.current = { startX: e.clientX, startY: e.clientY, axis: null }
-  }
-
-  function handleWeekPointerMove(e) {
-    const g = weekGesture.current
-    if (!g) return
-    const dx = e.clientX - g.startX
-    const dy = e.clientY - g.startY
-    if (g.axis === null) {
-      if (lockAxis(g, dx, dy) !== 'horizontal') return
-      setWeekDragging(true)
-    }
-    if (g.axis !== 'horizontal') return
-    e.preventDefault()
-    setWeekDrag(dx)
-  }
-
-  function endWeekGesture() {
-    const g = weekGesture.current
-    weekGesture.current = null
-    if (g && g.axis === 'horizontal') {
-      setWeekDragging(false)
-      if (weekDragXRef.current <= -WEEK_SWIPE_THRESHOLD) {
-        goWeek(1)
-      } else if (weekDragXRef.current >= WEEK_SWIPE_THRESHOLD) {
-        goWeek(-1)
-      }
-    }
-    setWeekDrag(0)
-  }
+  // Swiping the screen changes the week (lib/useWeekSwipe, shared with the
+  // shopping list). It covers the whole planner, not only the rows: an empty day
+  // is a button and the space under a short week used to be dead.
+  const {
+    goWeek,
+    showHint,
+    slideDir,
+    dragX: weekDragX,
+    dragging: weekDragging,
+    swipeProps,
+  } = useWeekSwipe(onWeekChange)
 
   const today = new Date()
   const days = weekDays(weekStart)
@@ -154,11 +125,12 @@ export default function Planner({
   function openPicker(date) {
     setQuery('')
     setSlot('dinner')
+    setLeftover(false)
     setPicking({ dateISO: toISODate(date), dayLabel: `${dayName(date)}, ${shortDate(date)}` })
   }
 
   function choose(recipeId) {
-    onAssign(recipeId, picking.dateISO, slot)
+    onAssign(recipeId, picking.dateISO, slot, null, leftover)
     setPicking(null)
   }
 
@@ -176,7 +148,7 @@ export default function Planner({
     .join(' ')
 
   return (
-    <div className="planner">
+    <div className="planner" {...swipeProps}>
       <div className="planner-weeknav">
         <button
           type="button"
@@ -206,6 +178,8 @@ export default function Planner({
         </button>
       </div>
 
+      {showHint && <SwipeHint />}
+
       {recipes.length === 0 && !loading && (
         <p className="rb-empty">
           <strong>Nothing to plan with yet</strong>
@@ -218,10 +192,6 @@ export default function Planner({
         key={toISODate(weekStart)}
         className={weekBodyClass}
         style={weekDragging ? { transform: `translateX(${weekDragX}px)` } : undefined}
-        onPointerDown={handleWeekPointerDown}
-        onPointerMove={handleWeekPointerMove}
-        onPointerUp={endWeekGesture}
-        onPointerCancel={endWeekGesture}
       >
         {days.map((date) => {
           const dateISO = toISODate(date)
@@ -279,9 +249,12 @@ export default function Planner({
                 </button>
               </div>
 
-              {SLOTS.filter((s) => dayEntries.some((e) => e.slot === s)).map((s) => (
+              {slotsOf(dayEntries).map((s, _i, all) => (
                 <div key={s} className="planner-slot">
-                  <span className="planner-slot-label">{SLOT_LABELS[s]}</span>
+                  {/* A day with one slot does not need a heading to say which
+                      one: it moves into each meal's own line instead, so the
+                      card loses a row and still says "Dinner". */}
+                  {all.length > 1 && <span className="planner-slot-label">{SLOT_LABELS[s]}</span>}
                   <ul className="planner-entries">
                     {dayEntries
                       .filter((e) => e.slot === s)
@@ -293,9 +266,11 @@ export default function Planner({
                             entry={entry}
                             recipe={recipe}
                             dayLabel={label}
+                            slotLabel={all.length === 1 ? SLOT_LABELS[s] : null}
                             isOpen={openEntryId === entry.id}
                             onOpenChange={(open) => handleEntryOpenChange(entry.id, open)}
                             onRemove={() => removeEntry(entry, label)}
+                            onOpen={() => setEditingId(entry.id)}
                           />
                         )
                       })}
@@ -316,6 +291,28 @@ export default function Planner({
         </div>
       )}
 
+      {editingId && (() => {
+        const entry = plan.find((e) => e.id === editingId && e.id !== pendingRemoval?.entry.id)
+        if (!entry) return null
+        return (
+          <MealSheet
+            entry={entry}
+            recipe={byId.get(entry.recipe_id)}
+            days={days}
+            onUpdate={onUpdate}
+            onOpenRecipe={(id) => {
+              setEditingId(null)
+              onOpenRecipe(id)
+            }}
+            onRemove={() => {
+              setEditingId(null)
+              removeEntry(entry, dayName(fromISODate(entry.plan_date)))
+            }}
+            onClose={() => setEditingId(null)}
+          />
+        )
+      })()}
+
       {picking && (
         <Sheet title={picking.dayLabel} onClose={() => setPicking(null)}>
           <div className="planner-slot-chips">
@@ -329,6 +326,21 @@ export default function Planner({
                 {SLOT_LABELS[s]}
               </button>
             ))}
+          </div>
+
+          {/* Its own row, not a fifth slot: it is not a meal time. */}
+          <div className="planner-slot-chips">
+            <button
+              type="button"
+              className={leftover ? 'planner-chip planner-chip-active' : 'planner-chip'}
+              onClick={() => setLeftover((v) => !v)}
+              aria-pressed={leftover}
+            >
+              Leftovers
+            </button>
+            <span className="planner-leftover-hint" aria-live="polite">
+              {leftover ? 'Nothing to buy for this meal.' : 'Eating what was cooked earlier? Mark it as leftovers.'}
+            </span>
           </div>
 
           {recipes.length > 6 && (
@@ -371,11 +383,16 @@ export default function Planner({
 // button is real and in the DOM at all times, so Tab reaches it regardless
 // of where the row is sitting; focusing it reveals the row the same way a
 // drag would, which is what makes it reachable by keyboard.
-function PlannerEntry({ entry, recipe, dayLabel, isOpen, onOpenChange, onRemove }) {
+function PlannerEntry({ entry, recipe, dayLabel, slotLabel, isOpen, onOpenChange, onRemove, onOpen }) {
   const [dragX, setDragX] = useState(0)
   const [dragging, setDragging] = useState(false)
   const gesture = useRef(null)
   const dragXRef = useRef(0)
+  // The title is a real button, so a tap reaches it as a click. A swipe or a
+  // long press must not also open the meal when the finger lifts over it: the
+  // gesture marks itself here and the click reads the mark. Cleared on the next
+  // pointerdown.
+  const wasGesture = useRef(false)
 
   useEffect(() => {
     if (!dragging) {
@@ -399,10 +416,12 @@ function PlannerEntry({ entry, recipe, dayLabel, isOpen, onOpenChange, onRemove 
 
   function handlePointerDown(e) {
     if (e.pointerType === 'mouse' && e.button !== 0) return
+    wasGesture.current = false
     const baseX = isOpen ? -SWIPE_REVEAL : 0
     gesture.current = { startX: e.clientX, startY: e.clientY, axis: null, baseX }
     gesture.current.longPressTimer = setTimeout(() => {
       if (gesture.current && gesture.current.axis === null) {
+        wasGesture.current = true
         gesture.current.axis = 'longpress'
         setDragging(false)
         setDrag(-SWIPE_REVEAL)
@@ -423,6 +442,7 @@ function PlannerEntry({ entry, recipe, dayLabel, isOpen, onOpenChange, onRemove 
       // long-press timer must not also fire.
       clearLongPress()
       if (axis !== 'horizontal') return
+      wasGesture.current = true
       setDragging(true)
     }
     if (g.axis !== 'horizontal') return
@@ -444,7 +464,9 @@ function PlannerEntry({ entry, recipe, dayLabel, isOpen, onOpenChange, onRemove 
       }
       onOpenChange(dragXRef.current <= -SWIPE_REVEAL / 2)
     } else if (g.axis === null && isOpen) {
-      // A plain tap on an already-open row closes it.
+      // A plain tap on an already-open row closes it, and only that: the click
+      // that follows must not also open the meal.
+      wasGesture.current = true
       onOpenChange(false)
     }
   }
@@ -483,11 +505,146 @@ function PlannerEntry({ entry, recipe, dayLabel, isOpen, onOpenChange, onRemove 
       >
         {/* A plan row can outlive its recipe if the recipe was deleted on
             another device before this one refetched. Show the gap rather
-            than crashing. */}
-        <span className={recipe ? '' : 'planner-entry-missing'}>
-          {recipe ? recipe.title : 'Recipe no longer saved'}
-        </span>
+            than crashing. A tap opens the meal's sheet (servings, day, open
+            the recipe); the sheet is where the rarer controls live, so the row
+            stays a row. */}
+        <button
+          type="button"
+          className="planner-entry-open"
+          onClick={(e) => {
+            // detail 0 is a keyboard activation, which has no gesture before it.
+            if (e.detail === 0 || !wasGesture.current) onOpen()
+          }}
+        >
+          {recipe && <RecipeThumb recipe={recipe} size="sm" />}
+          <span className="planner-entry-text">
+            <span className={recipe ? 'planner-entry-title' : 'planner-entry-title planner-entry-missing'}>
+              {recipe ? recipe.title : 'Recipe no longer saved'}
+            </span>
+            {recipe && (slotLabel || entry.servings || entry.leftover) && (
+              <span className="planner-entry-meta">
+                {[
+                  slotLabel,
+                  entry.leftover ? 'Leftovers' : null,
+                  // Servings only mean something for a meal that is bought for.
+                  !entry.leftover && entry.servings ? servingsLabel(recipe, entry.servings) : null,
+                ]
+                  .filter(Boolean)
+                  .join(' · ')}
+              </span>
+            )}
+          </span>
+        </button>
       </div>
     </li>
+  )
+}
+
+// One planned meal, opened. This is where the things a row has no room for live:
+// open the recipe, change how many it is for (which feeds the shopping list), and
+// move it to another day or slot. Moving stays inside the week on screen, since
+// that is the week these chips can name.
+function MealSheet({ entry, recipe, days, onUpdate, onOpenRecipe, onRemove, onClose }) {
+  const base = recipe ? baseServings(recipe) : null
+  const servings = entry.servings || base
+  const max = base ? Math.round(base * SERVINGS_MAX_FACTOR) : 0
+
+  function step(by) {
+    const next = Math.max(1, Math.min(max, servings + by))
+    // Back at the recipe's own number is "as the recipe says", stored as null, so
+    // a later edit to the recipe's servings is followed rather than overridden.
+    onUpdate(entry.id, { servings: next === base ? null : next })
+  }
+
+  return (
+    <Sheet title={recipe ? recipe.title : 'Planned meal'} closeLabel="Done" onClose={onClose}>
+      {recipe && (
+        <button type="button" className="btn btn-primary btn-block" onClick={() => onOpenRecipe(recipe.id)}>
+          Open recipe
+        </button>
+      )}
+
+      {/* A meal eaten from what was cooked earlier. It stays on the planner and
+          drops off the shopping list; the servings below stop mattering for it. */}
+      <button
+        type="button"
+        className={entry.leftover ? 'btn btn-secondary btn-block planner-leftover-on' : 'btn btn-secondary btn-block'}
+        aria-pressed={Boolean(entry.leftover)}
+        onClick={() => onUpdate(entry.id, { leftover: !entry.leftover })}
+      >
+        Leftovers: nothing to buy
+      </button>
+
+      {base !== null && !entry.leftover && (
+        <>
+          <h3 className="shopping-sheet-heading">Cooking for</h3>
+          <div className="detail-servings">
+            <button
+              type="button"
+              className="detail-serving-step"
+              onClick={() => step(-1)}
+              disabled={servings <= 1}
+              aria-label="One fewer serving"
+            >
+              <span aria-hidden="true">−</span>
+            </button>
+            <span className="detail-serving-count" aria-live="polite">
+              {servingsLabel(recipe, servings)}
+            </span>
+            <button
+              type="button"
+              className="detail-serving-step"
+              onClick={() => step(1)}
+              disabled={servings >= max}
+              aria-label="One more serving"
+            >
+              <span aria-hidden="true">+</span>
+            </button>
+            {entry.servings && (
+              <button type="button" className="detail-serving-reset" onClick={() => onUpdate(entry.id, { servings: null })}>
+                Reset
+              </button>
+            )}
+          </div>
+          <p className="shopping-sheet-note">The shopping list buys for this many.</p>
+        </>
+      )}
+
+      <h3 className="shopping-sheet-heading">Day</h3>
+      <div className="planner-slot-chips">
+        {days.map((date) => {
+          const iso = toISODate(date)
+          return (
+            <button
+              key={iso}
+              type="button"
+              className={iso === entry.plan_date ? 'planner-chip planner-chip-active' : 'planner-chip'}
+              aria-pressed={iso === entry.plan_date}
+              onClick={() => iso !== entry.plan_date && onUpdate(entry.id, { plan_date: iso })}
+            >
+              {dayName(date).slice(0, 3)}
+              <span className="detail-plan-date"> {date.getDate()}</span>
+            </button>
+          )
+        })}
+      </div>
+      <div className="planner-slot-chips">
+        {SLOTS.map((s) => (
+          <button
+            key={s}
+            type="button"
+            className={s === entry.slot ? 'planner-chip planner-chip-active' : 'planner-chip'}
+            aria-pressed={s === entry.slot}
+            onClick={() => s !== entry.slot && onUpdate(entry.id, { slot: s })}
+          >
+            {SLOT_LABELS[s]}
+          </button>
+        ))}
+      </div>
+
+      <button type="button" className="btn btn-quiet" onClick={onRemove}>
+        Remove from the plan
+      </button>
+    </Sheet>
   )
 }

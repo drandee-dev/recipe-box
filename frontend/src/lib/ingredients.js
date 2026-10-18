@@ -8,6 +8,9 @@
 // The rule throughout: never lose information. Anything that cannot be parsed
 // is carried to the list verbatim and simply doesn't merge with anything.
 
+import { DIMENSION, MEASURE_ALIASES, bestUnit, systemOf, toBase } from './units.js'
+import { baseServings } from './recipes.js'
+
 const VULGAR = {
   '½': 0.5, '⅓': 1 / 3, '⅔': 2 / 3, '¼': 0.25, '¾': 0.75,
   '⅕': 0.2, '⅖': 0.4, '⅗': 0.6, '⅘': 0.8,
@@ -15,20 +18,10 @@ const VULGAR = {
 }
 
 // Canonical unit to the spellings seen in real recipes. Merging happens on the
-// canonical form, so "2 tablespoons" and "1 tbsp" add up.
+// canonical form, so "2 tablespoons" and "1 tbsp" add up. The measures (cups,
+// spoons, grams...) live in units.js, which is also where they convert.
 const UNIT_ALIASES = {
-  cup: ['cup', 'cups', 'c'],
-  tbsp: ['tbsp', 'tbsps', 'tbs', 'tb', 'tablespoon', 'tablespoons'],
-  tsp: ['tsp', 'tsps', 'teaspoon', 'teaspoons'],
-  oz: ['oz', 'ounce', 'ounces'],
-  lb: ['lb', 'lbs', 'pound', 'pounds'],
-  g: ['g', 'gr', 'gram', 'grams'],
-  kg: ['kg', 'kilogram', 'kilograms'],
-  ml: ['ml', 'milliliter', 'milliliters', 'millilitre', 'millilitres'],
-  l: ['l', 'liter', 'liters', 'litre', 'litres'],
-  quart: ['quart', 'quarts', 'qt'],
-  pint: ['pint', 'pints', 'pt'],
-  gallon: ['gallon', 'gallons', 'gal'],
+  ...MEASURE_ALIASES,
   clove: ['clove', 'cloves'],
   can: ['can', 'cans'],
   jar: ['jar', 'jars'],
@@ -188,7 +181,14 @@ function takeQuantity(text) {
   return [null, rest]
 }
 
+// "fl oz" is two words, and a lone "oz" is weight: reading "8 fl oz milk" as 8
+// ounces of weight would put a mass on a volume and merge it with the wrong
+// thing. Checked first so the "fl" is never taken as part of the name.
+const FLUID_OUNCE = /^(?:fl\.?\s*oz\.?|fluid\s+ounces?)\s+/i
+
 function takeUnit(text) {
+  const fluid = text.match(FLUID_OUNCE)
+  if (fluid) return ['floz', text.slice(fluid[0].length)]
   const match = text.match(/^([a-zA-Z]+)\.?\s+/)
   if (!match) return [null, text]
   const canonical = UNIT_LOOKUP.get(match[1].toLowerCase())
@@ -207,7 +207,7 @@ function takeUnit(text) {
 // shop. It is deliberately not conditioned on anything cleverer: `o` also
 // over-collapses words like "shoes", which are not ingredients, and this string
 // is never shown to anyone.
-function singular(word) {
+export function singular(word) {
   if (word.length <= 3) return word
   if (word.endsWith('ies')) return `${word.slice(0, -3)}y`
   if (/(ch|sh|s|x|z|o)es$/.test(word)) return word.slice(0, -2)
@@ -281,8 +281,25 @@ export function formatQuantity(qty, unit) {
   else number = String(Math.round(qty * 100) / 100)
 
   if (!unit) return number
+  // A metric amount is a decimal, never a fraction: the fraction match above has a
+  // tolerance, so 1.35 kg printed as "1 1/3 kg", 17 g short of what was asked for.
+  if (systemOf(unit) === 'metric') return `${Math.round(qty * 100) / 100} ${unit}`
   const plural = qty > 1 && UNIT_PLURALS[unit] ? UNIT_PLURALS[unit] : unit
-  return `${number} ${plural}`
+  return `${number} ${UNIT_LABELS[plural] || plural}`
+}
+
+// Canonical keys that are not what a person writes.
+const UNIT_LABELS = { floz: 'fl oz' }
+
+// The canonical unit a word names ("tablespoons" -> 'tbsp'), or undefined.
+export function unitOf(word) {
+  return UNIT_LOOKUP.get(String(word).toLowerCase().replace(/\.$/, ''))
+}
+
+// A unit as written beside a quantity: plural past one, "fl oz" for floz.
+export function unitLabel(unit, qty) {
+  const plural = qty > 1 && UNIT_PLURALS[unit] ? UNIT_PLURALS[unit] : unit
+  return UNIT_LABELS[plural] || plural
 }
 
 // --- Scaling (finding 12) --------------------------------------------------
@@ -302,7 +319,7 @@ export function formatQuantity(qty, unit) {
 
 // One quantity token, in the same forms takeQuantity accepts and in the same
 // order, longest first: "1 1/2", "1½", "1/2", "½", "1.5".
-const AMOUNT = '(?:\\d+\\s+\\d+\\s*/\\s*\\d+|\\d+\\s*[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|\\d+\\s*/\\s*\\d+|[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|\\d+(?:\\.\\d+)?)'
+export const AMOUNT = '(?:\\d+\\s+\\d+\\s*/\\s*\\d+|\\d+\\s*[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|\\d+\\s*/\\s*\\d+|[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|\\d+(?:\\.\\d+)?)'
 
 // Group 1 is any bullet the line was written with, group 2 the amount, group 3
 // the separator of a range and group 4 its high end. A range is matched whole so
@@ -311,7 +328,7 @@ const AMOUNT = '(?:\\d+\\s+\\d+\\s*/\\s*\\d+|\\d+\\s*[½⅓⅔¼¾⅕⅖⅗⅘�
 // one number, but a recipe on screen has no reason to.
 const LEADING_AMOUNT = new RegExp(`^([-*•\\s]*)(${AMOUNT})(?:(\\s*(?:-|–|—|to)\\s*)(${AMOUNT}))?`)
 
-function amountValue(token) {
+export function amountValue(token) {
   const [value] = takeQuantity(token.trim())
   return value
 }
@@ -369,6 +386,47 @@ export function scaleIngredientText(raw, factor) {
   return `${match[1]}${amount}${scaleBracketed(text.slice(match[0].length), factor)}`
 }
 
+// The amount at the head of a line, and its unit when the word after it is one,
+// split off so the sheet can set it in bold (every comparable app does, and the
+// eye finds "2 cups" before it finds the noun). Nothing is rewritten: the three
+// parts always join back into exactly the input, and a line with no quantity at
+// its head comes back untouched as `rest`, the same rule scaling follows. A
+// bracketed weight ("(200 g)") stays plain: it restates the amount, it is not
+// the amount.
+export function splitAmount(text) {
+  const s = String(text ?? '')
+  const match = s.match(LEADING_AMOUNT)
+  if (!match) return { lead: '', bold: '', rest: s }
+  const lead = match[1]
+  let bold = match[0].slice(lead.length)
+  const after = s.slice(match[0].length).match(/^(\s*)([A-Za-z]+)\.?(?=\s|$|,)/)
+  if (after && unitOf(after[2])) bold += s.slice(match[0].length, match[0].length + after[0].length)
+  return { lead, bold, rest: s.slice(lead.length + bold.length) }
+}
+
+// Width, in characters, of the quantity column when a recipe's lines are set in
+// one: the longest bold amount, capped so a freak line ("1 1/2 to 2 tablespoons")
+// cannot take half the screen. 14 holds "2 tablespoons" (13), which is on most
+// recipes; a longer one is cut to the cap and the column does not grow for it.
+// 0 when no line has an amount, which is the cue to set the list as plain text
+// with no column at all.
+export const QTY_COLUMN_MAX = 14
+
+export function qtyColumnCh(lines) {
+  let longest = 0
+  for (const line of lines) longest = Math.max(longest, splitAmount(line).bold.trim().length)
+  return Math.min(longest, QTY_COLUMN_MAX)
+}
+
+// A shopping line's sources on one line: the first recipe, then "+N" for the
+// rest. The full list is in the item's sheet; spelling every recipe out is what
+// made each row wrap to three lines.
+export function formatSources(sources) {
+  if (!sources?.length) return ''
+  const first = formatSource(sources[0])
+  return sources.length > 1 ? `${first} +${sources.length - 1}` : first
+}
+
 // Recipes that came through the AI structurer already carry item/qty/unit, so
 // use those and skip the parser. qty arrives as a string there.
 function fromStructured(ing) {
@@ -390,28 +448,55 @@ export function readIngredient(ing) {
 
 // Collapses the week's planned recipes into merged lines, grouped by aisle.
 // Lines that could not be parsed are kept verbatim and never merged.
-export function buildShoppingList(plan, recipes) {
+// `units` is the person's setting: 'original' keeps what the recipes said, 'metric'
+// and 'us' write the list in that system.
+export function buildShoppingList(plan, recipes, units = 'original') {
   const byId = new Map(recipes.map((r) => [r.id, r]))
   const merged = new Map()
 
   for (const entry of plan) {
+    // Leftovers are a meal eaten from what was cooked earlier: there is nothing to
+    // buy for them, so they contribute no lines (and no source name).
+    if (entry.leftover) continue
     const recipe = byId.get(entry.recipe_id)
     if (!recipe) continue
+    // A meal planned for a different number of servings than the recipe says
+    // scales what it asks the list for. No stored servings, or a recipe whose
+    // own count can't be read, means 1: the list never invents a ratio. Only the
+    // quantity moves; the merge key below is built from name and dimension, so
+    // a tick on a line means the same thing at any servings.
+    const base = baseServings(recipe)
+    const factor = entry.servings && base ? entry.servings / base : 1
     for (const ing of recipe.ingredients || []) {
-      const parsed = readIngredient(ing)
-      if (!parsed) continue
+      const read = readIngredient(ing)
+      if (!read) continue
+      const parsed = factor === 1 || read.qty === null ? read : { ...read, qty: read.qty * factor }
 
       // Unparsed lines get a key unique to their text so they stand alone.
-      // Units are part of the key on purpose: 1 cup milk and 200 ml milk are
-      // not added together, because converting between them invites the kind
-      // of quiet arithmetic error you only notice in the shop.
+      //
+      // Within a dimension the unit is NOT part of the key: 1 tsp and 1 tbsp of
+      // salt, or 500 g and 1 kg of flour, are one line, because converting between
+      // units of the same dimension is exact arithmetic (units.js). That reverses
+      // the old rule, which kept every unit apart. What is still never added
+      // together is volume and weight (1 cup milk with 200 g milk): that is not
+      // arithmetic, it depends on the ingredient, and a quiet error there is only
+      // found in the shop.
+      const dimension = parsed.parsed ? DIMENSION[parsed.unit] : undefined
       const key = parsed.parsed
-        ? `${normalizeName(parsed.name)}|${parsed.unit || ''}`
+        ? `${normalizeName(parsed.name)}|${dimension || parsed.unit || ''}`
         : `raw:${parsed.raw.toLowerCase()}`
 
       const existing = merged.get(key)
       if (existing) {
-        if (parsed.qty !== null) existing.qty = (existing.qty ?? 0) + parsed.qty
+        if (parsed.qty !== null) {
+          if (dimension && parsed.unit !== existing.unit) existing.mixed = true
+          existing.qty = (existing.qty ?? 0) + parsed.qty
+          if (dimension) {
+            existing.total += toBase(parsed.qty, parsed.unit)
+            const system = systemOf(parsed.unit)
+            existing.systems[system] = (existing.systems[system] || 0) + 1
+          }
+        }
         // Per-recipe contributions, so a merged total stays traceable to what
         // asked for it. A recipe planned twice in the week contributes twice,
         // which is correct but looks wrong without the count, hence `times`.
@@ -428,6 +513,7 @@ export function buildShoppingList(plan, recipes) {
           })
         }
       } else {
+        const measured = Boolean(dimension) && parsed.qty !== null
         merged.set(key, {
           key,
           name: parsed.name,
@@ -435,19 +521,67 @@ export function buildShoppingList(plan, recipes) {
           unit: parsed.unit,
           raw: parsed.raw,
           parsed: parsed.parsed,
+          // What shopping_prefs files staples and moved aisles under. Null for a
+          // line that could not be parsed: it merges with nothing, so there is no
+          // "item" to remember a choice about.
+          nameKey: parsed.parsed ? normalizeName(parsed.name) : null,
           aisle: aisleFor(parsed.name),
           base: baseFor(parsed.name),
           sources: [{ title: recipe.title, qty: parsed.qty, unit: parsed.unit, times: 1 }],
+          // Only for a measure: the running total in grams or millilitres, whether
+          // the recipes disagreed about the unit, and which system each used.
+          dimension: measured ? dimension : null,
+          total: measured ? toBase(parsed.qty, parsed.unit) : null,
+          mixed: false,
+          systems: measured ? { [systemOf(parsed.unit)]: 1 } : {},
         })
       }
     }
   }
 
-  return [...merged.values()].sort(
+  const items = [...merged.values()]
+  for (const item of items) writeInDisplayUnits(item, units)
+  return items.sort(
     (a, b) =>
       AISLE_ORDER.indexOf(a.aisle) - AISLE_ORDER.indexOf(b.aisle) ||
       a.name.localeCompare(b.name),
   )
+}
+
+// Spoons stay spoons in a metric kitchen: "1 tsp salt" is as metric as it gets,
+// and "5 ml salt" is nobody's idea of a recipe.
+const SPOONS = new Set(['tsp', 'tbsp'])
+
+// Decides the unit a merged measure is shown in. When the recipes agreed on one
+// unit and the person has not asked for another system, it is left exactly as the
+// recipes wrote it. Otherwise the total is rewritten at the size a person reads:
+// 3 tsp as 1 tbsp, 1500 g as 1.5 kg.
+function writeInDisplayUnits(item, units) {
+  const total = item.total
+  delete item.total
+  if (!item.dimension) return
+  // The system most of the recipes used; on a tie, the first recipe's, since the
+  // plan runs in the order the person laid it out.
+  const majority = Object.entries(item.systems).reduce(
+    (best, entry) => (entry[1] > best[1] ? entry : best),
+    ['metric', 0],
+  )[0]
+
+  if (units === 'original') {
+    if (!item.mixed) return
+    const written = bestUnit(total, item.dimension, majority)
+    // Mixed units, so there is nothing "as written" to keep if it is too small.
+    Object.assign(item, written.qty > 0 ? written : bestUnit(total, item.dimension, 'metric'))
+    return
+  }
+  if (units === 'metric' && !item.mixed && SPOONS.has(item.unit)) return
+  const written = bestUnit(total, item.dimension, units)
+  // An amount too small to write in the other system (3 g of saffron is 0.1 oz) is
+  // left as the recipes wrote it rather than printed as "0 oz". If the recipes
+  // disagreed about the unit there is no "as written" to fall back to (the raw sum
+  // is in mixed units), so the total goes in grams or millilitres instead.
+  if (written.qty > 0) Object.assign(item, written)
+  else if (item.mixed) Object.assign(item, bestUnit(total, item.dimension, 'metric'))
 }
 
 // A source line names the recipe, nothing else: "Pasta", or "Pasta ×2" when
@@ -462,14 +596,14 @@ export function formatSource(source) {
 // Aisle sections, each holding a mix of standalone items and variant groups.
 // A base only earns a heading when two or more variants of it are present;
 // a lone "2 chicken breasts" reads better as an ordinary line.
-export function groupByAisle(items) {
+export function groupByAisle(items, order = AISLE_ORDER) {
   const byAisle = new Map()
   for (const item of items) {
     if (!byAisle.has(item.aisle)) byAisle.set(item.aisle, [])
     byAisle.get(item.aisle).push(item)
   }
 
-  return AISLE_ORDER.filter((aisle) => byAisle.has(aisle)).map((aisle) => {
+  return order.filter((aisle) => byAisle.has(aisle)).map((aisle) => {
     const aisleItems = byAisle.get(aisle)
 
     const counts = new Map()
@@ -501,4 +635,44 @@ export function groupByAisle(items) {
       entries: entries.sort((a, b) => a.sortName.localeCompare(b.sortName)),
     }
   })
+}
+
+// Lays the person's shopping_prefs over the derived lines: an item they moved
+// goes to the aisle they chose, and a staple is flagged so the list can fold it
+// away. `defaultAisle` keeps what the keyword list said, which is what "put it
+// back" compares against. Nothing here touches `key`, so ticks are unaffected.
+export function applyPrefs(items, prefs) {
+  const staples = new Set(prefs?.staples || [])
+  const moved = prefs?.aisle_map || {}
+  return items.map((item) => ({
+    ...item,
+    defaultAisle: item.aisle,
+    aisle: (item.nameKey && moved[item.nameKey]) || item.aisle,
+    staple: Boolean(item.nameKey) && staples.has(item.nameKey),
+  }))
+}
+
+// One line as the list shows it, for sharing as text.
+function lineText(item) {
+  if (!item.parsed) return item.raw
+  return [formatQuantity(item.qty, item.unit), item.name].filter(Boolean).join(' ')
+}
+
+// The list as plain text for the share sheet or the clipboard. It is what is
+// still to buy: picked lines and staples are left out, since whoever is at the
+// shop has no use for either. Aisle headings keep the order the list shows.
+export function shoppingText({ label, groups, manual, isPicked }) {
+  const out = []
+  for (const { aisle, entries } of groups) {
+    const lines = []
+    for (const entry of entries) {
+      const items = entry.type === 'group' ? entry.items : [entry.item]
+      for (const item of items) if (!item.staple && !isPicked(item.key)) lines.push(`- ${lineText(item)}`)
+    }
+    if (lines.length) out.push(aisle, ...lines, '')
+  }
+  const own = manual.filter((row) => !row.checked)
+  if (own.length) out.push('Added by you', ...own.map((row) => `- ${row.name}`), '')
+  if (out.length === 0) return ''
+  return [label, '', ...out].join('\n').trimEnd()
 }

@@ -11,10 +11,12 @@
 // line loses nothing; three inputs per row would be three taps per ingredient on
 // a phone and a wall of boxes for a sixteen-line recipe.
 
-import { useMemo, useRef, useState } from 'react'
+import { useEffect, useMemo, useRef, useState } from 'react'
 import Sheet from './Sheet.jsx'
 import RecipeThumb from './RecipeThumb.jsx'
 import { TAG_VOCABULARY, normalizeTag } from '../lib/tags.js'
+import { fullPhotoLink } from '../lib/images.js'
+import { PhotoError, readPhoto } from '../lib/photo.js'
 
 // Rows carry their own key. Using the array index would be fine until the first
 // removal, at which point every row below shifts onto a new index, React reuses
@@ -61,7 +63,9 @@ function initialForm(recipe) {
   return {
     title: recipe?.title || '',
     description: recipe?.description || '',
-    image_url: recipe?.image_url || '',
+    // A photo saved as a bare path (an old import) is opened as the full link it
+    // meant, or the form could not be saved at all.
+    image_url: fullPhotoLink(recipe?.image_url, recipe?.source_url),
     source_url: recipe?.source_url || '',
     servings: recipe?.servings || '',
     prep_min: minutesField(recipe?.prep_min),
@@ -73,16 +77,21 @@ function initialForm(recipe) {
 // What the dirty check compares. Row keys are excluded on purpose: they are
 // identity for React, not content, and a row added then removed would otherwise
 // leave the form looking changed when it isn't.
-function snapshot(form, ingredients, steps, tags) {
+function snapshot(form, ingredients, steps, tags, picked = null) {
   return JSON.stringify({
     form,
     ingredients: ingredients.map((r) => r.text),
     steps: steps.map((r) => r.text),
     tags,
+    // A picked photo is a change the person would lose on Cancel; the bytes
+    // themselves stay out of the string, only whether there is one.
+    picked: Boolean(picked),
   })
 }
 
-export default function RecipeEditor({ recipe, onSave, onClose }) {
+// `canUploadPhoto`: a photo upload needs a bucket and an account, so signed out
+// the picker is not offered and the link field is the only route.
+export default function RecipeEditor({ recipe, onSave, onClose, canUploadPhoto = false }) {
   const editing = Boolean(recipe)
 
   const [form, setForm] = useState(() => initialForm(recipe))
@@ -100,24 +109,71 @@ export default function RecipeEditor({ recipe, onSave, onClose }) {
 
   const formId = useRef(`editor-${Math.random().toString(36).slice(2, 9)}`)
   const initial = useRef(snapshot(initialForm(recipe), ingredients, steps, tags))
-  const dirty = snapshot(form, ingredients, steps, tags) !== initial.current
+  // A photo picked from the device: { base64, preview } from readPhoto. It is a
+  // second source for the one picture, so it and the link field exclude each
+  // other (see pickPhoto and the link field's onChange).
+  const [picked, setPicked] = useState(null)
+  const [photoError, setPhotoError] = useState('')
+  const cameraRef = useRef(null)
+  const libraryRef = useRef(null)
+  const dirty = snapshot(form, ingredients, steps, tags, picked) !== initial.current
+
+  // The preview is an object URL the editor owns; release it when the editor goes.
+  const pickedRef = useRef(null)
+  pickedRef.current = picked
+  useEffect(() => () => {
+    if (pickedRef.current) URL.revokeObjectURL(pickedRef.current.preview)
+  }, [])
 
   const title = form.title.trim()
   const imageOk = isHttpLink(form.image_url.trim())
   const sourceOk = isHttpLink(form.source_url.trim())
   const canSave = title.length > 0 && imageOk && sourceOk && !saving
 
-  // Only for the thumbnail beside the link field, so a pasted URL can be seen to
-  // be the right photo before it is saved. RecipeThumb takes a recipe, and its
-  // fallback tile is keyed off the title, which is exactly what should show
-  // while the field is empty.
+  // Only for the thumbnail beside the link field, so a pasted URL, or a photo
+  // just picked, can be seen to be the right one before it is saved. RecipeThumb
+  // takes a recipe, and its fallback tile is keyed off the title, which is
+  // exactly what should show while the field is empty. The old blur is dropped
+  // with the old thumb, or it would show behind the new picture.
   const preview = useMemo(
-    () => ({ ...recipe, title: title || 'New recipe', image_url: form.image_url.trim(), image_thumb_url: null }),
-    [recipe, title, form.image_url],
+    () => ({
+      ...recipe,
+      title: title || 'New recipe',
+      image_url: picked ? picked.preview : form.image_url.trim(),
+      image_thumb_url: null,
+      image_blur: null,
+    }),
+    [recipe, title, form.image_url, picked],
   )
 
   function set(field, value) {
     setForm((prev) => ({ ...prev, [field]: value }))
+  }
+
+  function dropPicked() {
+    setPicked((prev) => {
+      if (prev) URL.revokeObjectURL(prev.preview)
+      return null
+    })
+  }
+
+  async function pickPhoto(e) {
+    const file = e.target.files?.[0]
+    // Reset, or choosing the same photo again after backing out fires no change.
+    e.target.value = ''
+    if (!file) return
+    setPhotoError('')
+    try {
+      const next = await readPhoto(file)
+      setPicked((prev) => {
+        if (prev) URL.revokeObjectURL(prev.preview)
+        return next
+      })
+      // One picture: the link it replaces is cleared rather than left to disagree.
+      set('image_url', '')
+    } catch (err) {
+      setPhotoError(err instanceof PhotoError ? err.message : 'That photo could not be read.')
+    }
   }
 
   function updateRow(setRows, key, text) {
@@ -166,7 +222,11 @@ export default function RecipeEditor({ recipe, onSave, onClose }) {
     const values = {
       title,
       description: form.description.trim() || null,
-      image_url: form.image_url.trim() || null,
+      // With a photo picked the link field was cleared, but the recipe keeps the
+      // picture it has until the upload actually succeeds: clearing it here would
+      // leave a recipe with no photo at all if the upload then failed.
+      image_url: picked ? (recipe?.image_url ?? null) : form.image_url.trim() || null,
+      photo: picked ? picked.base64 : null,
       source_url: form.source_url.trim() || null,
       servings: form.servings.trim() || null,
       prep_min: prep,
@@ -188,7 +248,10 @@ export default function RecipeEditor({ recipe, onSave, onClose }) {
           if (row.original && typeof row.original === 'object' && ingredientText(row.original) === text) {
             return row.original
           }
-          return { raw: text, item: null, qty: null, unit: null }
+          // The section it sits under ("For the crust") is where the line is, not
+          // what it says, so rewording the line keeps it.
+          const group = typeof row.original === 'object' ? row.original?.group : null
+          return { raw: text, item: null, qty: null, unit: null, ...(group && { group }) }
         })
         .filter(Boolean),
       instructions: steps.map((row) => row.text.trim()).filter(Boolean),
@@ -267,17 +330,50 @@ export default function RecipeEditor({ recipe, onSave, onClose }) {
                 className="field"
                 inputMode="url"
                 value={form.image_url}
-                onChange={(e) => set('image_url', e.target.value)}
+                onChange={(e) => {
+                  // Typing a link means the link is the photo now.
+                  if (picked) dropPicked()
+                  set('image_url', e.target.value)
+                }}
                 placeholder="https://…"
                 aria-invalid={!imageOk}
               />
               <span className="editor-hint">
-                {imageOk
-                  ? 'Saved into your own storage, so it keeps working if the link dies.'
-                  : 'That needs to be a full link starting with http.'}
+                {!imageOk
+                  ? 'That needs to be a full link starting with http.'
+                  : picked
+                    ? 'Your photo is saved when you save the recipe.'
+                    : 'Saved into your own storage, so it keeps working if the link dies.'}
               </span>
             </label>
           </div>
+          {photoError && (
+            <p className="editor-hint editor-photo-error" role="alert">
+              {photoError}
+            </p>
+          )}
+          {canUploadPhoto && (
+            <div className="editor-photo-actions">
+              {/* Hidden but real inputs behind buttons, as in the capture sheet:
+                  a label is not focusable. Outside the link field's label so a
+                  press cannot be taken for a click on that field. */}
+              <input
+                ref={cameraRef}
+                type="file"
+                accept="image/*"
+                capture="environment"
+                hidden
+                onChange={pickPhoto}
+              />
+              <input ref={libraryRef} type="file" accept="image/*" hidden onChange={pickPhoto} />
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => cameraRef.current?.click()}>
+                Take a photo
+              </button>
+              <button type="button" className="btn btn-secondary btn-sm" onClick={() => libraryRef.current?.click()}>
+                Choose a photo
+              </button>
+            </div>
+          )}
 
           <label className="editor-field">
             <span className="editor-label">Description</span>

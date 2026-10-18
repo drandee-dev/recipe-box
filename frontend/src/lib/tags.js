@@ -79,7 +79,9 @@ export function tagCounts(recipes) {
 // nearly every recipe ("heat", "stir", "minutes") — adding it would make each
 // typed term less discriminating, not more.
 function haystack(recipe) {
-  const parts = [recipe.title, recipe.description || '', ...(recipe.tags || [])]
+  // Notes are what you wrote about cooking it, so they are what you search for
+  // later ("half the sugar"). The steps still are not, for the reason above.
+  const parts = [recipe.title, recipe.description || '', recipe.notes || '', ...(recipe.tags || [])]
   for (const ing of recipe.ingredients || []) parts.push(ing.raw || '')
   if (recipe.source_url) {
     try {

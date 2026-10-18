@@ -32,11 +32,15 @@
      floor stops anything shrinking below legibility. Use these rather than raw
      sizes. --fs-input is a hard 16px because anything smaller makes iOS zoom the
      page on focus and never zoom back. --- */
-  --fs-2xs: max(0.72rem, 11px);
+  /* 12px floor, up from 11: the smallest text in the app is read in a shop, on a
+     phone held at arm's length. */
+  --fs-2xs: max(0.75rem, 12px);
   --fs-xs: max(0.78rem, 12px);
   --fs-sm: max(0.85rem, 13px);
   --fs-base: max(0.95rem, 15px);
   --fs-md: max(1rem, 16px);
+  /* The size recipe text is read at: ingredients and steps. */
+  --fs-read: max(1.125rem, 18px);
   --fs-lg: 1.25rem;
   --fs-xl: 1.5rem;
   --fs-input: 16px;
@@ -62,7 +66,9 @@
   --line-strong: #8f8a7b;
   --txt: #191c18;
   --txt-2: #5f665d;
-  --txt-3: #70776e;
+  /* 4.73:1 on --ground, 5.29:1 on --surface. It was #70776e, 4.09:1 on the
+     ground, under the 4.5:1 floor wherever it was used for small text. */
+  --txt-3: #666d64;
 
   /* Accent is for actions now: buttons, the on-state of a chip, focus. Tags use
      --accent-ink on --accent-soft, which clears 4.5:1 where the accent itself
@@ -71,6 +77,24 @@
   --accent-ink: #14563a;
   --accent-soft: #e3efe8;
   --danger: #b3261e;
+  /* The text on a filled accent or danger surface. White on the light theme's
+     deep green and red; the dark theme lifts both fills, so the ink goes dark. */
+  --on-accent: #fff;
+  --on-danger: #fff;
+  /* Dark ink on a saffron fill in both themes: white on saffron is 3.8:1, and the
+     light text colour the dark theme uses for --txt is 2:1 on it. Not overridden
+     in the dark blocks on purpose. */
+  --on-saffron: #191c18;
+  /* A translucent card behind a glyph that sits on a photo. */
+  --surface-glass: rgb(255 253 247 / 92%);
+  /* What dims the page behind a sheet. A dark tint on the light ground; on the
+     dark ground the same tint barely shows, so the dark theme uses near-black,
+     which is what makes a sheet stand off the page there. */
+  --scrim: rgb(25 28 24 / 45%);
+  /* How much of a fallback tile's tint shows. Full on the light ground, a trace
+     on the dark one, where a pastel block would outshine the photographs. */
+  --tile-mix: 100%;
+  color-scheme: light;
 
   /* --- Saffron. The second accent, and the palette's only other hue.
      It sits at 35° against the accent's 155°, which is 120° round the wheel:
@@ -153,6 +177,107 @@
   --z-toast: 2000;
 }
 
+/* --- The page column ------------------------------------------------------------
+   640px on a phone, wider on a tablet and a laptop. Only the Recipes tab uses the
+   extra width (a grid of three or four photos across); the planner and the
+   shopping list are text lists and stay 640px in the middle of it, and the tab
+   bar stays 640px too. The recipe sheet widens separately, from 900px. --- */
+:root {
+  --col-w: 640px;
+}
+
+@media (min-width: 768px) {
+  :root {
+    --col-w: 920px;
+  }
+}
+
+@media (min-width: 1200px) {
+  :root {
+    --col-w: 1160px;
+  }
+}
+
+/* --- Dark theme ---------------------------------------------------------------
+   The same tokens, redefined. Every colour in the app already reads a token, so
+   this is the whole of the theme. It applies when the device prefers dark and the
+   person has not chosen light, or when they have chosen dark. The two selectors
+   hold the same values on purpose: CSS has no way to write them once, and a
+   media query cannot be combined with an attribute test any other way.
+
+   Checked, not eyeballed. Against --ground / --surface: --txt 14.8 / 13.5,
+   --txt-2 8.8 / 8.1, --txt-3 6.7 / 6.1 (all over the 4.5:1 floor), --line-strong
+   4.6 / 4.2 where a border is the component boundary (3:1), the accent fill 6.5
+   with --on-accent on it at 6.4, --accent-ink on --accent-soft 7.6, and the
+   saffron 7.4. Cook mode is already its own dark surface and is untouched. --- */
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme='light']) {
+    --ground: #151813;
+    --surface: #1d211b;
+    --surface-2: #252a22;
+    --line: #343a30;
+    --line-strong: #7b8374;
+    --txt: #ece9df;
+    --txt-2: #b3b8a9;
+    --txt-3: #9aa090;
+    --accent: #3fae80;
+    --accent-ink: #86d6ae;
+    --accent-soft: #1f362a;
+    --danger: #ee7b73;
+    --on-accent: #0f1a14;
+    --on-danger: #1b0a09;
+    --saffron: #d99a3e;
+    --star-off: #8a9083;
+    --warn-bg: #2b2812;
+    --warn-line: #5a5326;
+    --warn-ink: #e6d79a;
+    --ok-bg: #17291f;
+    --ok-line: #2f5a43;
+    --ok-ink: #8fd9b0;
+    --info-bg: #1f262b;
+    --info-line: #3d4a53;
+    --info-ink: #b9c6cf;
+    --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
+    --surface-glass: rgb(29 33 27 / 90%);
+    --scrim: rgb(0 0 0 / 66%);
+    --tile-mix: 8%;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme='dark'] {
+  --ground: #151813;
+  --surface: #1d211b;
+  --surface-2: #252a22;
+  --line: #343a30;
+  --line-strong: #7b8374;
+  --txt: #ece9df;
+  --txt-2: #b3b8a9;
+  --txt-3: #9aa090;
+  --accent: #3fae80;
+  --accent-ink: #86d6ae;
+  --accent-soft: #1f362a;
+  --danger: #ee7b73;
+  --on-accent: #0f1a14;
+  --on-danger: #1b0a09;
+  --saffron: #d99a3e;
+  --star-off: #8a9083;
+  --warn-bg: #2b2812;
+  --warn-line: #5a5326;
+  --warn-ink: #e6d79a;
+  --ok-bg: #17291f;
+  --ok-line: #2f5a43;
+  --ok-ink: #8fd9b0;
+  --info-bg: #1f262b;
+  --info-line: #3d4a53;
+  --info-ink: #b9c6cf;
+  --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
+  --surface-glass: rgb(29 33 27 / 90%);
+  --scrim: rgb(0 0 0 / 66%);
+  --tile-mix: 8%;
+  color-scheme: dark;
+}
+
 * {
   box-sizing: border-box;
 }
@@ -178,6 +303,15 @@ a,
 select,
 [role='button'] {
   touch-action: manipulation;
+}
+
+/* Form controls do not inherit the page's typeface by default; the browser gives
+   them its own (Arial on most phones). Cook mode's Back, Next step and
+   Ingredients were rendering in it, measured on the staging build. Family only:
+   every component already sets its own size and weight, and `font: inherit`
+   would reset those. :where() keeps the specificity at zero. */
+:where(button, input, select, textarea) {
+  font-family: inherit;
 }
 
 /* One focus ring for the whole app. Before this only the search field and the
@@ -238,7 +372,7 @@ select,
 .btn-primary {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 600;
 }
 
@@ -341,7 +475,7 @@ textarea.field {
 }
 
 .rb-app {
-  max-width: 640px;
+  max-width: var(--col-w);
   margin: 0 auto;
   padding: 16px;
   /* The tab bar is fixed, so it reserves no space of its own. Without this the
@@ -386,6 +520,25 @@ textarea.field {
   letter-spacing: calc(var(--wm-size) * -0.018);
 }
 
+.rb-brand {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+}
+
+/* Only built when VITE_APP_STAGE=staging, so the second home-screen app can't
+   be mistaken for the live one. Saffron: it states a fact, it isn't an action. */
+.rb-stage-badge {
+  padding: 2px 8px;
+  border: 1px solid var(--saffron);
+  border-radius: 999px;
+  color: var(--saffron);
+  font-size: var(--fs-xs);
+  font-weight: 600;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+}
+
 .rb-header-row {
   display: flex;
   align-items: center;
@@ -405,8 +558,8 @@ textarea.field {
   display: grid;
   place-items: center;
   flex-shrink: 0;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-pill);
@@ -423,11 +576,11 @@ textarea.field {
 
 /* Signed in it carries the address's initial on the accent, which is the one
    place a filled accent is identity rather than an action — and it is the only
-   way the header can say "you are signed in" in 40px. */
+   way the header can say "you are signed in" in 44px. */
 .rb-avatar-in {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-family: 'Clash Display', 'Satoshi', sans-serif;
   font-size: var(--fs-md);
   font-weight: 600;
@@ -523,7 +676,7 @@ textarea.field {
 
 .account-mode {
   flex: 1;
-  min-height: 40px;
+  min-height: 44px;
   border: none;
   border-radius: calc(var(--r-sm) - 2px);
   background: none;
@@ -754,7 +907,7 @@ textarea.field {
   z-index: var(--z-nav);
   display: flex;
   justify-content: flex-end;
-  max-width: 640px;
+  max-width: var(--col-w);
   margin: 0 auto;
   padding: 0 var(--sp-4);
   pointer-events: none;
@@ -996,50 +1149,84 @@ textarea.field {
 }
 
 /* News: the info triplet, like the offline notice, because nothing is wrong
-   and nothing needs doing. It stacks rather than sitting in one row like the
-   other notices: it carries a heading, a sentence and two actions. The close
-   button sits in the corner, so the text keeps its right padding clear of it. */
+   and nothing needs doing. One slim row: a title over a single clamped line of
+   the body (the whole text is the button that opens What's new) and the close
+   button at the end. */
 .rb-news {
-  position: relative;
+  display: flex;
+  align-items: center;
   margin: var(--sp-3) 0 0;
-  padding: var(--sp-3) calc(44px + var(--sp-2)) var(--sp-3) var(--sp-4);
+  padding-left: var(--sp-4);
   border: 1px solid var(--info-line);
   border-radius: var(--r-sm);
   background: var(--info-bg);
   color: var(--info-ink);
 }
 
+/* The whole text is one button (opens What's new). A title over a single line of
+   the body: the body is clamped because the sheet it opens has the rest. */
+.rb-news-main {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--sp-2) 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
 .rb-news-title {
-  margin: 0;
-  text-wrap: balance;
   font-family: 'Clash Display', 'Satoshi', sans-serif;
   font-size: var(--fs-md);
   font-weight: 600;
 }
 
 .rb-news-body {
-  margin: var(--sp-1) 0 0;
+  display: -webkit-box;
+  overflow: hidden;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 1;
   font-size: var(--fs-sm);
-  line-height: 1.45;
+  line-height: 1.4;
 }
 
-.rb-news-actions {
-  display: flex;
-  flex-wrap: wrap;
-  align-items: center;
-  gap: var(--sp-2) var(--sp-4);
-  margin-top: var(--sp-3);
-}
-
-.rb-news-link,
 .rb-news-close {
+  flex-shrink: 0;
   color: var(--info-ink);
 }
 
-.rb-news-close {
-  position: absolute;
-  top: 0;
-  right: 0;
+/* The large variant (an entry with an `update` block): the same info triplet,
+   but a block of its own rather than a row, since it asks for something. */
+.rb-news-update {
+  display: block;
+  margin: var(--sp-4) 0 0;
+  padding: var(--sp-6);
+  border-radius: var(--r-lg);
+}
+
+.rb-news-update-title {
+  margin: 0 0 var(--sp-3);
+  font-family: 'Clash Display', 'Satoshi', sans-serif;
+  font-size: var(--fs-xl);
+  font-weight: 600;
+  line-height: 1.2;
+}
+
+.rb-news-update-text {
+  margin: 0 0 var(--sp-4);
+  font-size: var(--fs-md);
+  line-height: 1.5;
+}
+
+.rb-news-update-actions {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: var(--sp-3);
 }
 
 .rb-whatsnew {
@@ -1216,6 +1403,43 @@ textarea.field {
   gap: 18px 13px;
 }
 
+/* Three across on a tablet, four on a laptop: the cell stays about 270px wide, a
+   photo-led size, instead of one 450px photo per half of a stretched phone. */
+@media (min-width: 768px) {
+  .recipes-grid {
+    grid-template-columns: repeat(3, 1fr);
+  }
+}
+
+@media (min-width: 1200px) {
+  .recipes-grid {
+    grid-template-columns: repeat(4, 1fr);
+  }
+}
+
+/* The planner and the list are text; they keep a phone's width in the middle of a
+   wide column rather than stretching their rows across it. */
+.planner,
+.shopping {
+  max-width: 640px;
+  margin-inline: auto;
+  /* These two screens change the week when you swipe them (lib/useWeekSwipe).
+     `pan-y` hands vertical scrolling to the browser and every sideways drag to the
+     page, buttons included: a touch-action on a child is intersected with its
+     ancestors', so the `manipulation` every button carries cannot take it back.
+     The height is what makes the empty space under a short week part of the
+     target. The page reserves room under its content for the fixed tab bar, so the
+     box is padded down into that reserve and the same amount is taken back with a
+     negative margin: it is touchable all the way to the tab bar and the layout is
+     what it was. Measured: a short list and the planner keep their scroll height;
+     a long shopping list grows by about 24px of quiet space above the tab bar. */
+  --swipe-reach: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + 40px);
+  touch-action: pan-y;
+  min-height: calc(100dvh - 240px + var(--swipe-reach));
+  padding-bottom: var(--swipe-reach);
+  margin-bottom: calc(-1 * var(--swipe-reach));
+}
+
 /* A ruled label, not a heading — see the comment in RecipeList.jsx. The rule is
    a flex item rather than a border on the label so it fills whatever the text
    leaves, which is what stops a long band name and a short one from drawing two
@@ -1308,7 +1532,7 @@ textarea.field {
   width: 25px;
   height: 25px;
   border-radius: 50%;
-  background: rgb(255 253 247 / 92%);
+  background: var(--surface-glass);
   color: var(--star);
   font-size: 13px;
   line-height: 1;
@@ -1414,16 +1638,15 @@ textarea.field {
   font-variant-numeric: tabular-nums;
 }
 
-/* 40px rather than the 44px floor `.btn` carries: these are a matched pair
-   inside a bordered control and a 44px box each would make the row taller than
-   the buttons under it. The pair is `.btn`-free on purpose — a stepper is not
-   one of the five button roles and giving it one would have meant a sixth. */
+/* 44px, the same floor `.btn` carries (they were 40px). The pair is `.btn`-free
+   on purpose — a stepper is not one of the five button roles and giving it one
+   would have meant a sixth. */
 .detail-serving-step {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
   padding: 0;
   border: 1px solid var(--line-strong);
@@ -1456,19 +1679,21 @@ textarea.field {
   cursor: pointer;
 }
 
-.detail-cook {
-  margin-top: var(--sp-4);
-}
-
+/* Start cooking, Add to plan, To list in one row. They size to their labels and
+   share what is left, so the longest label is never squeezed onto two lines; a
+   phone too narrow for all three wraps the last one to a second row instead of
+   clipping it. */
 .detail-actions {
   display: flex;
-  gap: var(--sp-3);
-  margin: var(--sp-3) 0 0;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin: var(--sp-4) 0 0;
 }
 
-/* Both stretch, so neither reads as the leftover half of the row. */
 .detail-actions .btn {
-  flex: 1;
+  flex: 1 1 auto;
+  padding-inline: var(--sp-2);
+  white-space: nowrap;
 }
 
 /* The star is state, not an action, so it takes saffron and no fill — the
@@ -1479,8 +1704,8 @@ textarea.field {
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 40px;
-  height: 40px;
+  width: 44px;
+  height: 44px;
   flex-shrink: 0;
   padding: 0;
   border: 0;
@@ -1620,8 +1845,29 @@ textarea.field {
   min-height: 44px;
   padding: var(--sp-2) 0;
   border-bottom: 1px solid var(--line);
+  /* Reading size: 18px is what Serious Eats, Bon Appetit and NYT Cooking all set
+     recipe text at (measured), and this is read from the counter at arm's
+     length. */
+  font-size: var(--fs-read);
   line-height: 1.45;
   cursor: pointer;
+}
+
+/* The step you are on: the first one not yet ticked, so ticking moves it with no
+   state of its own. A saffron bar and a faint wash, because this is simply true
+   about the recipe (the palette rule: accent is for what you press). The bar is
+   an inset shadow and the row's gutter is bought back with a negative margin, so
+   nothing shifts when the band moves. */
+.detail-check-current {
+  margin-inline: calc(-1 * var(--sp-2));
+  padding-inline: var(--sp-2);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--saffron) 9%, transparent);
+  box-shadow: inset 3px 0 0 var(--saffron);
+}
+
+.detail-check-current label {
+  border-bottom-color: transparent;
 }
 
 .detail-checks li:last-child label {
@@ -1641,6 +1887,30 @@ textarea.field {
    floor as reinforcement. */
 .detail-check-on {
   opacity: 0.55;
+}
+
+/* A section heading over a run of ingredients or steps ("For the crust",
+   lib/sections). Quiet: the lines under it are the content. It sits in the list
+   as an item of its own, so the rows' own rules and borders do not touch it. */
+.detail-group {
+  margin: var(--sp-4) 0 var(--sp-1);
+  color: var(--txt-2);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.detail-checks > .detail-group:first-child {
+  margin-top: 0;
+}
+
+/* The ingredient lines a step uses, one per line under the step (lib/stepIngredients).
+   Quiet and smaller than the step: it is a reminder of the amount, not part of
+   the method. */
+.detail-step-needs {
+  display: block;
+  margin-top: var(--sp-1);
+  color: var(--txt-2);
+  font-size: var(--fs-sm);
 }
 
 .detail-step-n {
@@ -1672,7 +1942,16 @@ textarea.field {
   border-bottom: 1px solid var(--line);
 }
 
+/* The search field and the sort control share a row; the field takes what the
+   control leaves. */
+.recipes-search {
+  display: flex;
+  gap: var(--sp-2);
+}
+
 .recipes-search input {
+  flex: 1;
+  min-width: 0;
   width: 100%;
   min-height: 46px;
   padding: 0 14px;
@@ -1690,6 +1969,21 @@ textarea.field {
 .recipes-search input:focus-visible {
   outline: 2px solid var(--accent);
   outline-offset: 1px;
+}
+
+/* Same face, height and border as the field beside it. A native select, so the
+   phone's own picker opens; 16px so iOS does not zoom when it does. */
+.recipes-sort {
+  flex-shrink: 0;
+  width: 132px;
+  min-height: 46px;
+  padding: 0 var(--sp-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--txt);
+  font: inherit;
+  font-size: var(--fs-input);
 }
 
 /* One row, scrolling horizontally rather than wrapping (finding 4) — nine
@@ -1717,9 +2011,9 @@ textarea.field {
   align-items: center;
   gap: 5px;
   flex-shrink: 0;
-  /* Chips are a dense row, so they sit below the 44px target used elsewhere.
-     The generous horizontal padding keeps each one comfortably tappable. */
-  min-height: 34px;
+  /* The 44px target. They were 34px "because it is a dense row"; the row is one
+     line and scrolls sideways, so the extra height costs 10px of scroll. */
+  min-height: 44px;
   padding: 0 12px;
   border: 1px solid var(--line-strong);
   border-radius: var(--r-pill);
@@ -1734,7 +2028,7 @@ textarea.field {
 .recipes-chip-on {
   background: var(--accent);
   border-color: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
 }
 
 .recipes-chip-count {
@@ -1745,7 +2039,10 @@ textarea.field {
 }
 
 .recipes-chip-on .recipes-chip-count {
-  color: #cfe6da;
+  /* The chip's own text colour, slightly quieter. Was a fixed pale green, which
+     is wrong on any fill but the light theme's. */
+  color: var(--on-accent);
+  opacity: 0.85;
 }
 
 .recipes-count {
@@ -1839,6 +2136,9 @@ textarea.field {
   height: 100%;
   display: grid;
   place-items: center;
+  /* The tint is set per recipe (--tile, from the title). --tile-mix is all of it
+     on the light theme and a trace on the dark one. */
+  background: color-mix(in srgb, var(--tile, var(--surface-2)) var(--tile-mix), var(--surface-2));
   box-shadow: inset 0 0 0 1px var(--line);
 }
 
@@ -1955,7 +2255,8 @@ textarea.field {
 /* A real button now (finding 20): tapping the range itself jumps back to the
    current week, same as the "This week" link beside it. Same face the old
    <strong> had — becoming interactive shouldn't make it look like a link. */
-.planner-weeklabel-btn {
+.planner-weeklabel-btn,
+.week-label {
   border: 0;
   background: none;
   padding: 0;
@@ -1965,6 +2266,12 @@ textarea.field {
   font-weight: 600;
   letter-spacing: -0.01em;
   cursor: pointer;
+}
+
+/* Declared after the shared rule above, or its pointer wins. On Shopping the
+   label is text, not a control. */
+.week-label {
+  cursor: default;
 }
 
 /* --- The week body ----------------------------------------------------
@@ -2015,12 +2322,65 @@ textarea.field {
   }
 }
 
+/* The one-time "Swipe to change week" line (SwipeHint.jsx). Quiet on purpose: the
+   week bar's arrows are the standing cue, this only says the screen also turns
+   like a page. The chevrons drift outward three times and then stay put, so it
+   asks for attention once and does not keep moving; reduced motion keeps them
+   still from the start. */
+.swipe-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-3);
+  color: var(--txt-2);
+  font-size: var(--fs-sm);
+}
+
+/* The planner's week bar already ends in a margin; on Shopping the line sits right
+   under the sticky header's hairline and needs its own. */
+.shopping .swipe-hint {
+  margin-top: var(--sp-3);
+}
+
+.swipe-hint-chev {
+  font-size: var(--fs-md);
+  line-height: 1;
+}
+
+.swipe-hint-chev-l {
+  animation: swipe-hint-l 1.4s ease-in-out 0.6s 3;
+}
+
+.swipe-hint-chev-r {
+  animation: swipe-hint-r 1.4s ease-in-out 0.6s 3;
+}
+
+@keyframes swipe-hint-l {
+  50% {
+    transform: translateX(-6px);
+  }
+}
+
+@keyframes swipe-hint-r {
+  50% {
+    transform: translateX(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swipe-hint-chev {
+    animation: none;
+  }
+}
+
 .planner-day {
   border: 1px solid var(--line);
   border-radius: var(--r);
   background: var(--surface);
-  box-shadow: var(--shadow-card);
-  padding: var(--sp-3) var(--sp-4);
+  /* Lighter: a hairline and no shadow, and tighter padding. Seven shadowed cards
+     of 160px each put three and a half days on a phone screen. */
+  padding: var(--sp-1) var(--sp-3) var(--sp-2);
   margin-bottom: var(--sp-2);
 }
 
@@ -2030,7 +2390,7 @@ textarea.field {
    supposed to come from the food. Inset rather than a real left border so the
    content does not shift 2px against the other six days. */
 .planner-day-today {
-  box-shadow: inset 3px 0 0 var(--accent), var(--shadow-card);
+  box-shadow: inset 3px 0 0 var(--accent);
 }
 
 .planner-today-pill {
@@ -2132,7 +2492,11 @@ textarea.field {
 }
 
 .planner-slot {
-  margin-top: var(--sp-3);
+  margin-top: var(--sp-1);
+}
+
+.planner-slot + .planner-slot {
+  margin-top: var(--sp-2);
 }
 
 .planner-slot-label {
@@ -2180,7 +2544,7 @@ textarea.field {
   /* The one filled-red surface in the app — see the comment beside its JSX
      for why this is a deliberate exception to .btn-danger's text-only rule. */
   background: var(--danger);
-  color: #fff;
+  color: var(--on-danger);
   font-size: var(--fs-xs);
   font-weight: 600;
 }
@@ -2268,7 +2632,7 @@ textarea.field {
   display: flex;
   align-items: flex-end;
   justify-content: center;
-  background: rgb(25 28 24 / 45%);
+  background: var(--scrim);
   animation: sheet-fade 0.18s ease-out;
 }
 
@@ -2299,6 +2663,57 @@ textarea.field {
   height: 94vh;
   height: 94dvh;
   max-height: none;
+}
+
+/* The recipe at a laptop or a propped tablet: a wider sheet, the ingredients on
+   the left (they stay in view while the steps scroll) and the steps beside them.
+   Everything above the two columns keeps a phone's measure. Below 900px none of
+   this applies and the sheet is the one column it always was. */
+@media (min-width: 900px) {
+  .sheet-tall {
+    max-width: 960px;
+  }
+
+  .detail-cols {
+    display: grid;
+    grid-template-columns: minmax(0, 5fr) minmax(0, 6fr);
+    column-gap: var(--sp-8);
+    align-items: start;
+  }
+
+  .detail-col-ing {
+    position: sticky;
+    /* Clears the sheet's own sticky head (title row, about 64px). */
+    top: 76px;
+    /* A long ingredient list scrolls inside its column: a sticky box taller than
+       the sheet would otherwise leave its last lines out of reach. */
+    max-height: calc(94dvh - 100px);
+    overflow-y: auto;
+    /* Any overflow other than visible clips both axes, and the checkbox sits at
+       the column's left edge: its 2px focus ring (2px offset) was cut off on every
+       ingredient. The padding gives the ring room; the negative margin gives the
+       space back so nothing moves. */
+    padding: 6px;
+    margin: -6px;
+  }
+
+  .detail-cols .detail-heading {
+    margin-top: var(--sp-4);
+  }
+
+  /* At 960px wide a 16:9 photo is 540px tall and the ingredients start below the
+     fold on a laptop. A letterbox crop keeps the picture and the ingredients on
+     the same screen. */
+  .detail-hero .recipes-thumb-hero {
+    aspect-ratio: 3 / 1;
+    max-height: 240px;
+  }
+
+  .detail-servings,
+  .detail-units,
+  .detail-actions {
+    max-width: 480px;
+  }
 }
 
 .sheet:focus {
@@ -2481,68 +2896,424 @@ textarea.field {
    wet hands, so it is the only place in the app that sets type this large. */
 .cook-step {
   margin: 0;
-  font-family: 'Clash Display', 'Satoshi', sans-serif;
-  font-size: max(1.6rem, 25px);
+  /* Satoshi, not the display face: Clash Display is for headings, and running
+     instructions are text. Measured on staging at 25.6px in Clash; this is the
+     body face a notch bigger, which is what a step read from two feet wants. */
+  font-family: inherit;
+  font-size: max(1.75rem, 28px);
   font-weight: 600;
-  line-height: 1.32;
-  letter-spacing: -0.015em;
+  line-height: 1.35;
+  letter-spacing: -0.01em;
 }
 
-.cook-timer {
-  margin-top: var(--sp-6);
-}
-
-/* Outlined rather than filled, because a filled saffron slab at this size would
-   out-shout the step it belongs to. It is 44px tall by its padding, not by a
-   floor, since it is not one of the five button roles. */
-.cook-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: var(--sp-2);
-  min-height: 46px;
-  padding: 0 var(--sp-4);
-  border: 1.5px solid var(--saffron-lit);
-  border-radius: var(--r-pill);
-  background: none;
-  color: var(--saffron-lit);
-  font-size: var(--fs-md);
-  font-weight: 700;
+/* --- Timers (A1) -----------------------------------------------------------
+   A duration in a step is a button made of the step's own words. Green says it
+   is something you can press, saffron says a clock is running (the palette rule:
+   accent for actions, saffron for what is simply true), and a ringing one is
+   filled and pulses, because on iOS the vibrate call is a no-op and the tone may
+   be muted by the hardware switch, so the visual state is the alert that is
+   guaranteed to arrive. The tap area is stretched past the glyphs with a
+   pseudo-element: padding would reflow the sentence it sits in.
+   ------------------------------------------------------------------------- */
+.step-time {
+  position: relative;
+  display: inline;
+  padding: 1px 6px;
+  border: 0;
+  border-bottom: 2px solid var(--accent);
+  border-radius: var(--r-sm);
+  background: color-mix(in srgb, var(--accent) 8%, transparent);
+  color: inherit;
+  font: inherit;
+  font-weight: 600;
   font-variant-numeric: tabular-nums;
   cursor: pointer;
 }
 
-.cook-chip svg {
-  width: 20px;
-  height: 20px;
-  flex: none;
+.step-time::after {
+  content: '';
+  position: absolute;
+  inset: -10px -4px;
 }
 
-.cook-chip-verb {
-  font-size: var(--fs-xs);
-  font-weight: 600;
-  letter-spacing: 0.06em;
-  text-transform: uppercase;
-  opacity: 0.7;
+.step-time:disabled {
+  opacity: 0.5;
+  cursor: default;
 }
 
-/* Filled once it is actually ringing, and only then. On iOS the vibrate call is
-   a no-op and the sound may be muted by the hardware switch, so the visual state
-   is the alert that is guaranteed to arrive. */
-.cook-chip-ringing {
-  border-color: var(--saffron-lit);
-  background: var(--saffron-lit);
-  color: var(--cook-ground);
+.step-time-running {
+  border-bottom-color: var(--saffron);
+  background: color-mix(in srgb, var(--saffron) 14%, transparent);
+}
+
+.step-time-ringing {
+  border-bottom-color: var(--saffron);
+  background: var(--saffron);
+  color: var(--on-saffron);
   animation: cook-pulse 1s ease-in-out infinite;
 }
 
-.cook-chip-ringing .cook-chip-verb {
-  opacity: 0.75;
+.sheet-cook .step-time {
+  border-bottom-color: var(--accent-lit);
+  background: color-mix(in srgb, var(--accent-lit) 16%, transparent);
+}
+
+.sheet-cook .step-time-running {
+  border-bottom-color: var(--saffron-lit);
+  background: color-mix(in srgb, var(--saffron-lit) 18%, transparent);
+}
+
+.sheet-cook .step-time-ringing {
+  background: var(--saffron-lit);
+  color: var(--cook-ground);
+}
+
+.detail-awake {
+  margin: calc(var(--sp-2) * -1) 0 var(--sp-3);
+  color: var(--txt-2);
+  font-size: var(--fs-sm);
+}
+
+/* The tray: the one timer you are waiting on, above the tab bar on every tab.
+   Fixed copy hides while cook mode is open and cook mode draws its own in the
+   flow above Back and Next; a fixed one there would sit on top of them. Sheets
+   are at --z-sheet, so the tray is one above and stays visible over a recipe. */
+:root {
+  --tray-h: 60px;
+}
+
+.timer-tray {
+  display: flex;
+  align-items: stretch;
+  gap: var(--sp-2);
+  min-height: var(--tray-h);
+  padding: var(--sp-2) var(--sp-3);
+  border: 1px solid var(--saffron);
+  border-radius: var(--r);
+  background: var(--surface);
+  color: var(--txt);
+  box-shadow: var(--shadow-card);
+}
+
+.rb-tray {
+  position: fixed;
+  right: var(--sp-4);
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--sp-2));
+  left: var(--sp-4);
+  z-index: calc(var(--z-sheet) + 1);
+  max-width: 608px;
+  margin: 0 auto;
+}
+
+:root:has(.sheet-cook) .rb-tray {
+  display: none;
+}
+
+/* Everything that sits above the tab bar makes room for the tray. The install
+   card is sticky at the same offset the tray is fixed at, so it rides above it. */
+.rb-app:has(.rb-tray) .rb-install {
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--tray-h) + var(--sp-2));
+}
+
+.rb-app:has(.rb-tray) {
+  padding-bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--tray-h) + var(--sp-6));
+}
+
+.rb-app:has(.rb-tray) .rb-fab-wrap {
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--tray-h) + var(--sp-4));
+}
+
+.rb-app:has(.rb-tray) .rb-toast {
+  bottom: calc(var(--tabbar-h) + env(safe-area-inset-bottom) + var(--tray-h) + var(--sp-4));
+}
+
+:root:has(.rb-tray) .sheet:not(.sheet-cook) {
+  padding-bottom: calc(var(--sp-6) + env(safe-area-inset-bottom) + var(--tabbar-h) + var(--tray-h));
+}
+
+.timer-tray-inline {
+  flex: none;
+  margin: 0 var(--sp-4) var(--sp-2);
+  background: none;
+  border-color: var(--saffron-lit);
+  color: var(--cook-ink);
+  box-shadow: none;
+}
+
+.timer-tray-main {
+  display: flex;
+  flex: 1;
+  min-width: 0;
+  align-items: center;
+  gap: var(--sp-3);
+  min-height: 44px;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.timer-tray-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.timer-tray-clock {
+  font-size: var(--fs-md);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.timer-tray-label {
+  overflow: hidden;
+  font-size: var(--fs-xs);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.timer-tray-actions {
+  display: flex;
+  flex: none;
+  align-self: center;
+  gap: var(--sp-2);
+}
+
+/* A finished timer with a recipe to go back to: the text takes the first row and
+   the two choices share the second, each a full-width target. The page makes
+   room for the taller tray the same way it does for the short one. */
+.timer-tray-two {
+  flex-wrap: wrap;
+}
+
+.timer-tray-two .timer-tray-main,
+.timer-tray-two .timer-tray-actions {
+  flex: 1 1 100%;
+}
+
+.timer-tray-two .timer-tray-actions {
+  align-self: stretch;
+}
+
+.timer-tray-two .timer-tray-stop {
+  flex: 1;
+}
+
+:root:has(.timer-tray-two:not(.timer-tray-inline)) {
+  --tray-h: 116px;
+}
+
+.timers-row-actions {
+  display: flex;
+  flex: none;
+  gap: var(--sp-2);
+}
+
+.timer-tray-stop {
+  flex: none;
+  min-width: 72px;
+  min-height: 44px;
+  align-self: center;
+  border: 1px solid currentColor;
+  border-radius: var(--r);
+  background: none;
+  color: inherit;
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
+}
+
+/* Dark ink, not white: white on --saffron is 3.8:1, under the floor for the
+   12px label. */
+.timer-tray-ringing {
+  background: var(--saffron);
+  color: var(--on-saffron);
+  animation: cook-pulse 1s ease-in-out infinite;
+}
+
+.timer-tray-ringing .timer-tray-label {
+  opacity: 1;
+}
+
+.timer-tray-inline.timer-tray-ringing {
+  background: var(--saffron-lit);
+  color: var(--cook-ground);
+}
+
+.rb-header-actions {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+}
+
+.rb-timers-btn {
+  position: relative;
+}
+
+.rb-timers-count {
+  position: absolute;
+  top: 4px;
+  right: 2px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 8px;
+  background: var(--saffron);
+  color: var(--on-saffron);
+  font-size: 11px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+
+.timers-list {
+  margin: 0 0 var(--sp-4);
+  padding: 0;
+  list-style: none;
+}
+
+.timers-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-3);
+  padding: var(--sp-3) 0;
+  border-top: 1px solid var(--line);
+}
+
+.timers-row-ringing .timers-row-clock {
+  color: var(--saffron);
+}
+
+.timers-row-text {
+  display: flex;
+  min-width: 0;
+  flex-direction: column;
+}
+
+.timers-row-clock {
+  font-size: var(--fs-lg);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.timers-row-label {
+  overflow: hidden;
+  font-size: var(--fs-sm);
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0.7;
+}
+
+.timers-empty {
+  margin: 0 0 var(--sp-4);
+  opacity: 0.7;
+}
+
+.timers-add-fields {
+  display: flex;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.timers-add-fields .field {
+  min-width: 0;
+  flex: 1;
+}
+
+.timers-add-fields .timers-minutes {
+  flex: 0 0 110px;
+}
+
+/* Units (Phase B): the standing setting in the account sheet and the per-recipe
+   flip on an open recipe share the feedback sheet's segmented control. */
+.account-units {
+  margin: var(--sp-4) 0;
+}
+
+.detail-units {
+  margin: var(--sp-3) 0 var(--sp-4);
+}
+
+.account-units .account-hint {
+  margin-top: var(--sp-2);
+}
+
+.timers-alerts {
+  margin-top: var(--sp-6);
+  padding-top: var(--sp-4);
+  border-top: 1px solid var(--line);
+}
+
+.timers-alerts-text {
+  margin: 0 0 var(--sp-3);
+  color: var(--txt-2);
+  font-size: var(--fs-sm);
+}
+
+.timers-error {
+  margin: 0 0 var(--sp-3);
+  color: var(--warn-ink);
+  font-size: var(--fs-sm);
+}
+
+.rb-sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
 }
 
 @keyframes cook-pulse {
   50% {
     opacity: 0.55;
   }
+}
+
+/* What this step uses (CookMode.jsx). Set apart from the step by a tint rather than
+   a border, so it reads as part of the step and not as a second list; the
+   amounts are the same hanging column the recipe sheet uses. Full-strength ink:
+   it is the thing being looked for. */
+.cook-needs {
+  margin-top: var(--sp-4);
+  padding: var(--sp-3) var(--sp-4);
+  border-radius: var(--r);
+  background: rgb(243 240 228 / 8%);
+}
+
+.cook-needs-label {
+  margin: 0 0 var(--sp-1);
+  color: var(--cook-ink);
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  opacity: 0.7;
+}
+
+.cook-needs-list {
+  margin: 0;
+  padding: 0;
+  list-style: none;
+  font-size: var(--fs-md);
+  line-height: 1.5;
+}
+
+.cook-needs-list li {
+  padding: var(--sp-1) 0;
+}
+
+/* Which section a line is from, when the same ingredient is listed under more
+   than one and the step does not say. */
+.cook-needs-group {
+  display: block;
+  font-size: var(--fs-sm);
+  opacity: 0.65;
 }
 
 .cook-peek {
@@ -2591,6 +3362,57 @@ textarea.field {
   opacity: 0.85;
 }
 
+/* A section heading in the full list ("For the crust"). */
+.cook-peek-list li.cook-peek-group {
+  padding: var(--sp-3) 0 var(--sp-1);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  opacity: 0.65;
+}
+
+/* Which part of the recipe the step belongs to, under "Step three". */
+.cook-section {
+  margin: 0 0 var(--sp-2);
+  color: var(--cook-ink);
+  font-size: var(--fs-base);
+  font-weight: 600;
+  opacity: 0.75;
+}
+
+/* Tablet and up: the step takes the left, the ingredients stay beside it as a
+   panel instead of pushing the step down, and Next runs along the foot. Capped in
+   width so a 1440px window is not a 1400px line of text. */
+@media (min-width: 768px) {
+  .cook-body {
+    display: grid;
+    grid-template-columns: minmax(0, 1.5fr) minmax(0, 1fr);
+    grid-template-areas:
+      'step peek'
+      'next next';
+    grid-template-rows: auto 1fr;
+    align-content: start;
+    column-gap: var(--sp-8);
+    width: 100%;
+    max-width: 1040px;
+    margin-inline: auto;
+  }
+
+  .cook-step-block {
+    grid-area: step;
+  }
+
+  .cook-peek {
+    grid-area: peek;
+    align-self: start;
+    margin-top: 0;
+  }
+
+  .cook-next {
+    grid-area: next;
+    align-self: end;
+  }
+}
+
 /* Under a rule at the foot of the screen, because "what am I about to be asked
    to do" is the question you ask while something is already in the pan. `auto`
    rather than a margin: it belongs to the bottom edge, not to the step, and a
@@ -2616,36 +3438,6 @@ textarea.field {
   font-size: var(--fs-base);
   line-height: 1.4;
   opacity: 0.55;
-}
-
-/* A timer still running on a step you have walked away from. Tapping it goes
-   back to that step, which is the only thing you would want from it. */
-.cook-away {
-  display: flex;
-  flex: none;
-  align-items: center;
-  justify-content: space-between;
-  gap: var(--sp-3);
-  min-height: 44px;
-  margin: 0 var(--sp-4);
-  padding: 0 var(--sp-3);
-  border: 1px solid var(--saffron-lit);
-  border-radius: var(--r);
-  background: none;
-  color: var(--saffron-lit);
-  font-size: var(--fs-sm);
-  font-weight: 600;
-  cursor: pointer;
-}
-
-.cook-away-ringing {
-  background: var(--saffron-lit);
-  color: var(--cook-ground);
-  animation: cook-pulse 1s ease-in-out infinite;
-}
-
-.cook-away-clock {
-  font-variant-numeric: tabular-nums;
 }
 
 .cook-actions {
@@ -2701,8 +3493,8 @@ textarea.field {
     transition: none;
   }
 
-  .cook-chip-ringing,
-  .cook-away-ringing {
+  .step-time-ringing,
+  .timer-tray-ringing {
     animation: none;
   }
 }
@@ -2756,6 +3548,16 @@ textarea.field {
 .editor-photo-field {
   flex: 1;
   min-width: 0;
+}
+
+.editor-photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.editor-photo-error {
+  color: var(--danger);
 }
 
 /* Serves, prep, cook, total. Four short numeric fields that read as one line of
@@ -2889,7 +3691,7 @@ textarea.field {
 .planner-chip-active {
   border-color: var(--accent);
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 600;
 }
 
@@ -2980,7 +3782,7 @@ textarea.field {
 }
 
 .shopping-aisle {
-  margin-bottom: var(--sp-6);
+  margin-bottom: var(--sp-3);
 }
 
 /* The aisle name is a label for the card below it, so it sits outside the card
@@ -2997,9 +3799,12 @@ textarea.field {
   position: sticky;
   top: var(--shopping-header-h);
   z-index: var(--z-sticky);
-  margin: 0 0 var(--sp-2);
-  padding: var(--sp-2) var(--sp-1);
-  background: var(--ground);
+  margin: 0;
+  padding: var(--sp-2) var(--sp-3);
+  border-radius: var(--r-sm);
+  /* A band, not a heading floating on the ground: --surface-2 is opaque, so the
+     rows still pass under it, and the grey says "section" at a glance. */
+  background: var(--surface-2);
   font-family: 'Satoshi', sans-serif;
   font-size: var(--fs-2xs);
   font-weight: 700;
@@ -3014,11 +3819,10 @@ textarea.field {
 .shopping-aisle > ul {
   list-style: none;
   margin: 0;
-  padding: var(--sp-1) var(--sp-4);
-  border: 1px solid var(--line);
-  border-radius: var(--r);
-  background: var(--surface);
-  box-shadow: var(--shadow-card);
+  /* Flat: rows sit on the page ground between hairlines, under a grey band per
+     aisle. It was a bordered, shadowed card per aisle, which cost 40px a section
+     and made a list that is read standing up look like a stack of panels. */
+  padding: 0 var(--sp-1);
 }
 
 /* Variant group: chicken breast and chicken thigh under one "chicken" head.
@@ -3062,7 +3866,7 @@ textarea.field {
   gap: var(--sp-3);
   flex: 1;
   min-height: 44px;
-  padding: var(--sp-2) 0;
+  padding: var(--sp-1) 0;
   cursor: pointer;
 }
 
@@ -3075,6 +3879,9 @@ textarea.field {
 }
 
 .shopping-item-text {
+  /* min-width: 0 lets the one-line source clip with an ellipsis instead of
+     pushing the row wider than the screen. */
+  min-width: 0;
   font-size: var(--fs-base);
   line-height: 1.35;
 }
@@ -3082,6 +3889,9 @@ textarea.field {
 /* Which recipes wanted this, so a merged line stays traceable. */
 .shopping-item-from {
   display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
   /* #999 was 2.85:1 on white, and this is 12px text in a shop under bad
      lighting — the worst place in the app to have been failing contrast. */
   font-size: var(--fs-2xs);
@@ -3106,6 +3916,381 @@ textarea.field {
 
 .shopping-item-done .shopping-item-from {
   text-decoration: none;
+}
+
+/* --- Pass C: staples, aisle choices, share, the recipe strip ----------------
+   The ⋯ on a derived row is the same quiet icon button the manual row's × is. It
+   sits outside the <label>, so a tap on it never toggles the tick. */
+.shopping-more {
+  flex-shrink: 0;
+  color: var(--txt-2);
+}
+
+/* Under the add form, above the first aisle. Not part of the sticky header: its
+   height feeds --shopping-header-h, and a row that scrolls away has no business
+   in that measurement. */
+.shopping-tools {
+  display: flex;
+  flex-wrap: nowrap;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: calc(-1 * var(--sp-2)) 0 var(--sp-3);
+  /* One row that scrolls sideways: the two tools first, the recipes after. A
+     chip cut at the edge is the cue that there are more. */
+  overflow-x: auto;
+  scrollbar-width: none;
+}
+
+.shopping-tools::-webkit-scrollbar {
+  display: none;
+}
+
+.shopping-tools > * {
+  flex-shrink: 0;
+}
+
+.shopping-tools-note {
+  margin: calc(-1 * var(--sp-1)) 0 var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--ok-ink);
+}
+
+/* Which recipes are behind this list. One scrolling row like the filter chips:
+   a chip cut at the edge is the cue that there are more. */
+.shopping-strip {
+  display: flex;
+  flex-wrap: nowrap;
+  gap: var(--sp-2);
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.shopping-strip-chip {
+  display: flex;
+  align-items: center;
+  flex-shrink: 0;
+  max-width: 70vw;
+  min-height: 44px;
+  padding-left: var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-pill);
+  background: var(--surface);
+  font-size: var(--fs-sm);
+}
+
+.shopping-strip-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The × is the whole 44px end of the chip, so the target is the chip's height
+   and not a 14px glyph. */
+.shopping-strip-x {
+  display: grid;
+  place-items: center;
+  width: 44px;
+  height: 44px;
+  flex-shrink: 0;
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--txt-2);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+/* Staples fold away under the aisles. A native <details>: the disclosure state
+   is the browser's, so there is nothing to keep in step. Flat like the aisles
+   above it: a grey band for the heading and rows on the ground. It was a
+   bordered card, the one panel left in a list that is flat. */
+.shopping-staples {
+  margin-bottom: var(--sp-3);
+}
+
+.shopping-staples > summary {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  min-height: 44px;
+  padding: 0 var(--sp-3);
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  font-size: var(--fs-2xs);
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--txt-2);
+  cursor: pointer;
+}
+
+.shopping-staples-count {
+  font-variant-numeric: tabular-nums;
+}
+
+/* `display: flex` on the summary removes the browser's triangle, and the card
+   border that used to say "this opens" is gone, so the band carries its own
+   chevron: right when shut, down when open. */
+.shopping-staples > summary::after {
+  content: '›';
+  margin-left: auto;
+  font-size: 22px;
+  line-height: 1;
+  transform: rotate(0deg);
+  transition: transform 0.12s ease;
+}
+
+.shopping-staples[open] > summary::after {
+  transform: rotate(90deg);
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .shopping-staples > summary::after {
+    transition: none;
+  }
+}
+
+.shopping-staples > ul {
+  list-style: none;
+  margin: 0;
+  padding: 0 var(--sp-1);
+}
+
+.shopping-staples .shopping-item:last-child {
+  border-bottom: none;
+}
+
+.shopping-sheet-note {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-sm);
+  color: var(--txt-2);
+}
+
+.shopping-sheet-from {
+  margin: 0 0 var(--sp-2);
+  font-size: var(--fs-sm);
+}
+
+.shopping-sheet-heading {
+  margin: var(--sp-4) 0 var(--sp-2);
+  font-size: var(--fs-base);
+}
+
+.shopping-aisle-chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+  margin-bottom: var(--sp-3);
+}
+
+.shopping-order {
+  list-style: none;
+  margin: 0 0 var(--sp-3);
+  padding: 0;
+}
+
+.shopping-order li {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-1);
+  border-bottom: 1px solid var(--line);
+}
+
+.shopping-order li span {
+  flex: 1;
+  min-height: 44px;
+  display: flex;
+  align-items: center;
+}
+
+/* --- Pass C: the planner row is a photo, a title and a tap target ------------ */
+.planner-entry-open {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  flex: 1;
+  min-width: 0;
+  min-height: 44px;
+  padding: var(--sp-1) 0;
+  border: 0;
+  background: none;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+
+.planner-entry-open .recipes-thumb {
+  flex-shrink: 0;
+}
+
+.planner-entry-text {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+}
+
+.planner-entry-title {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The one-line explanation beside the Leftovers chip in the day picker. */
+.planner-leftover-hint {
+  align-self: center;
+  font-size: var(--fs-sm);
+  color: var(--txt-2);
+}
+
+/* The meal sheet's leftovers button when it is on: the accent outline says "set",
+   the label says what it does. */
+.planner-leftover-on {
+  border-color: var(--accent);
+  color: var(--accent-ink);
+}
+
+.planner-entry-meta {
+  font-size: var(--fs-2xs);
+  color: var(--txt-2);
+}
+
+/* --- Press states -------------------------------------------------------------
+   Nothing in the app acknowledged a touch until the finger lifted, so a tap on a
+   slow screen read as having missed. A press shrinks a control a hair and dims a
+   row. Pointer devices that hover get it too, which costs nothing. The scale is
+   transform-only (no layout), 0.97 is small enough not to look like an error, and
+   a disabled control never moves. */
+.btn:active:not(:disabled),
+.planner-chip:active,
+.capture-route:active,
+.detail-serving-step:active:not(:disabled),
+.shopping-strip-x:active {
+  transform: scale(0.97);
+}
+
+.recipes-cell:has(.recipes-cell-toggle:active),
+.planner-entry-open:active,
+.shopping-item label:active,
+.detail-check label:active {
+  opacity: 0.7;
+}
+
+.btn,
+.planner-chip,
+.capture-route,
+.detail-serving-step {
+  transition: transform 0.08s ease;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .btn:active:not(:disabled),
+  .planner-chip:active,
+  .capture-route:active,
+  .detail-serving-step:active:not(:disabled),
+  .shopping-strip-x:active {
+    transform: none;
+  }
+}
+
+/* The cooked line under the tags: the count and last date, then the quiet
+   buttons. They share a row and wrap rather than squeeze. */
+.detail-cooked {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0 var(--sp-3);
+  margin: var(--sp-1) 0 0;
+}
+
+.detail-cooked-label {
+  font-size: var(--fs-sm);
+  color: var(--txt-2);
+}
+
+/* Notes: read as written, line breaks kept. */
+.detail-notes {
+  margin-top: var(--sp-6);
+}
+
+.detail-note-text {
+  margin: 0 0 var(--sp-3);
+  font-size: var(--fs-read);
+  line-height: 1.45;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.detail-note-edit textarea {
+  width: 100%;
+  resize: vertical;
+}
+
+.detail-note-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: var(--sp-2);
+  margin-top: var(--sp-2);
+}
+
+/* An ingredient line in a hanging quantity column: bold amounts right-aligned
+   against a column the whole list shares (--qty-ch, set per list from the longest
+   amount), the item beside it. Lines with no amount start at the item column. The
+   colours and sizes are the row's own, so a ticked row fades exactly as before. */
+.ing-line {
+  display: grid;
+  grid-template-columns: var(--qty-w, 0) minmax(0, 1fr);
+  column-gap: var(--sp-3);
+  flex: 1;
+  min-width: 0;
+}
+
+.ing-line-flat {
+  display: block;
+}
+
+.ing-qty {
+  text-align: right;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  /* Never wraps: a wrapped amount adds a row to the most common line of a
+     recipe, the opposite of the point of the column. */
+  white-space: nowrap;
+}
+
+.ing-qty-wrap {
+  white-space: normal;
+  overflow-wrap: anywhere;
+}
+
+.ing-text-wide {
+  grid-column: 2;
+}
+
+/* "To list" on the recipe sheet: the plan panel's box, holding checkbox rows. */
+.detail-tolist-lines {
+  list-style: none;
+  margin: 0 0 var(--sp-3);
+  padding: 0;
+}
+
+.detail-tolist-lines label {
+  display: flex;
+  align-items: flex-start;
+  gap: var(--sp-3);
+  min-height: 44px;
+  padding: var(--sp-2) 0;
+  cursor: pointer;
+}
+
+.detail-tolist-lines input[type='checkbox'] {
+  width: 22px;
+  height: 22px;
+  margin-top: 1px;
+  flex-shrink: 0;
+  accent-color: var(--accent);
 }
 
 /* --- Pull to refresh -------------------------------------------------------

@@ -21,8 +21,12 @@
 
 import { useState } from 'react'
 import Sheet from './Sheet.jsx'
+import UnitsToggle from './UnitsToggle.jsx'
+import { setUnits, useUnits } from '../lib/useUnits.js'
 import { getSupabase, supabaseEnabled } from '../lib/supabase.js'
 import { APP_VERSION } from '../lib/news.js'
+import { downloadExport } from '../lib/exportData.js'
+import { setTheme, useTheme } from '../lib/theme.js'
 
 const REMEMBER_EMAIL_KEY = 'recipebox:rememberedEmail'
 const REMEMBER_ME_KEY = 'recipebox:rememberMe'
@@ -62,7 +66,77 @@ const EMAIL_FIELD = {
   placeholder: 'your@email.com',
 }
 
-export default function Account({ session, onWhatsNew, onFeedback }) {
+// A setting for this device, so it is offered signed out as well as in. It only
+// changes how amounts are shown; no saved recipe is ever rewritten.
+function UnitsSetting() {
+  const units = useUnits()
+  return (
+    <div className="account-units">
+      <p className="account-label">Measurements</p>
+      <UnitsToggle value={units} onChange={setUnits} label="Measurements" />
+      <p className="account-hint">
+        Shows recipes and the shopping list in metric or US measures. Cups of flour and
+        sugar are converted to grams, marked with ≈, since they are only approximate.
+      </p>
+    </div>
+  )
+}
+
+const THEME_OPTIONS = [
+  ['auto', 'Match device'],
+  ['light', 'Light'],
+  ['dark', 'Dark'],
+]
+
+// Light or dark for this device. Offered signed out too; it is not an account
+// setting and follows nobody to another phone.
+function ThemeSetting() {
+  const theme = useTheme()
+  return (
+    <div className="account-units">
+      <p className="account-label">Appearance</p>
+      <UnitsToggle value={theme} onChange={setTheme} label="Appearance" options={THEME_OPTIONS} />
+      <p className="account-hint">Cook mode is always dark.</p>
+    </div>
+  )
+}
+
+// A copy of every recipe as a file. Offered signed out as well as in: for a
+// signed-out person the only copy lives in this one browser.
+function ExportSetting({ recipes, ready }) {
+  const [note, setNote] = useState('')
+  function save() {
+    try {
+      downloadExport(recipes)
+      setNote(`Saved ${recipes.length} ${recipes.length === 1 ? 'recipe' : 'recipes'} to a file.`)
+    } catch {
+      setNote("Couldn't make the file. Try again.")
+    }
+  }
+  return (
+    <div className="account-units">
+      <p className="account-label">Your recipes</p>
+      <button
+        type="button"
+        className="btn btn-secondary btn-block"
+        onClick={save}
+        disabled={recipes.length === 0 || !ready}
+      >
+        Download all recipes
+      </button>
+      {/* Not while the list is still loading or is the offline copy: the file
+          would be a stale or partial one and nothing in it says so. */}
+      <p className="account-hint" role="status">
+        {note ||
+          (ready
+            ? 'A JSON file with every recipe, kept as written. Photos are linked, not inside it.'
+            : 'Available once your recipes have finished loading and you are connected.')}
+      </p>
+    </div>
+  )
+}
+
+export default function Account({ session, recipes = [], exportReady = true, onWhatsNew, onFeedback }) {
   const [open, setOpen] = useState(false)
   const [mode, setMode] = useState('signin') // signin | signup | magic | forgot
   const [email, setEmail] = useState(() => localStorage.getItem(REMEMBER_EMAIL_KEY) || '')
@@ -255,6 +329,10 @@ export default function Account({ session, onWhatsNew, onFeedback }) {
               Recipes, plans and lists sync to this account on every device you sign in
               on.
             </p>
+
+            <UnitsSetting />
+            <ThemeSetting />
+            <ExportSetting recipes={recipes} ready={exportReady} />
 
             {settingPassword ? (
               <form className="account-form" onSubmit={savePassword}>
@@ -490,6 +568,9 @@ export default function Account({ session, onWhatsNew, onFeedback }) {
               </button>
             </p>
           </form>
+          <UnitsSetting />
+          <ThemeSetting />
+          <ExportSetting recipes={recipes} ready={exportReady} />
           <p className="rb-whatsnew-version">Version {APP_VERSION}</p>
         </Sheet>
       )}
