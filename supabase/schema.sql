@@ -87,6 +87,22 @@ create policy "own recipe images" on storage.objects
     and (storage.foldername(name))[1] = auth.uid()::text
   );
 
+-- The delete policy above did nothing on its own, which was found on 2026-10-18.
+-- Storage's remove call looks the objects up as the caller before it deletes them,
+-- so without a select policy it finds none, answers 200 with nothing removed, and
+-- every deleted recipe left its two photos behind (26 of 176 objects, about 10%
+-- of the bucket, were orphans). Reproduced and confirmed fixed against the live
+-- project: a recipe with a photo deleted from the app left 2 files before this
+-- policy and 0 after. Public image URLs are served by the public bucket and do
+-- not use it; it only lets a signed-in user see their own folder.
+drop policy if exists "read own recipe images" on storage.objects;
+create policy "read own recipe images" on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'recipe-images'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
 -- Phase 3: AI spend log. Written by the backend with the service role key, so
 -- RLS stays on with no policy — clients get nothing.
 create table if not exists ai_usage_events (
