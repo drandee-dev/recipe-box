@@ -170,14 +170,40 @@ TAG_KEYWORDS = {
     "quick": ("quick", "15 minute", "20 minute", "30 minute", "weeknight", "under 30"),
 }
 
+# Cuisine words that are also the front of a different word, as a lookahead that
+# rules the other word out. Found by review's hunt over real hashtag shapes: Indiana
+# and Indianapolis, Thailand. Add to it when another turns up.
+_CUISINE_NOT = {"indian": "(?!a)", "thai": "(?!land)"}
+
+# Words that merely contain a keyword and are not it: platter has "latte", brothers
+# has "broth", a saucepan is not a sauce. They are taken out of a label before it is
+# read, from anywhere in it (#charcuterieplatter), and what is left still counts
+# (#seafoodplatter keeps its seafood).
+_LABEL_NOISE = re.compile(
+    r"platter|brother|saucepan|sweetbread|breadcrumb|pizzazz|salmonella|chickenpox|jellybean"
+)
+
+
+def clean_labels(text: str) -> str:
+    return _LABEL_NOISE.sub(" ", text)
+
+
 @lru_cache(maxsize=None)
-def _pattern(needle: str, loose: bool):
+def _pattern(needle: str, loose: bool, cuisine: bool = False):
     body = re.escape(needle)
     # A boundary is anything but a letter or digit, so "_" is one: #shrimp_tacos.
     edge = r"[^\W_]"
     if not loose:
         # Prose is held to the whole word and its plural.
         return re.compile(rf"(?<!{edge}){body}(?:e?s)?(?!{edge})")
+    if cuisine:
+        # A cuisine claimed by a label settles the dish's cuisine and suppresses any
+        # other, so it is held tighter than a protein: it must START the token
+        # (never #gelatin, #platinum, #translating, #caucasian), and the two cuisine
+        # words that are also the front of a different word are told apart
+        # (#indiana, #indianapolis, #thailand). What follows is free, because that
+        # is what hashtags do: #thaifoodie, #koreanfriedchicken, #indianstreetfood.
+        return re.compile(rf"(?<!{edge}){body}{_CUISINE_NOT.get(needle, '')}")
     # Hashtags and keyword labels run words together (#chickenrecipes,
     # #easychickendinner). A long single word is safe to find anywhere in one: every
     # accidental match this list had was a three-letter word (ham in graham, bun in
@@ -187,7 +213,7 @@ def _pattern(needle: str, loose: bool):
     return re.compile(rf"(?<!{edge}){body}")
 
 
-def mentions(needle: str, text: str, *, loose: bool = False) -> bool:
+def mentions(needle: str, text: str, *, loose: bool = False, cuisine: bool = False) -> bool:
     """Whether `text` says `needle`, as a word and not as part of another one.
 
     This used to be a plain `needle in text`, and a substring is not a mention:
@@ -196,7 +222,7 @@ def mentions(needle: str, text: str, *, loose: bool = False) -> bool:
     in "hamburger". Prose is matched as a whole word with its plural; hashtags and
     labels as a word that starts a token. Both ends of a mention have to be a
     boundary or the keyword list is a list of ways to be wrong."""
-    return _pattern(needle.replace("-", " "), loose).search(text) is not None
+    return _pattern(needle.replace("-", " "), loose, cuisine).search(text) is not None
 
 
 # Longest first, so a phrase wins over a word contained inside it.
@@ -283,7 +309,7 @@ def infer_tags(
 
     # What the dish is called, and everything including what goes in it.
     name_blob = flatten(title)
-    label_blob = flatten(labels)
+    label_blob = clean_labels(flatten(labels))
     ingredient_blob = flatten(*lines)
     ingredient_blob = _INCIDENTAL.sub(" ", ingredient_blob)
     ingredient_blob = " ".join(ingredient_blob.split())
@@ -300,7 +326,7 @@ def infer_tags(
         prose = name_blob if tag in NAME_ONLY_TAGS else full_blob
         # The labels are the creator's own filing of the post, so they count for
         # every tag, and as the dish's name.
-        in_labels = mentions(needle, label_blob, loose=True)
+        in_labels = mentions(needle, label_blob, loose=True, cuisine=tag in CUISINE_TAGS)
         if mentions(needle, prose) or in_labels:
             found.append(tag)
             if mentions(needle, name_blob) or in_labels:
@@ -357,7 +383,7 @@ def drop_unsupported(tags, *, title="", description="", ingredients=(), labels="
         return " ".join(text.lower().replace("#", " ").replace("-", " ").split())
 
     prose = norm(" ".join([title or "", description or "", *lines]))
-    label_blob = norm(labels or "")
+    label_blob = clean_labels(norm(labels or ""))
 
     out = []
     for tag in kept:

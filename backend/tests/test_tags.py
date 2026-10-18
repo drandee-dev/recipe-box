@@ -251,6 +251,68 @@ class AKeywordIsAWordNotASubstring(unittest.TestCase):
                 self.assertNotIn(tag, infer_tags(title="Tonight", labels=labels))
         self.assertNotIn("mexican", infer_tags(title="Tonight", labels="#BeefTacos"))
 
+    def test_hashtag_words_that_merely_contain_a_keyword_make_no_tag(self):
+        """Review's hunt over the 5+ letter keywords found these, each wrong on its
+        own. Staging's substring rule had every one of them; none is new, and all
+        are now silent."""
+        for labels in [
+            "#platter", "#charcuterieplatter",  # latte -> drink
+            "#brothers", "#brotherhood",  # broth -> soup
+            "#indiana", "#indianapolis",  # indian
+            "#gelatin", "#platinum", "#chocolatine", "#translating",  # latin
+            "#saucepan",  # sauce
+            "#caucasian",  # asian
+            "#pizzazz",  # pizza
+            "#breadcrumbs", "#sweetbread",  # bread
+            "#salmonella",  # seafood
+            "#chickenpox",  # chicken
+            "#jellybeans",  # beans
+        ]:
+            with self.subTest(labels=labels):
+                self.assertEqual(infer_tags(title="Tonight", labels=labels), [], labels)
+
+    def test_a_wrong_cuisine_label_cannot_suppress_the_right_one(self):
+        """The worst consequence of the collisions: a label-derived cuisine counts as
+        the dish's own name and drops every other cuisine, so '#indiana' on an Italian
+        pasta lost the Italian."""
+        tags = infer_tags(title="Authentic Italian pasta", description="Rich and simple.", labels="#indiana")
+        self.assertIn("italian", tags)
+        self.assertNotIn("indian", tags)
+
+    def test_a_real_cuisine_hashtag_still_counts_with_what_hashtags_append(self):
+        for labels, tag in [
+            ("#indian", "indian"), ("#indianfood", "indian"), ("#thaibbq", "asian"),
+            ("#koreanfood", "asian"), ("#mexicanfood", "mexican"), ("#italiandinner", "italian"),
+            ("#greekrecipes", "mediterranean"), ("#peruvian_dinner", "latin"),
+            ("#thaicurry", "asian"), ("#indianchicken", "indian"), ("#japaneseramen", "asian"),
+            # What review found the first, narrower rule lost: whatever hashtags append.
+            ("#thaifoodie", "asian"), ("#indianstreetfood", "indian"), ("#koreanfriedchicken", "asian"),
+            ("#italiansausage", "italian"), ("#vietnamesepho", "asian"), ("#cubansandwich", "latin"),
+            ("#greekyogurt", "mediterranean"), ("#mexicanstreetcorn", "mexican"), ("#indianfoodblogger", "indian"),
+        ]:
+            with self.subTest(labels=labels):
+                self.assertIn(tag, infer_tags(title="Tonight", labels=labels))
+
+    def test_the_accepted_cost_of_the_tighter_cuisine_rule(self):
+        """A cuisine in the middle of a hashtag word (#easyitalian) is no longer
+        found, and neither is one followed by a word outside the run-on list. A
+        missing cuisine tag is a mild loss; a wrong one that also erases the right
+        one is not, which is the trade."""
+        self.assertNotIn("italian", infer_tags(title="Tonight", labels="#easyitalian"))
+        # Cuisine words that are the front of another word are told apart.
+        for labels in ("#indiana", "#indianapolis", "#indianajones", "#thailand"):
+            with self.subTest(labels=labels):
+                self.assertEqual(infer_tags(title="Tonight", labels=labels), [])
+
+    def test_a_noise_word_takes_only_itself_out_of_a_hashtag(self):
+        self.assertIn("seafood", infer_tags(title="Tonight", labels="#seafoodplatter"))
+        self.assertIn("chicken", infer_tags(title="Tonight", labels="#chickenbrothers"))
+
+    def test_the_protein_check_ignores_the_noise_words_too(self):
+        self.assertNotIn("chicken", drop_unsupported(["chicken"], title="Dinner", labels="#chickenpox"))
+        self.assertNotIn("seafood", drop_unsupported(["seafood"], title="Dinner", labels="#salmonella"))
+        self.assertNotIn("beans", drop_unsupported(["beans"], title="Candy", labels="#jellybeans"))
+
     def test_schema_org_keywords_with_graham_in_them_do_not_make_pork(self):
         labels = "apple, graham cracker crust, cheesecake, dessert"
         self.assertNotIn("pork", infer_tags(title="Bars", labels=labels))
