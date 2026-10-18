@@ -12,6 +12,7 @@ and `frontend/src/lib/tags.test.js` parses this file to prove the two agree.
 
 import logging
 import re
+from functools import lru_cache
 
 log = logging.getLogger("recipe.tags")
 
@@ -92,11 +93,11 @@ def normalize_tags(tags) -> list:
 # a wrong diet tag is worse than no tag to anyone filtering by one.
 TAG_KEYWORDS = {
     "chicken": ("chicken", "poultry", "drumstick", "chicken thigh", "chicken breast"),
-    "beef": ("beef", "steak", "ground beef", "minced beef", "brisket", "sirloin"),
+    "beef": ("beef", "steak", "ground beef", "minced beef", "brisket", "sirloin", "cheesesteak"),
     "pork": ("pork", "bacon", "ham", "sausage", "chorizo", "pancetta", "prosciutto"),
     "seafood": (
         "seafood", "fish", "salmon", "tuna", "shrimp", "prawn", "cod", "crab",
-        "scallop", "anchovy", "mussel", "tilapia", "halibut",
+        "scallop", "anchovy", "anchovies", "mussel", "tilapia", "halibut", "shellfish",
     ),
     "eggs": ("egg", "eggs", "omelette", "omelet", "frittata"),
     "tofu": ("tofu", "tempeh"),
@@ -107,14 +108,14 @@ TAG_KEYWORDS = {
     ),
     "pizza": ("pizza", "calzone"),
     "soup": ("soup", "stew", "broth", "chowder", "bisque", "ramen"),
-    "salad": ("salad", "slaw"),
-    "sandwich": ("sandwich", "burger", "wrap", "sub", "panini", "toastie"),
+    "salad": ("salad", "slaw", "coleslaw"),
+    "sandwich": ("sandwich", "burger", "hamburger", "cheeseburger", "wrap", "sub", "panini", "toastie"),
     "bread": ("bread", "focaccia", "sourdough", "baguette", "bun", "roll dough", "brioche"),
     "drink": ("smoothie", "cocktail", "mocktail", "juice", "latte", "lemonade", "iced coffee"),
     "sauce": ("sauce", "dressing", "salsa", "marinade", "dip", "chutney", "pesto"),
     "dessert": (
         "dessert", "cake", "cookie", "brownie", "pie", "ice cream", "pudding",
-        "cheesecake", "muffin", "tart", "mousse", "doughnut", "donut",
+        "cheesecake", "cupcake", "shortcake", "muffin", "tart", "mousse", "doughnut", "donut",
     ),
     "breakfast": ("breakfast", "pancake", "waffle", "oatmeal", "porridge", "granola", "french toast"),
     "lunch": ("lunch", "lunchbox"),
@@ -169,6 +170,35 @@ TAG_KEYWORDS = {
     "quick": ("quick", "15 minute", "20 minute", "30 minute", "weeknight", "under 30"),
 }
 
+@lru_cache(maxsize=None)
+def _pattern(needle: str, loose: bool):
+    body = re.escape(needle)
+    # A boundary is anything but a letter or digit, so "_" is one: #shrimp_tacos.
+    edge = r"[^\W_]"
+    if not loose:
+        # Prose is held to the whole word and its plural.
+        return re.compile(rf"(?<!{edge}){body}(?:e?s)?(?!{edge})")
+    # Hashtags and keyword labels run words together (#chickenrecipes,
+    # #easychickendinner). A long single word is safe to find anywhere in one: every
+    # accidental match this list had was a three-letter word (ham in graham, bun in
+    # bunch), so those, and every phrase, still have to start a token.
+    if len(needle) >= 5 and " " not in needle:
+        return re.compile(body)
+    return re.compile(rf"(?<!{edge}){body}")
+
+
+def mentions(needle: str, text: str, *, loose: bool = False) -> bool:
+    """Whether `text` says `needle`, as a word and not as part of another one.
+
+    This used to be a plain `needle in text`, and a substring is not a mention:
+    "ham" is in "graham" (a cheesecake bar came back tagged pork), "egg" in
+    "eggplant", "cake" in "pancake", "tart" in "start", "bun" in "bunch", "burger"
+    in "hamburger". Prose is matched as a whole word with its plural; hashtags and
+    labels as a word that starts a token. Both ends of a mention have to be a
+    boundary or the keyword list is a list of ways to be wrong."""
+    return _pattern(needle.replace("-", " "), loose).search(text) is not None
+
+
 # Longest first, so a phrase wins over a word contained inside it.
 _KEYWORD_ORDER = sorted(
     ((kw, tag) for tag, kws in TAG_KEYWORDS.items() for kw in kws),
@@ -207,6 +237,10 @@ INCIDENTAL = (
     "greek yogurt", "greek yoghurt",
     "italian seasoning", "italian herbs", "italian dressing",
 )
+
+# The same phrases as one pattern, matched as whole words: a plain replace would
+# take "lard" out of "collard greens".
+_INCIDENTAL = re.compile(r"(?<!\w)(?:" + "|".join(re.escape(p) for p in INCIDENTAL) + r")(?!\w)")
 
 # A recipe that takes half an hour is quick, whatever anyone called it. Only
 # applied when the time is actually known.
@@ -248,10 +282,10 @@ def infer_tags(
             lines.append(item)
 
     # What the dish is called, and everything including what goes in it.
-    name_blob = flatten(title, labels)
+    name_blob = flatten(title)
+    label_blob = flatten(labels)
     ingredient_blob = flatten(*lines)
-    for phrase in INCIDENTAL:
-        ingredient_blob = ingredient_blob.replace(phrase, " ")
+    ingredient_blob = _INCIDENTAL.sub(" ", ingredient_blob)
     ingredient_blob = " ".join(ingredient_blob.split())
     full_blob = f"{name_blob} {flatten(description)} {ingredient_blob}"
 
@@ -263,10 +297,13 @@ def infer_tags(
         if tag in found:
             continue
         needle = keyword.replace("-", " ")
-        haystack = name_blob if tag in NAME_ONLY_TAGS else full_blob
-        if needle in haystack:
+        prose = name_blob if tag in NAME_ONLY_TAGS else full_blob
+        # The labels are the creator's own filing of the post, so they count for
+        # every tag, and as the dish's name.
+        in_labels = mentions(needle, label_blob, loose=True)
+        if mentions(needle, prose) or in_labels:
             found.append(tag)
-            if needle in name_blob:
+            if mentions(needle, name_blob) or in_labels:
                 named.add(tag)
 
     # When a recipe says what cuisine it is, that settles it, and any other
@@ -316,14 +353,19 @@ def drop_unsupported(tags, *, title="", description="", ingredients=(), labels="
             lines.append(str(item.get("raw") or ""))
         elif isinstance(item, str):
             lines.append(item)
-    blob = " ".join([title or "", description or "", labels or "", *lines])
-    blob = " ".join(blob.lower().replace("#", " ").replace("-", " ").split())
+    def norm(text):
+        return " ".join(text.lower().replace("#", " ").replace("-", " ").split())
+
+    prose = norm(" ".join([title or "", description or "", *lines]))
+    label_blob = norm(labels or "")
 
     out = []
     for tag in kept:
         if tag in CHECKED_TAGS:
             needles = TAG_KEYWORDS.get(tag, (tag,))
-            if not any(n.replace("-", " ") in blob for n in needles):
+            if not any(
+                mentions(n, prose) or mentions(n, label_blob, loose=True) for n in needles
+            ):
                 log.info("dropping unsupported %s tag", tag)
                 continue
         out.append(tag)

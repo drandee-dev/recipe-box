@@ -117,6 +117,26 @@ def _iso_duration_to_min(value) -> int | None:
     return total or None
 
 
+def absolute_url(base: str, value) -> str:
+    """`value` resolved against the page it was found on, or "" when it is not a
+    web link.
+
+    Sites write their photo as `/images/uploads/x.jpg` or `//cdn.example.com/x.jpg`
+    in og:image and in schema.org, which only means something on the page itself.
+    Saved as it came, it never loads, the mirror cannot fetch it, and the editor
+    refuses to save the recipe because the photo link is not a full one. A
+    `data:` or `javascript:` value is no photo link at all."""
+    if not isinstance(value, str) or not value.strip():
+        return ""
+    try:
+        joined = urljoin(base, value.strip())
+        return joined if urlparse(joined).scheme in ("http", "https") else ""
+    except ValueError:
+        # "https://[bad/x.jpg" raises ("Invalid IPv6 URL"). One broken photo link
+        # on a page must cost the photo, not the import.
+        return ""
+
+
 def _first_str(value) -> str | None:
     """schema.org fields are wildly inconsistent: str, list, or nested object."""
     if isinstance(value, str):
@@ -247,7 +267,7 @@ def parse_jsonld_recipe(html: str, source_url: str) -> dict | None:
             "title": _first_str(node.get("name")) or "Untitled recipe",
             "source_url": source_url,
             "source_type": "web",
-            "image_url": _first_str(node.get("image")),
+            "image_url": absolute_url(source_url, _first_str(node.get("image"))) or None,
             "description": _first_str(node.get("description")),
             "ingredients": parsed,
             "instructions": steps,

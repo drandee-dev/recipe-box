@@ -89,3 +89,20 @@ export function thumbSources(recipe, box) {
     sizes: typeof box === 'number' ? `${box}px` : box,
   }
 }
+
+// A saved photo link that is not a full link, made into one. The importer used to
+// keep a page's `/images/uploads/x.jpg` as written, which means nothing away from
+// the page: it never loads, and the editor refuses to save the recipe while the
+// link is not a full one. Resolved against the recipe's own source page, it is the
+// photo the page meant. Anything that cannot be resolved to a web link comes back
+// exactly as it was, so the editor still says what is wrong with it.
+export function fullPhotoLink(image, source) {
+  const value = String(image || '').trim()
+  if (!value || /^https?:\/\//i.test(value)) return value
+  try {
+    const url = new URL(value, source)
+    return url.protocol === 'http:' || url.protocol === 'https:' ? url.href : value
+  } catch {
+    return value
+  }
+}
