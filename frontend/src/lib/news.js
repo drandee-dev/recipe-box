@@ -1,9 +1,10 @@
 // What's new: the banner on the Recipes tab and the list behind it.
 //
-// Ships with the code rather than living in a table, on purpose. pwa.js
-// installs a new build and reloads on the next open, so what this file says is
-// always about the build actually running: patch notes can't describe code the
-// phone doesn't have yet, and there is nothing to fetch or go stale offline.
+// Ships with the code rather than living in a table, on purpose. A new
+// build only replaces the running one when its worker takes over (pwa.js, the
+// update bar), so what this file says is always about the build actually
+// running: patch notes can't describe code the phone doesn't have yet, and
+// there is nothing to fetch or go stale offline.
 //
 // Newest first. A release prepends its entry in the same commit as the code it
 // describes, and bumps APP_VERSION and package.json together (news.test.js

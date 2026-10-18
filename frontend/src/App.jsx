@@ -516,8 +516,8 @@ export default function App() {
     importingRef.current = importing
   }, [importing])
 
-  // Hold off service worker update checks during a capture. An update reloads
-  // the page, which would discard whatever is in the paste box — or the photo
+  // Hold the update bar's Reload during a capture. Reloading discards
+  // whatever is in the paste box — or the photo
   // just taken, which is worse, since retyping is possible and re-taking a
   // picture of somebody's cookbook at their house is not.
   useEffect(() => {
