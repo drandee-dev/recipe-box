@@ -26,6 +26,7 @@ import UnitsToggle from './UnitsToggle.jsx'
 import { displayIngredient } from '../lib/convert.js'
 import { qtyColumnCh } from '../lib/ingredients.js'
 import { stepIngredientMap } from '../lib/stepIngredients.js'
+import { headingAt, ingredientGroups } from '../lib/sections.js'
 import { cookedLabel } from '../lib/cooked.js'
 import IngredientLine from './IngredientLine.jsx'
 import { useUnits } from '../lib/useUnits.js'
@@ -213,6 +214,10 @@ export default function RecipeDetail({
   const qtyCh = qtyColumnCh(ingLines)
   // What each step uses (lib/stepIngredients), shown under the step.
   const stepMap = useMemo(() => stepIngredientMap(recipe), [recipe])
+  // The named parts the ingredients and the steps are divided into, when the
+  // source had any (lib/sections). Null for a recipe with none.
+  const ingGroups = useMemo(() => ingredientGroups(recipe.ingredients), [recipe.ingredients])
+  const stepGroups = Array.isArray(recipe.instruction_groups) ? recipe.instruction_groups : null
 
   const host = hostOf(recipe.source_url)
   const tags = recipe.tags || []
@@ -608,21 +613,24 @@ export default function RecipeDetail({
           <h3 className="detail-heading">Ingredients</h3>
           <ul className="detail-checks">
             {recipe.ingredients.map((ing, n) => (
-              <li key={n} className={gathered.has(n) ? 'detail-check detail-check-on' : 'detail-check'}>
-                <label>
-                  <input
-                    type="checkbox"
-                    checked={gathered.has(n)}
-                    onChange={() => toggle('gathered', n)}
-                  />
-                  {/* Scaled, but only where a quantity was actually found at
-                      the head of this line. Anything else is the line as
-                      written — the same rule the shopping list follows, and the
-                      reason a scaled recipe can't produce a number the recipe
-                      never gave. */}
-                  <IngredientLine text={ingLines[n]} ch={qtyCh} />
-                </label>
-              </li>
+              <Fragment key={n}>
+                {headingAt(ingGroups, n) && <li className="detail-group">{headingAt(ingGroups, n)}</li>}
+                <li className={gathered.has(n) ? 'detail-check detail-check-on' : 'detail-check'}>
+                  <label>
+                    <input
+                      type="checkbox"
+                      checked={gathered.has(n)}
+                      onChange={() => toggle('gathered', n)}
+                    />
+                    {/* Scaled, but only where a quantity was actually found at
+                        the head of this line. Anything else is the line as
+                        written — the same rule the shopping list follows, and the
+                        reason a scaled recipe can't produce a number the recipe
+                        never gave. */}
+                    <IngredientLine text={ingLines[n]} ch={qtyCh} />
+                  </label>
+                </li>
+              </Fragment>
             ))}
           </ul>
           </div>
@@ -649,8 +657,9 @@ export default function RecipeDetail({
           ) : (
             <ol className="detail-checks detail-steps">
               {recipe.instructions.map((step, n) => (
+                <Fragment key={n}>
+                {headingAt(stepGroups, n) && <li className="detail-group">{headingAt(stepGroups, n)}</li>}
                 <li
-                  key={n}
                   aria-current={n === currentStep ? 'step' : undefined}
                   className={
                     done.has(n)
@@ -679,6 +688,7 @@ export default function RecipeDetail({
                     </span>
                   </label>
                 </li>
+                </Fragment>
               ))}
             </ol>
           )}

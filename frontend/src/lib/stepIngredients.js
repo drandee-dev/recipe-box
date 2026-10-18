@@ -25,9 +25,10 @@
 //    survives is returned, flagged `shared`, each with its own quantity.
 //
 // `ing.group` is the section an ingredient line sits under, and
-// `recipe.instruction_groups[n]` the section of step n. Neither is stored yet, so
-// today every recipe takes the adjacency path; the section rules are here,
-// tested, for the day the import keeps them.
+// `recipe.instruction_groups[n]` the section of step n. Both come from the import
+// (a recipe page's own headings, or the model's reading of them) and are stored,
+// so a recipe saved with sections takes the section path; one saved before that,
+// or from a source with no parts, takes the adjacency path.
 
 import { readIngredient, singular } from './ingredients.js'
 
