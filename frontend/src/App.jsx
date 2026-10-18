@@ -17,6 +17,7 @@ import { PULL_MIN_SPIN, PULL_TRIGGER, usePullToRefresh } from './lib/usePullToRe
 import Account from './components/Account.jsx'
 import CaptureSheet from './components/CaptureSheet.jsx'
 import InstallPrompt from './components/InstallPrompt.jsx'
+import UpdateBar from './components/UpdateBar.jsx'
 import { FeedbackSheet, NewsBanner, WhatsNewSheet } from './components/News.jsx'
 import { TimerTray, TimersButton, TimersSheet } from './components/Timers.jsx'
 import { OPEN_RECIPE_EVENT, useTimers } from './lib/useTimers.jsx'
@@ -1127,6 +1128,8 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      <UpdateBar />
 
       {/* Outside the tab switch: being offline affects the plan and the list
           equally, and the shopping tab is where it matters most. */}
