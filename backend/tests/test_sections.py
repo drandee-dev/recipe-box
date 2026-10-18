@@ -121,6 +121,15 @@ class IngredientGroups(unittest.TestCase):
         recipe = self.parse(FLAT, body)
         self.assertTrue(all("group" not in i for i in recipe["ingredients"]))
 
+    def test_matching_units_alone_do_not_make_a_wrong_card_pass(self):
+        # Found by review: every position shared "cup", "cups" or "tbsp".
+        listed = ["1 cup flour", "2 cups sugar", "1 tbsp butter", "1 cup milk"]
+        wrong = wprm_ingredients(
+            [("Roundup A", ["1 cup oats", "2 cups honey"]), ("Roundup B", ["1 tbsp oil", "1 cup water"])]
+        )
+        recipe = extract.parse_jsonld_recipe(page(listed, ["Mix."], wrong), URL)
+        self.assertTrue(all("group" not in i for i in recipe["ingredients"]))
+
     def test_a_nested_list_that_shifts_the_count_cannot_shift_the_groups(self):
         # An <li> inside an <li> inflates the item count by one; the content check
         # refuses it rather than moving every later heading up a line.
@@ -200,6 +209,8 @@ class StepSections(unittest.TestCase):
 class CleanName(unittest.TestCase):
     def test_entities_and_non_text(self):
         self.assertEqual(sections.clean_name("Assembly &amp; Baking"), "Assembly & Baking")
+        self.assertEqual(sections.clean_name("A &amp; B"), "A & B")
+        self.assertEqual(sections.clean_name("FOR THE CRUST"), "For the crust")
         self.assertIsNone(sections.clean_name(["x"]))
         self.assertIsNone(sections.clean_name(5))
 

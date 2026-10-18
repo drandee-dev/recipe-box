@@ -33,8 +33,9 @@ def clean_name(text) -> str | None:
     if not name or name.lower() in GENERIC_NAMES:
         return None
     name = name[:MAX_NAME]
-    # "SAUCE:" is how a plugin's stylesheet shouts it; the text is not.
-    return name.capitalize() if name.isupper() else name
+    # "SAUCE:" is how a plugin's stylesheet shouts it; the text is not. "A & B"
+    # has no shouting word in it and is left alone.
+    return name.capitalize() if name.isupper() and re.search(r"[A-Z]{3,}", name) else name
 
 
 def informative(groups: list[str | None]) -> list[str | None] | None:
@@ -46,8 +47,23 @@ def informative(groups: list[str | None]) -> list[str | None] | None:
     return groups
 
 
+# Words every recipe line shares, so sharing one proves nothing: "1 cup oats" and
+# "1 cup flour" are not the same line. Without this a wrong card whose units and
+# descriptors happen to line up passes the content check.
+COMMON_WORDS = {
+    "cup", "cups", "tbsp", "tsp", "tablespoon", "tablespoons", "teaspoon", "teaspoons",
+    "ounce", "ounces", "oz", "pound", "pounds", "lbs", "lb", "gram", "grams", "kilogram",
+    "milliliter", "milliliters", "liter", "liters", "pinch", "dash", "can", "cans", "package",
+    "large", "small", "medium", "fresh", "chopped", "diced", "minced", "sliced", "ground",
+    "whole", "plus", "more", "about", "divided", "optional", "taste", "the", "and", "for",
+    "with", "into", "finely", "roughly", "cut", "peeled", "cold", "warm", "room", "temperature",
+    "melted", "softened", "packed", "cubed", "grated", "shredded",
+}
+
+
 def _words(text) -> set[str]:
-    return set(re.findall(r"[a-z]{3,}", html.unescape(str(text or "")).lower()))
+    found = re.findall(r"[a-z]{3,}", html.unescape(str(text or "")).lower())
+    return {w for w in found if w not in COMMON_WORDS}
 
 
 def _same_content(card: list[str], listed: list) -> bool:
