@@ -218,8 +218,7 @@ def parse_jsonld_recipe(html: str, source_url: str) -> dict | None:
             parsed.append(line)
 
         # Step sections: a HowToSection names its own steps; failing that, a
-        # WP Recipe Maker card does. Neither is stored yet (the column arrives with
-        # the editor work), so the client ignores this until then.
+        # WP Recipe Maker card does. Stored in `recipes.instruction_groups`.
         flat = _flatten_sections(node.get("recipeInstructions"))
         steps = [text for text, _ in flat]
         instruction_groups = sections.informative([name for _, name in flat])

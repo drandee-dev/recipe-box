@@ -1859,6 +1859,20 @@ textarea.field {
   opacity: 0.55;
 }
 
+/* A section heading over a run of ingredients or steps ("For the crust",
+   lib/sections). Quiet: the lines under it are the content. It sits in the list
+   as an item of its own, so the rows' own rules and borders do not touch it. */
+.detail-group {
+  margin: var(--sp-4) 0 var(--sp-1);
+  color: var(--txt-2);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+}
+
+.detail-checks > .detail-group:first-child {
+  margin-top: 0;
+}
+
 /* The ingredient lines a step uses, one per line under the step (lib/stepIngredients).
    Quiet and smaller than the step: it is a reminder of the amount, not part of
    the method. */
@@ -3316,6 +3330,23 @@ textarea.field {
   padding: var(--sp-2) 0;
   border-top: 1px solid rgb(243 240 228 / 12%);
   opacity: 0.85;
+}
+
+/* A section heading in the full list ("For the crust"). */
+.cook-peek-list li.cook-peek-group {
+  padding: var(--sp-3) 0 var(--sp-1);
+  font-size: var(--fs-sm);
+  font-weight: 700;
+  opacity: 0.65;
+}
+
+/* Which part of the recipe the step belongs to, under "Step three". */
+.cook-section {
+  margin: 0 0 var(--sp-2);
+  color: var(--cook-ink);
+  font-size: var(--fs-base);
+  font-weight: 600;
+  opacity: 0.75;
 }
 
 /* Tablet and up: the step takes the left, the ingredients stay beside it as a

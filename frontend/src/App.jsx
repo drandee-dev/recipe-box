@@ -750,8 +750,8 @@ export default function App() {
     // Step sections (`instruction_groups`) run parallel to the steps, and the
     // editor knows nothing of them. Where the steps were added, removed or
     // reordered the old array no longer lines up with them, and the step
-    // ingredients would show the wrong section's lines: so it goes. (Only the
-    // signed-out store keeps the field at all until its column exists.)
+    // ingredients would show the wrong section's lines: so it goes. (`toRow`
+    // writes the null, which clears the column.)
     const stepsChanged =
       target?.instruction_groups &&
       JSON.stringify(target.instructions) !== JSON.stringify(values.instructions)
