@@ -222,9 +222,34 @@ class AKeywordIsAWordNotASubstring(unittest.TestCase):
     def test_hashtags_still_count_even_when_the_words_run_together(self):
         self.assertIn("chicken", infer_tags(title="Dinner tonight", labels="#chickenrecipes #easydinner"))
         self.assertIn("chicken", drop_unsupported(["chicken"], title="Dinner", labels="#chickenrecipes"))
-        # ...but a hashtag word that only contains the keyword does not.
+        # ...but a hashtag word that only contains a short keyword does not.
         self.assertNotIn("pork", infer_tags(title="Dinner", labels="#nograhamhere"))
         self.assertNotIn("pork", drop_unsupported(["pork"], title="Dinner", labels="#grahamcracker"))
+
+    def test_a_long_keyword_is_found_in_the_middle_of_a_hashtag(self):
+        """Review: #easychickendinner is common on TikTok and the first version
+        lost it, and with it any model tag whose only support was such a hashtag."""
+        for labels, tag in [
+            ("#easychickendinner", "chicken"),
+            ("#bananabread", "bread"),
+            ("#bakedsalmon", "seafood"),
+            ("#slowcookerchicken", "chicken"),
+            ("#shrimp_tacos", "mexican"),
+        ]:
+            with self.subTest(labels=labels):
+                self.assertIn(tag, infer_tags(title="Tonight", labels=labels))
+        self.assertIn("chicken", drop_unsupported(["chicken"], title="Tonight", labels="#easychickendinner"))
+        self.assertIn("seafood", drop_unsupported(["seafood"], title="Tonight", labels="#bakedsalmon"))
+
+    def test_a_short_keyword_in_a_hashtag_still_has_to_start_a_token(self):
+        """Four letters or fewer ("ham", "tart", "taco") are found at the start of a
+        hashtag word and not inside one. The cost is known and accepted: #BeefTacos
+        loses mexican. A hashtag that merely *starts* with one (#eggplantfries) still
+        matches; only prose is held to the whole word."""
+        for labels, tag in [("#champagnebrunch", "pork"), ("#startnow", "dessert"), ("#grahamcracker", "pork")]:
+            with self.subTest(labels=labels):
+                self.assertNotIn(tag, infer_tags(title="Tonight", labels=labels))
+        self.assertNotIn("mexican", infer_tags(title="Tonight", labels="#BeefTacos"))
 
     def test_schema_org_keywords_with_graham_in_them_do_not_make_pork(self):
         labels = "apple, graham cracker crust, cheesecake, dessert"

@@ -173,11 +173,18 @@ TAG_KEYWORDS = {
 @lru_cache(maxsize=None)
 def _pattern(needle: str, loose: bool):
     body = re.escape(needle)
-    # `loose` is for hashtags and keyword labels, where words run together
-    # (#chickenrecipes): the word has to start a token but may run on. Prose is
-    # held to the whole word and its plural.
-    tail = "" if loose else r"(?:e?s)?(?!\w)"
-    return re.compile(rf"(?<!\w){body}{tail}")
+    # A boundary is anything but a letter or digit, so "_" is one: #shrimp_tacos.
+    edge = r"[^\W_]"
+    if not loose:
+        # Prose is held to the whole word and its plural.
+        return re.compile(rf"(?<!{edge}){body}(?:e?s)?(?!{edge})")
+    # Hashtags and keyword labels run words together (#chickenrecipes,
+    # #easychickendinner). A long single word is safe to find anywhere in one: every
+    # accidental match this list had was a three-letter word (ham in graham, bun in
+    # bunch), so those, and every phrase, still have to start a token.
+    if len(needle) >= 5 and " " not in needle:
+        return re.compile(body)
+    return re.compile(rf"(?<!{edge}){body}")
 
 
 def mentions(needle: str, text: str, *, loose: bool = False) -> bool:

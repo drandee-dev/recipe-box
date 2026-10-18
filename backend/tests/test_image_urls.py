@@ -39,6 +39,26 @@ class AbsoluteUrl(unittest.TestCase):
                 self.assertEqual(extract.absolute_url(PAGE, value), "")
 
 
+class OddInputCostsThePhotoNotTheImport(unittest.TestCase):
+    def test_a_malformed_link_is_no_link(self):
+        # urljoin raises ValueError("Invalid IPv6 URL") on these.
+        for value in ("https://[bad/x.jpg", "http://[::1/x.jpg", "//[oops/x.jpg"):
+            with self.subTest(value=value):
+                self.assertEqual(extract.absolute_url(PAGE, value), "")
+
+    def test_a_good_recipe_with_a_malformed_image_still_imports(self):
+        ld = {"@type": "Recipe", "name": "X", "image": "https://[bad/x.jpg", "recipeIngredient": ["a"], "recipeInstructions": ["b"]}
+        html = f'<script type="application/ld+json">{json.dumps(ld)}</script>'
+        recipe = extract.parse_jsonld_recipe(html, PAGE)
+        self.assertEqual(recipe["title"], "X")
+        self.assertIsNone(recipe["image_url"])
+
+    def test_a_malformed_og_image_does_not_fail_the_post(self):
+        html = '<html><head><meta property="og:title" content="T"><meta property="og:image" content="https://[bad/x.jpg"></head></html>'
+        with patch("app.social.fetch_html", return_value=html):
+            self.assertEqual(social.fetch_post(PAGE, "web")["image_url"], "")
+
+
 class WhereItIsApplied(unittest.TestCase):
     def test_the_json_ld_image_is_resolved(self):
         ld = {"@type": "Recipe", "name": "X", "image": "/img/a.jpg", "recipeIngredient": ["a"], "recipeInstructions": ["b"]}

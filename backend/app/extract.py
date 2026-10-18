@@ -128,8 +128,13 @@ def absolute_url(base: str, value) -> str:
     `data:` or `javascript:` value is no photo link at all."""
     if not isinstance(value, str) or not value.strip():
         return ""
-    joined = urljoin(base, value.strip())
-    return joined if urlparse(joined).scheme in ("http", "https") else ""
+    try:
+        joined = urljoin(base, value.strip())
+        return joined if urlparse(joined).scheme in ("http", "https") else ""
+    except ValueError:
+        # "https://[bad/x.jpg" raises ("Invalid IPv6 URL"). One broken photo link
+        # on a page must cost the photo, not the import.
+        return ""
 
 
 def _first_str(value) -> str | None:
