@@ -17,6 +17,7 @@ import { PULL_MIN_SPIN, PULL_TRIGGER, usePullToRefresh } from './lib/usePullToRe
 import Account from './components/Account.jsx'
 import CaptureSheet from './components/CaptureSheet.jsx'
 import InstallPrompt from './components/InstallPrompt.jsx'
+import UpdateBar from './components/UpdateBar.jsx'
 import { FeedbackSheet, NewsBanner, WhatsNewSheet } from './components/News.jsx'
 import { TimerTray, TimersButton, TimersSheet } from './components/Timers.jsx'
 import { OPEN_RECIPE_EVENT, useTimers } from './lib/useTimers.jsx'
@@ -515,8 +516,8 @@ export default function App() {
     importingRef.current = importing
   }, [importing])
 
-  // Hold off service worker update checks during a capture. An update reloads
-  // the page, which would discard whatever is in the paste box — or the photo
+  // Hold the update bar's Reload during a capture. Reloading discards
+  // whatever is in the paste box — or the photo
   // just taken, which is worse, since retyping is possible and re-taking a
   // picture of somebody's cookbook at their house is not.
   useEffect(() => {
@@ -1127,6 +1128,8 @@ export default function App() {
           </div>
         </div>
       </header>
+
+      <UpdateBar />
 
       {/* Outside the tab switch: being offline affects the plan and the list
           equally, and the shopping tab is where it matters most. */}

@@ -15,7 +15,8 @@ export default defineConfig({
         staging ? html.replace('title" content="Recipes"', 'title" content="Recipes β"') : html,
     },
     VitePWA({
-      registerType: 'autoUpdate',
+      // 'prompt': a new worker waits and UpdateBar offers the reload (lib/pwa.js).
+      registerType: 'prompt',
       // src/lib/pwa.js imports virtual:pwa-register and registers the worker
       // itself, so the plugin must not also inject registerSW.js into the HTML.
       // That injected copy is what bound registration to the `load` event.
@@ -33,8 +34,12 @@ export default defineConfig({
       workbox: {
         // Push handling (public/push-sw.js) is loaded into the generated worker
         // rather than switching the plugin to injectManifest and owning the whole
-        // file. A new worker lets the next load pick it up via the autoUpdate.
+        // file. A new worker is picked up through UpdateBar's Reload.
         importScripts: ['push-sw.js'],
+        // autoUpdate set this implicitly; without it a first visit is not
+        // controlled (so not offline-ready) until the next load. skipWaiting
+        // stays off on purpose: the bar's Reload sends it.
+        clientsClaim: true,
         runtimeCaching: [
           {
             // Recipe photos come from arbitrary sites and CDNs, so they can't be
