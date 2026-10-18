@@ -60,6 +60,13 @@ class ImageRequest(BaseModel):
     url: str = Field(min_length=10, max_length=2000)
 
 
+class UploadImageRequest(BaseModel):
+    recipe_id: str = Field(min_length=36, max_length=36)
+    # Bare base64 of a JPEG the client already shrank (lib/photo.js). Same ceiling
+    # as StructureImageRequest, for the same reason: under Vercel's 4.5 MB body.
+    image: str = Field(min_length=100, max_length=4_000_000)
+
+
 @app.get("/api/health")
 def health():
     """Also the deploy check.
@@ -267,6 +274,43 @@ def structure_image(body: StructureImageRequest, request: Request):
     return require_recipe(result, "photo")
 
 
+def _photo_caller(authorization: str | None, recipe_id: str) -> str:
+    """The two gates in front of anything that keeps a photo: who is calling, and
+    whether the recipe they name is theirs. Returns the verified user id.
+
+    Shared by the URL route and the upload route, so they cannot drift apart.
+    Raises HTTPException itself; it lives outside each handler's main try block
+    because that block ends in `except Exception`, which would turn a 422 raised
+    inside it into a 502.
+    """
+    try:
+        from .auth import AuthError, bearer_token, verify_token
+        from .images import ImageError, recipe_is_owned
+    except ImportError:
+        # Only the photo routes are lost, and /api/health says so.
+        log.exception("image storage is unavailable: a dependency is missing")
+        raise HTTPException(status_code=503, detail="Photo storage is unavailable")
+
+    try:
+        user_id = verify_token(bearer_token(authorization))
+    except AuthError as exc:
+        log.info("image request rejected: %s", exc)
+        raise HTTPException(status_code=401, detail="Sign in to save recipe photos")
+
+    # Who is calling was never the gap; what they are touching was.
+    try:
+        owned = recipe_is_owned(user_id, recipe_id)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Not a valid recipe id")
+    except ImageError:
+        log.exception("could not check recipe ownership")
+        raise HTTPException(status_code=503, detail="Photo storage is unavailable")
+    if not owned:
+        log.info("image request rejected: %s is not a recipe of the caller's", recipe_id)
+        raise HTTPException(status_code=422, detail="No recipe to attach that photo to")
+    return user_id
+
+
 @app.post("/api/recipes/image")
 def recipe_image(body: ImageRequest, authorization: str | None = Header(default=None)):
     """Mirror a recipe photo into our own bucket. Signed in only.
@@ -280,33 +324,8 @@ def recipe_image(body: ImageRequest, authorization: str | None = Header(default=
     tries again on a later load, so the failure modes here — an expired URL, a
     hotlink block, something that isn't an image — are all a 422 and nothing more.
     """
-    try:
-        from .auth import AuthError, bearer_token, verify_token
-        from .images import ImageError, mirror_image, recipe_is_owned
-    except ImportError:
-        # Only this endpoint is lost, and /api/health says so.
-        log.exception("image mirroring is unavailable: a dependency is missing")
-        raise HTTPException(status_code=503, detail="Photo storage is unavailable")
-
-    try:
-        user_id = verify_token(bearer_token(authorization))
-    except AuthError as exc:
-        log.info("image mirror rejected: %s", exc)
-        raise HTTPException(status_code=401, detail="Sign in to save recipe photos")
-
-    # Who is calling was never the gap; what they are touching was. Kept outside
-    # the block below because that one ends in `except Exception`, which would
-    # turn the 422 this raises into a 502.
-    try:
-        owned = recipe_is_owned(user_id, body.recipe_id)
-    except ValueError:
-        raise HTTPException(status_code=422, detail="Not a valid recipe id")
-    except ImageError:
-        log.exception("could not check recipe ownership")
-        raise HTTPException(status_code=503, detail="Photo storage is unavailable")
-    if not owned:
-        log.info("image mirror rejected: %s is not a recipe of the caller's", body.recipe_id)
-        raise HTTPException(status_code=422, detail="No recipe to attach that photo to")
+    user_id = _photo_caller(authorization, body.recipe_id)
+    from .images import ImageError, mirror_image
 
     try:
         return mirror_image(user_id, body.recipe_id, body.url)
@@ -318,6 +337,37 @@ def recipe_image(body: ImageRequest, authorization: str | None = Header(default=
     except Exception:
         log.exception("unexpected image mirror failure for %s", body.url)
         raise HTTPException(status_code=502, detail="Could not save that image")
+
+
+@app.post("/api/recipes/image/upload")
+def recipe_image_upload(body: UploadImageRequest, authorization: str | None = Header(default=None)):
+    """Keep a photo the person took or picked, as the recipe's picture. Signed in.
+
+    The route above fetches a URL; this one is handed the bytes, for a recipe out
+    of a family notebook that has no web address. Same gates, same bucket, same
+    resize. No model call, so it is not metered by `meter_caller` and spends
+    nothing: what bounds it is the sign-in and the recipe ownership check.
+    """
+    # Ownership is checked before the bytes are decoded, so an unowned id costs
+    # one lookup rather than a decode and two uploads.
+    user_id = _photo_caller(authorization, body.recipe_id)
+    from .images import ImageError, upload_image
+
+    try:
+        raw = base64.b64decode(body.image, validate=True)
+    except (binascii.Error, ValueError):
+        raise HTTPException(status_code=422, detail="That photo could not be read")
+
+    try:
+        return upload_image(user_id, body.recipe_id, raw)
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Not a valid recipe id")
+    except ImageError as exc:
+        log.info("photo upload failed for %s: %s", body.recipe_id, exc)
+        raise HTTPException(status_code=422, detail="Could not save that photo")
+    except Exception:
+        log.exception("unexpected photo upload failure for %s", body.recipe_id)
+        raise HTTPException(status_code=502, detail="Could not save that photo")
 
 
 @app.post("/api/push/fire")

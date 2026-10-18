@@ -3520,6 +3520,16 @@ textarea.field {
   min-width: 0;
 }
 
+.editor-photo-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--sp-2);
+}
+
+.editor-photo-error {
+  color: var(--danger);
+}
+
 /* Serves, prep, cook, total. Four short numeric fields that read as one line of
    facts; they wrap to two rows on a narrow phone rather than shrinking below a
    thumb's width. */
