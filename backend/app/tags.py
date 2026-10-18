@@ -170,12 +170,10 @@ TAG_KEYWORDS = {
     "quick": ("quick", "15 minute", "20 minute", "30 minute", "weeknight", "under 30"),
 }
 
-# What a hashtag appends to a cuisine ("#indianfood"), as one alternation.
-_LABEL_RUN_ON = (
-    "food|foods|cuisine|recipes?|cooking|kitchen|dinner|lunch|bbq|style|inspired|dishes|dish|eats|night"
-    "|curry|noodles?|rice|chicken|beef|pork|soup|salad|pasta|pizza|tacos?|ramen|bowls?|takeout|meals?"
-    "|snacks?|desserts?|sweets?"
-)
+# Cuisine words that are also the front of a different word, as a lookahead that
+# rules the other word out. Found by review's hunt over real hashtag shapes: Indiana
+# and Indianapolis, Thailand. Add to it when another turns up.
+_CUISINE_NOT = {"indian": "(?!a)", "thai": "(?!land)"}
 
 # Words that merely contain a keyword and are not it: platter has "latte", brothers
 # has "broth", a saucepan is not a sauce. They are taken out of a label before it is
@@ -200,11 +198,12 @@ def _pattern(needle: str, loose: bool, cuisine: bool = False):
         return re.compile(rf"(?<!{edge}){body}(?:e?s)?(?!{edge})")
     if cuisine:
         # A cuisine claimed by a label settles the dish's cuisine and suppresses any
-        # other, so it is held tighter than a protein: the word has to start the
-        # token AND end it, or be followed by what a hashtag really appends
-        # (#indianfood, #thaibbq). #indiana, #gelatin and #translating are not
-        # cuisines, and the first version of this rule let all three through.
-        return re.compile(rf"(?<!{edge}){body}(?:e?s)?(?:{_LABEL_RUN_ON})?(?!{edge})")
+        # other, so it is held tighter than a protein: it must START the token
+        # (never #gelatin, #platinum, #translating, #caucasian), and the two cuisine
+        # words that are also the front of a different word are told apart
+        # (#indiana, #indianapolis, #thailand). What follows is free, because that
+        # is what hashtags do: #thaifoodie, #koreanfriedchicken, #indianstreetfood.
+        return re.compile(rf"(?<!{edge}){body}{_CUISINE_NOT.get(needle, '')}")
     # Hashtags and keyword labels run words together (#chickenrecipes,
     # #easychickendinner). A long single word is safe to find anywhere in one: every
     # accidental match this list had was a three-letter word (ham in graham, bun in

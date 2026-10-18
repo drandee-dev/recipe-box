@@ -285,6 +285,10 @@ class AKeywordIsAWordNotASubstring(unittest.TestCase):
             ("#koreanfood", "asian"), ("#mexicanfood", "mexican"), ("#italiandinner", "italian"),
             ("#greekrecipes", "mediterranean"), ("#peruvian_dinner", "latin"),
             ("#thaicurry", "asian"), ("#indianchicken", "indian"), ("#japaneseramen", "asian"),
+            # What review found the first, narrower rule lost: whatever hashtags append.
+            ("#thaifoodie", "asian"), ("#indianstreetfood", "indian"), ("#koreanfriedchicken", "asian"),
+            ("#italiansausage", "italian"), ("#vietnamesepho", "asian"), ("#cubansandwich", "latin"),
+            ("#greekyogurt", "mediterranean"), ("#mexicanstreetcorn", "mexican"), ("#indianfoodblogger", "indian"),
         ]:
             with self.subTest(labels=labels):
                 self.assertIn(tag, infer_tags(title="Tonight", labels=labels))
@@ -295,7 +299,10 @@ class AKeywordIsAWordNotASubstring(unittest.TestCase):
         missing cuisine tag is a mild loss; a wrong one that also erases the right
         one is not, which is the trade."""
         self.assertNotIn("italian", infer_tags(title="Tonight", labels="#easyitalian"))
-        self.assertNotIn("indian", infer_tags(title="Tonight", labels="#indianapolis"))
+        # Cuisine words that are the front of another word are told apart.
+        for labels in ("#indiana", "#indianapolis", "#indianajones", "#thailand"):
+            with self.subTest(labels=labels):
+                self.assertEqual(infer_tags(title="Tonight", labels=labels), [])
 
     def test_a_noise_word_takes_only_itself_out_of_a_hashtag(self):
         self.assertIn("seafood", infer_tags(title="Tonight", labels="#seafoodplatter"))
