@@ -41,7 +41,7 @@ export const NEWS = [
       "Mark things you always have, like salt, as staples. Move an item to its real aisle and put the aisles in your shop's order. Share the list as text.",
       "Add some of a recipe's ingredients to the list without planning it.",
       'Add notes to a recipe, mark it as cooked, and sort by recently cooked or most cooked.',
-      'Swipe anywhere on the Planner or Shopping screen to change the week.',
+      'Swipe the Planner or Shopping screen to change the week.',
       'Cook mode shows how much of each ingredient the step uses, so you do not have to scroll the list.',
       'Recipes divided into parts, like crust, filling and topping, keep their headings, and cook mode shows which part a step belongs to. Recipes you saved before this update have no parts until you import them again.',
       'Download all your recipes as a file from the account menu.',
