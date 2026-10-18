@@ -40,11 +40,16 @@ const SIZES = {
 }
 
 export default function RecipeThumb({ recipe, priority = false, size = 'md' }) {
-  const [failed, setFailed] = useState(false)
+  // The link that failed, not a bare "failed" flag. This component stays mounted
+  // while its recipe changes underneath it: the list paints from the offline copy
+  // first, where a photo link may be dead, and the refetch then brings the real
+  // one; an upload or an edit swaps the link too. A flag that outlived the link it
+  // was set for kept the tile on screen until the page was reloaded.
+  const [failedSrc, setFailedSrc] = useState(null)
 
   const box = SIZES[size] || SIZES.md
   const photo = thumbSources(recipe, box.sizes || box.w)
-  const showPhoto = Boolean(photo) && !failed
+  const showPhoto = Boolean(photo) && photo.src !== failedSrc
   const cls = size === 'md' ? 'recipes-thumb' : `recipes-thumb recipes-thumb-${size}`
 
   if (showPhoto) {
@@ -70,7 +75,7 @@ export default function RecipeThumb({ recipe, priority = false, size = 'md' }) {
           fetchPriority={priority ? 'high' : 'auto'}
           // Not onerror-swaps-the-src: a fallback src that also fails would loop.
           // A state flag renders a different element and can only fire once.
-          onError={() => setFailed(true)}
+          onError={() => setFailedSrc(photo.src)}
         />
       </div>
     )
