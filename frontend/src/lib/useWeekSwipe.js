@@ -30,6 +30,26 @@ export const WEEK_SWIPE_THRESHOLD = 56
 export const NO_SWIPE =
   '.planner-entry-swipe, .shopping-tools, .sheet-backdrop, input, textarea, select, [data-no-week-swipe]'
 
+// Whether the "Swipe to change week" line has done its job. Kept on this device;
+// blocked storage just means the line shows again, which is harmless.
+const HINT_KEY = 'recipebox:swipeHint'
+
+export function swipeHintSeen() {
+  try {
+    return localStorage.getItem(HINT_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function markSwipeHintSeen() {
+  try {
+    localStorage.setItem(HINT_KEY, '1')
+  } catch {
+    // Nothing to do: see above.
+  }
+}
+
 // -1 previous week, +1 next week, 0 nothing. Pure, so the rule is tested without
 // a DOM: the drag has to be far enough, and more sideways than up or down.
 export function weekSwipeDirection(dx, dy = 0, threshold = WEEK_SWIPE_THRESHOLD) {
@@ -45,6 +65,7 @@ export function useWeekSwipe(onWeekChange) {
   const [slideDir, setSlideDir] = useState(null)
   const [dragX, setDragX] = useState(0)
   const [dragging, setDragging] = useState(false)
+  const [showHint, setShowHint] = useState(() => !swipeHintSeen())
   const gesture = useRef(null)
   const dragXRef = useRef(0)
   // A horizontal drag that ends over a button must not also press it. Touch
@@ -53,6 +74,12 @@ export function useWeekSwipe(onWeekChange) {
 
   const goWeek = useCallback(
     (direction) => {
+      // Moving a week by swipe or by arrow retires the hint; "This week" (0) is a
+      // jump home, not a sign they have found the gesture.
+      if (direction !== 0) {
+        markSwipeHintSeen()
+        setShowHint(false)
+      }
       setSlideDir(direction > 0 ? 'right' : direction < 0 ? 'left' : null)
       onWeekChange(direction)
     },
@@ -113,6 +140,7 @@ export function useWeekSwipe(onWeekChange) {
 
   return {
     goWeek,
+    showHint,
     slideDir,
     dragX,
     dragging,

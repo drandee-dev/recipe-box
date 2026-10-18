@@ -13,6 +13,7 @@ import { SWIPE_SLOP, useWeekSwipe } from '../lib/useWeekSwipe.js'
 import { SERVINGS_MAX_FACTOR, baseServings, servingsLabel } from '../lib/recipes.js'
 import RecipeThumb from './RecipeThumb.jsx'
 import Sheet from './Sheet.jsx'
+import SwipeHint from './SwipeHint.jsx'
 import {
   SLOTS,
   dayName,
@@ -107,6 +108,7 @@ export default function Planner({
   // is a button and the space under a short week used to be dead.
   const {
     goWeek,
+    showHint,
     slideDir,
     dragX: weekDragX,
     dragging: weekDragging,
@@ -175,6 +177,8 @@ export default function Planner({
           ›
         </button>
       </div>
+
+      {showHint && <SwipeHint />}
 
       {recipes.length === 0 && !loading && (
         <p className="rb-empty">

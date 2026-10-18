@@ -2268,6 +2268,58 @@ textarea.field {
   }
 }
 
+/* The one-time "Swipe to change week" line (SwipeHint.jsx). Quiet on purpose: the
+   week bar's arrows are the standing cue, this only says the screen also turns
+   like a page. The chevrons drift outward three times and then stay put, so it
+   asks for attention once and does not keep moving; reduced motion keeps them
+   still from the start. */
+.swipe-hint {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: var(--sp-2);
+  margin: 0 0 var(--sp-3);
+  color: var(--txt-2);
+  font-size: var(--fs-sm);
+}
+
+/* The planner's week bar already ends in a margin; on Shopping the line sits right
+   under the sticky header's hairline and needs its own. */
+.shopping .swipe-hint {
+  margin-top: var(--sp-3);
+}
+
+.swipe-hint-chev {
+  font-size: var(--fs-md);
+  line-height: 1;
+}
+
+.swipe-hint-chev-l {
+  animation: swipe-hint-l 1.4s ease-in-out 0.6s 3;
+}
+
+.swipe-hint-chev-r {
+  animation: swipe-hint-r 1.4s ease-in-out 0.6s 3;
+}
+
+@keyframes swipe-hint-l {
+  50% {
+    transform: translateX(-6px);
+  }
+}
+
+@keyframes swipe-hint-r {
+  50% {
+    transform: translateX(6px);
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .swipe-hint-chev {
+    animation: none;
+  }
+}
+
 .planner-day {
   border: 1px solid var(--line);
   border-radius: var(--r);
