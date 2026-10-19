@@ -21,7 +21,7 @@ export const NEWS = [
     id: '1.1.1',
     kind: 'release',
     version: '1.1.1',
-    date: '2026-10-19',
+    date: '2026-10-18',
     title: 'Version 1.1.1',
     body: 'A bar now tells you when an update is ready, and you can ask to be told about new versions. Tap to see what changed.',
     notes: [
