@@ -102,6 +102,29 @@ async function saveSubscription() {
   )
 }
 
+// What the timer-alert note says for each push state. The timer list and the
+// account sheet both show it, so the words are in one place.
+export const ALERTS_TEXT = {
+  on: 'Lock-screen alerts are on. A finished timer shows on your lock screen even if the app is closed.',
+  ask: 'Get an alert on your lock screen when a timer finishes, even with the phone locked.',
+  'needs-install': "To get alerts on a locked phone, add this app to your Home Screen from Safari's Share menu and open it from there.",
+  'signed-out': 'Sign in to get alerts on your lock screen when a timer finishes.',
+  denied: "Alerts are blocked. Turn on notifications for this app in the phone's Settings.",
+}
+
+// What the one-time notifications card offers, or null for nothing. Only inside
+// the installed app (where the install card never shows, so the two cannot
+// stack), only signed in, only once, and only for what can still be turned on:
+// both when permission has not been asked, the new-versions switch alone when
+// timer alerts are already on. `announce` is undefined until it has been read, so
+// the card never flashes up for someone who already said yes.
+export function notifyCardOffer({ state, announce, dismissed, standalone, signedIn, ready }) {
+  if (!ready || dismissed || !signedIn || !standalone || announce === undefined) return null
+  if (state === 'ask') return { timers: true, versions: true }
+  if (state === 'on' && announce !== true) return { timers: false, versions: true }
+  return null
+}
+
 // "Tell me about new versions" (the release announcement, backend/app/release.py).
 // The switch is a column on this phone's own subscription row, separate from timer
 // alerts: turning it off sets `announce` false and never deletes the row, because

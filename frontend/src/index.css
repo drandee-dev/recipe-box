@@ -2623,8 +2623,26 @@ textarea.field {
   box-shadow: var(--shadow-card);
 }
 
+.rb-update {
+  flex-wrap: wrap;
+}
+
 .rb-update-text {
   flex: 1;
+}
+
+/* A glance at what changed: three short lines at most, set quieter than the
+   message above them and on their own row. */
+.rb-update-list {
+  flex-basis: 100%;
+  margin: 0;
+  padding: 0 0 var(--sp-1) var(--sp-4);
+  font-size: var(--fs-sm);
+  opacity: 0.85;
+}
+
+.rb-update-list li + li {
+  margin-top: 2px;
 }
 
 .rb-update-reload,

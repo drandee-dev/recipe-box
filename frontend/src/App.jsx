@@ -18,6 +18,7 @@ import Account from './components/Account.jsx'
 import CaptureSheet from './components/CaptureSheet.jsx'
 import InstallPrompt from './components/InstallPrompt.jsx'
 import UpdateBar from './components/UpdateBar.jsx'
+import NotifyCard from './components/NotifyCard.jsx'
 import { FeedbackSheet, NewsBanner, WhatsNewSheet } from './components/News.jsx'
 import { TimerTray, TimersButton, TimersSheet } from './components/Timers.jsx'
 import { OPEN_RECIPE_EVENT, useTimers } from './lib/useTimers.jsx'
@@ -1167,6 +1168,12 @@ export default function App() {
               }}
             />
           )}
+          {/* The one-time offer of notifications, in the news banner's place once
+              that is closed, so the two never stack. */}
+          <NotifyCard
+            signedIn={Boolean(session)}
+            ready={newsClosed && !offline && !fromShare && !savedTitle && !shareNotice && recipes.length > 0}
+          />
           {fromShare && importing && (
             <p className="rb-notice">Saving the shared link…</p>
           )}

@@ -26,7 +26,9 @@ import { setUnits, useUnits } from '../lib/useUnits.js'
 import { getSupabase, supabaseEnabled } from '../lib/supabase.js'
 import { APP_VERSION } from '../lib/news.js'
 import { downloadExport } from '../lib/exportData.js'
+import { useTimers } from '../lib/useTimers.jsx'
 import {
+  ALERTS_TEXT,
   announceView,
   clearAnnounceForSignOut,
   currentPushState,
@@ -104,6 +106,30 @@ function ThemeSetting() {
       <p className="account-label">Appearance</p>
       <UnitsToggle value={theme} onChange={setTheme} label="Appearance" options={THEME_OPTIONS} />
       <p className="account-hint">Cook mode is always dark.</p>
+    </div>
+  )
+}
+
+// Timer alerts on a locked phone, next to New versions so the notifications are
+// together. Permission cannot be taken back from inside an app, so there is no Off
+// here: once on, turning it off is the phone's notification settings, and the text
+// says so. Signed in only, like the setting below it.
+function TimerAlertsSetting() {
+  const { alerts, turnOnAlerts } = useTimers()
+  const text =
+    alerts === 'on'
+      ? `${ALERTS_TEXT.on} To stop them, turn off notifications for this app in your phone's Settings.`
+      : ALERTS_TEXT[alerts]
+  if (!text) return null
+  return (
+    <div className="account-units">
+      <p className="account-label">Timer alerts</p>
+      {alerts === 'ask' && (
+        <button type="button" className="btn btn-secondary btn-block" onClick={turnOnAlerts}>
+          Turn on timer alerts
+        </button>
+      )}
+      <p className="account-hint">{text}</p>
     </div>
   )
 }
@@ -386,6 +412,7 @@ export default function Account({ session, recipes = [], exportReady = true, onW
 
             <UnitsSetting />
             <ThemeSetting />
+            <TimerAlertsSetting />
             <AnnounceSetting />
             <ExportSetting recipes={recipes} ready={exportReady} />
 

@@ -2,6 +2,7 @@ import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
 import { readFileSync } from 'node:fs'
+import { NEWS } from './src/lib/news.js'
 
 // Set only on the staging branch's Vercel scope. Staging installs as its own
 // home-screen app, so it needs its own name on the icon and in the manifest.
@@ -21,9 +22,17 @@ export default defineConfig({
       // the tap would still open the old build. Not precached: the worker's
       // default globs skip .json, and a cached copy would defeat the check.
       name: 'version-json',
+      // Carries the release's `highlights` (news.js) too: the update bar in an
+      // already-running older build and the push notification both show them, and
+      // neither can know what the next release holds any other way.
       generateBundle() {
         const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
-        this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ version }) })
+        const highlights = NEWS.find((entry) => entry.version === version)?.highlights ?? []
+        this.emitFile({
+          type: 'asset',
+          fileName: 'version.json',
+          source: JSON.stringify({ version, highlights }),
+        })
       },
     },
     VitePWA({
