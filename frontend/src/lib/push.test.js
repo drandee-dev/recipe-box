@@ -112,12 +112,27 @@ test('saving the subscription never touches announce', async () => {
   assert.doesNotMatch(upsert[1], /announce|origin/)
 })
 
-test('clearing the opt-in at sign-out never blocks or throws without a worker', async () => {
-  // In node there is no service worker, so thisPhone() rejects. Sign-out must
-  // still go ahead.
-  const started = Date.now()
+test('clearing the opt-in at sign-out never throws without a worker', async () => {
+  // In node there is no service worker, so thisPhone() rejects at once. Sign-out
+  // must still go ahead.
   await clearAnnounceForSignOut(50)
-  assert.ok(Date.now() - started < 1000)
+})
+
+test('clearing the opt-in at sign-out is bounded when the worker never becomes ready', async () => {
+  // A browser with no registered worker leaves serviceWorker.ready pending
+  // forever. Without the race, sign-out would hang on it.
+  Object.defineProperty(globalThis.navigator, 'serviceWorker', {
+    value: { ready: new Promise(() => {}) },
+    configurable: true,
+  })
+  try {
+    const started = Date.now()
+    await clearAnnounceForSignOut(80)
+    const took = Date.now() - started
+    assert.ok(took >= 70 && took < 1000, `returned after ${took} ms`)
+  } finally {
+    delete globalThis.navigator.serviceWorker
+  }
 })
 
 test('sign-out clears the opt-in before it ends the session', async () => {
