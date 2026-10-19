@@ -79,6 +79,26 @@ class Query(unittest.TestCase):
         # The origin is compared exactly, and is percent-encoded rather than spliced.
         self.assertIn("origin=eq.https%3A%2F%2Frecipe-box-coral.vercel.app", url)
 
+    def test_two_accounts_on_one_phone_are_one_send(self):
+        # Unique per (user, endpoint), so both opting in on a shared phone gives two
+        # rows with the same endpoint; the phone must get one notification.
+        class Resp:
+            def raise_for_status(self):
+                pass
+
+            def json(self):
+                return [
+                    {**SUB, "id": "a"},
+                    {**SUB, "id": "b"},
+                    {**SUB, "id": "c", "endpoint": "https://push.example/other"},
+                ]
+
+        with patch.object(push, "_rest", return_value=("https://x.test/r", {})), patch.object(
+            release.httpx, "get", return_value=Resp()
+        ):
+            got = release._subscribers(ORIGIN)
+        self.assertEqual([r["id"] for r in got], ["a", "c"])
+
     def test_the_claim_treats_a_conflict_as_already_sent(self):
         class Resp:
             def __init__(self, status):

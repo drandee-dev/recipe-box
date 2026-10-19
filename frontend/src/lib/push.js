@@ -148,6 +148,20 @@ async function thisPhone() {
   return sub && ctx ? { endpoint: sub.endpoint, supabase: ctx.supabase } : null
 }
 
+// Called before sign-out, while the session can still write: the opt-in belongs to
+// this phone's row under the account that made it, and signing out leaves that row
+// behind. Without this the phone keeps getting the announcement after the person
+// has gone, and whoever signs in next sees the switch Off and cannot turn it off
+// (RLS hides the other account's row). Best effort and time-boxed: sign-out must
+// never hang on a slow network or a browser with no worker.
+export async function clearAnnounceForSignOut(ms = 1500) {
+  const clear = (async () => {
+    const phone = await thisPhone()
+    if (phone) await applyAnnounce(phone.supabase, phone.endpoint, false)
+  })().catch(() => {})
+  await Promise.race([clear, new Promise((resolve) => setTimeout(resolve, ms))])
+}
+
 // Whether this phone is opted in. null when unknown (no subscription yet, signed
 // out, offline), which the setting shows as off.
 export async function readAnnounce() {

@@ -26,7 +26,13 @@ import { setUnits, useUnits } from '../lib/useUnits.js'
 import { getSupabase, supabaseEnabled } from '../lib/supabase.js'
 import { APP_VERSION } from '../lib/news.js'
 import { downloadExport } from '../lib/exportData.js'
-import { announceView, currentPushState, readAnnounce, setAnnounce } from '../lib/push.js'
+import {
+  announceView,
+  clearAnnounceForSignOut,
+  currentPushState,
+  readAnnounce,
+  setAnnounce,
+} from '../lib/push.js'
 import { setTheme, useTheme } from '../lib/theme.js'
 
 const REMEMBER_EMAIL_KEY = 'recipebox:rememberedEmail'
@@ -228,6 +234,8 @@ export default function Account({ session, recipes = [], exportReady = true, onW
 
   async function signOut() {
     const supabase = await getSupabase()
+    // Before the session goes: the write needs it (see clearAnnounceForSignOut).
+    await clearAnnounceForSignOut()
     await supabase.auth.signOut()
     close()
   }

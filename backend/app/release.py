@@ -111,7 +111,19 @@ def _subscribers(origin: str) -> list[dict]:
     )
     resp.raise_for_status()
     rows = resp.json()
-    return rows if isinstance(rows, list) else []
+    if not isinstance(rows, list):
+        return []
+    # One send per phone. The row is unique per (user, endpoint), so two accounts
+    # that both opted in on one phone are two rows with the same endpoint, and
+    # without this that phone gets the announcement twice.
+    seen: set = set()
+    unique = []
+    for row in rows:
+        if row.get("endpoint") in seen:
+            continue
+        seen.add(row.get("endpoint"))
+        unique.append(row)
+    return unique
 
 
 def _record_sent(version: str, sent: int) -> None:
