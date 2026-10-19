@@ -370,6 +370,24 @@ def recipe_image_upload(body: UploadImageRequest, authorization: str | None = He
         raise HTTPException(status_code=502, detail="Could not save that photo")
 
 
+@app.post("/api/push/announce")
+def push_announce(x_push_secret: str | None = Header(default=None)):
+    """Announce the current release to people who opted in. Called by a Supabase
+    cron job every ten minutes; a no-op until the live frontend serves this
+    version and after it has been sent once (app/release.py). Gated exactly like
+    /api/push/fire: the shared secret, an opaque 401, unmetered because it spends
+    nothing."""
+    from . import push, release
+
+    if not push.authorized(x_push_secret):
+        raise HTTPException(status_code=401, detail="Unauthorized")
+    try:
+        return release.announce()
+    except Exception:
+        log.exception("release announce failed")
+        raise HTTPException(status_code=502, detail="Could not send")
+
+
 @app.post("/api/push/fire")
 def push_fire(x_push_secret: str | None = Header(default=None)):
     """Send every timer alert that has come due. Called by a Supabase cron job.

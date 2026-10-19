@@ -62,6 +62,44 @@ revoke all on function public.fire_due_timers() from public, anon, authenticated
 
 select cron.schedule('fire-due-timers', '10 seconds', 'select public.fire_due_timers()');
 
+-- Release announcement: asks the PRODUCTION API every ten minutes whether this
+-- release has been announced (app/release.py). Almost every call does nothing:
+-- the API answers "already_sent" or "waiting" and sends once, when the live
+-- frontend serves the version in release.py. Run once, with the production API
+-- host (never staging, or staging would announce too):
+--
+--   select vault.create_secret('https://recipe-box-api-sage.vercel.app/api/push/announce', 'push_announce_url');
+--
+-- It reuses push_fire_secret. The API also needs RELEASE_APP_ORIGIN (the
+-- production frontend's origin, a plain config value) or it announces nothing.
+create or replace function public.announce_release() returns void
+language plpgsql
+security definer
+set search_path = pg_catalog
+as $$
+declare
+  secret text;
+  target text;
+begin
+  select decrypted_secret into secret from vault.decrypted_secrets where name = 'push_fire_secret';
+  select decrypted_secret into target from vault.decrypted_secrets where name = 'push_announce_url';
+  if secret is null or target is null then
+    return;
+  end if;
+
+  perform net.http_post(
+    url := target,
+    headers := jsonb_build_object('Content-Type', 'application/json', 'x-push-secret', secret),
+    body := '{}'::jsonb,
+    timeout_milliseconds := 8000
+  );
+end;
+$$;
+
+revoke all on function public.announce_release() from public, anon, authenticated;
+
+select cron.schedule('announce-release', '*/10 * * * *', 'select public.announce_release()');
+
 -- Housekeeping, daily. A job that runs every ten seconds writes a log row each
 -- time, which fills the free tier's 500 MB if nothing trims it. Old timer rows go
 -- too: sent or abandoned, nothing needs them after a day.
