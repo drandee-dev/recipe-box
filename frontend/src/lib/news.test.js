@@ -6,7 +6,7 @@
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
-import { APP_VERSION, NEWS, latestNews, markNewsSeen, newsSeen } from './news.js'
+import { APP_VERSION, NEWS, cleanHighlights, latestNews, markNewsSeen, newsSeen } from './news.js'
 
 test('every entry has an id, a known kind, a title and something to say', () => {
   for (const entry of NEWS) {
@@ -25,6 +25,25 @@ test('an update block, when there is one, has both a heading and what to do', ()
     assert.ok(entry.update.heading?.trim(), `${entry.id}: update has no heading`)
     assert.ok(entry.update.text?.trim(), `${entry.id}: update has no text`)
   }
+})
+
+test('the newest release has a short list of highlights, not a wall of text', () => {
+  // These go into the update bar and the push notification, which have room for
+  // a glance and no more. Older entries predate the field and are not held to it.
+  const release = NEWS.find((e) => e.kind === 'release')
+  assert.ok(Array.isArray(release.highlights), 'the newest release needs highlights')
+  assert.ok(release.highlights.length >= 1 && release.highlights.length <= 3, 'one to three lines')
+  for (const line of release.highlights) {
+    assert.ok(line.trim().length > 0 && line.length <= 60, `too long (${line.length}): ${line}`)
+    assert.doesNotMatch(line, /[—–]/, 'no dashes used as punctuation')
+  }
+})
+
+test('cleanHighlights keeps up to three plain lines and drops anything else', () => {
+  assert.deepEqual(cleanHighlights(['a', ' b ', 'c', 'd']), ['a', 'b', 'c'])
+  assert.deepEqual(cleanHighlights(['a', '', '  ', 3, null, { x: 1 }]), ['a'])
+  assert.equal(cleanHighlights(['x'.repeat(200)])[0].length, 80)
+  for (const bad of [undefined, null, 'text', 5, {}]) assert.deepEqual(cleanHighlights(bad), [])
 })
 
 test('ids are unique', () => {

@@ -16,6 +16,17 @@
 
 export const APP_VERSION = '1.1.1'
 
+// What the update bar shows from version.json: up to three plain short lines.
+// Defensive about the shape since it arrives over the network from a build this
+// code has never seen; anything else is dropped rather than rendered.
+export function cleanHighlights(value) {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((line) => typeof line === 'string' && line.trim())
+    .map((line) => line.trim().slice(0, 80))
+    .slice(0, 3)
+}
+
 export const NEWS = [
   {
     id: '1.1.1',
@@ -23,10 +34,20 @@ export const NEWS = [
     version: '1.1.1',
     date: '2026-10-18',
     title: 'Version 1.1.1',
-    body: 'A bar now tells you when an update is ready, and you can ask to be told about new versions. Tap to see what changed.',
+    body: 'A bar tells you when an update is ready, and you can ask to hear about new versions. Tap to see what changed.',
+    // The short version, at most three lines of at most 60 characters, for the
+    // places with no room: the update bar and the notification. The build copies
+    // these into version.json, so the app that is still running (which cannot know
+    // what the next release holds) can show them. news.test.js enforces the size.
+    highlights: [
+      'A bar tells you when an update is ready',
+      'Optional heads-up when a new version is out',
+      'Notification settings are together in your account',
+    ],
     notes: [
-      'When a new version is ready, a bar at the top says so. Tap Reload to switch to it, or Later to keep going. It waits while you are in the middle of saving a recipe.',
-      'Turn on New versions in the account menu to get one notification when an update is ready. It is off until you choose it, and it is separate from timer alerts. On an iPhone it needs the installed app and iOS 18.4 or later.',
+      'A bar now tells you when an update is ready. Tap Reload to switch, or Later.',
+      'New versions, in your account menu, sends one notification when an update is ready. It is off until you choose it.',
+      'Timer alerts and New versions are together under Notifications.',
     ],
   },
   {

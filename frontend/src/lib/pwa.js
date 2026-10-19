@@ -20,22 +20,45 @@
 
 import { registerSW } from 'virtual:pwa-register'
 import { useSyncExternalStore } from 'react'
+import { cleanHighlights } from './news.js'
 
 const CHECK_INTERVAL = 60 * 60 * 1000
 
 let busy = false
 let ready = false
 let dismissed = false
+let highlights = []
 let applyUpdate = null
 let registration = null
-let snapshot = { show: false, busy: false }
+let snapshot = { show: false, busy: false, highlights: [] }
 const listeners = new Set()
 
 function publish() {
-  const next = { show: ready && !dismissed, busy }
-  if (next.show === snapshot.show && next.busy === snapshot.busy) return
+  const next = { show: ready && !dismissed, busy, highlights }
+  if (
+    next.show === snapshot.show &&
+    next.busy === snapshot.busy &&
+    next.highlights === snapshot.highlights
+  ) {
+    return
+  }
   snapshot = next
   listeners.forEach((l) => l())
+}
+
+// What the new build says changed, from the version.json the live site serves
+// (emitted at build, see vite.config.js). The running code is the OLD build, so
+// this is the only way it can show what the update holds. Best effort: no list is
+// better than a wrong one, and the bar reads fine without it.
+async function loadHighlights() {
+  try {
+    const resp = await fetch('/version.json', { cache: 'no-store' })
+    if (!resp.ok) return
+    highlights = cleanHighlights((await resp.json()).highlights)
+    publish()
+  } catch {
+    /* the bar works without the list */
+  }
 }
 
 // Called from App as capture work starts and finishes.
@@ -87,6 +110,7 @@ export function initPwaUpdates() {
     onNeedRefresh() {
       ready = true
       publish()
+      loadHighlights()
     },
     onRegisteredSW(_swUrl, reg) {
       if (!reg) return

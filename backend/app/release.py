@@ -49,16 +49,28 @@ def app_origin() -> str:
     return origin if origin.startswith("https://") else ""
 
 
-def live_version(origin: str) -> str | None:
-    """What the live frontend says it is, or None for any failure (a deploy in
-    progress, a 404 before the first build that emits it, a timeout)."""
+def live_info(origin: str) -> dict | None:
+    """What the live frontend's version.json says (`version`, and the release's
+    `highlights`), or None for any failure: a deploy in progress, a 404 before the
+    first build that emits it, a timeout, or a body that is not an object."""
     try:
         resp = httpx.get(f"{origin}/version.json", timeout=TIMEOUT, follow_redirects=False)
         resp.raise_for_status()
-        version = resp.json().get("version")
-        return version if isinstance(version, str) else None
+        info = resp.json()
+        return info if isinstance(info, dict) and isinstance(info.get("version"), str) else None
     except Exception:  # noqa: BLE001
         return None
+
+
+def summary_for(highlights) -> str:
+    """The notification body: the release's own short highlights, so the text lives
+    in one place (news.js) and cannot drift from what the app says. Only the first
+    two, joined, because a lock-screen banner shows a couple of lines at most.
+    Anything unusable falls back to BODY."""
+    lines = []
+    if isinstance(highlights, list):
+        lines = [h.strip()[:80] for h in highlights if isinstance(h, str) and h.strip()][:2]
+    return "; ".join(lines) if lines else BODY
 
 
 def _already_claimed(version: str) -> bool:
@@ -132,7 +144,7 @@ def _record_sent(version: str, sent: int) -> None:
         httpx.patch(target[0], headers=target[1], json={"sent": sent}, timeout=TIMEOUT)
 
 
-def payload_for(origin: str) -> str:
+def payload_for(origin: str, highlights=None) -> str:
     """A Declarative Web Push (the shape push.payload_for sends): the payload is
     the notification, and `navigate` opens the app."""
     return json.dumps(
@@ -140,7 +152,7 @@ def payload_for(origin: str) -> str:
             "web_push": 8030,
             "notification": {
                 "title": TITLE,
-                "body": BODY,
+                "body": summary_for(highlights),
                 "silent": False,
                 "navigate": f"{origin}/",
             },
@@ -156,7 +168,8 @@ def announce() -> dict:
         return {"status": "not_configured"}
     if _already_claimed(RELEASE_VERSION):
         return {"status": "already_sent"}
-    live = live_version(origin)
+    info = live_info(origin)
+    live = info.get("version") if info else None
     if live != RELEASE_VERSION:
         return {"status": "waiting", "live": live}
     # Read before the claim: a Supabase hiccup here costs one tick (the next call
@@ -166,7 +179,7 @@ def announce() -> dict:
     if not _claim(RELEASE_VERSION):
         return {"status": "already_sent"}
 
-    payload = payload_for(origin)
+    payload = payload_for(origin, info.get("highlights"))
     out = {"status": "sent", "sent": 0, "dropped": 0, "failed": 0}
     for sub in subscribers:
         try:

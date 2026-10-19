@@ -24,6 +24,7 @@ ORIGIN = "https://recipe-box-coral.vercel.app"
 SUB = {"id": "s1", "endpoint": "https://push.example/x", "p256dh": "k", "auth": "a"}
 ENV = {"RELEASE_APP_ORIGIN": ORIGIN}
 UNSET = object()
+HIGHLIGHTS = ["A bar tells you when an update is ready", "Optional heads-up when a version is out", "third"]
 
 
 class Drift(unittest.TestCase):
@@ -39,6 +40,16 @@ class Drift(unittest.TestCase):
     def test_the_title_and_body_name_the_release(self):
         self.assertIn(release.RELEASE_VERSION, release.TITLE)
         self.assertTrue(release.BODY)
+
+
+class Summary(unittest.TestCase):
+    def test_only_the_first_two_highlights_are_used_and_each_is_capped(self):
+        self.assertEqual(release.summary_for(["a", "b", "c"]), "a; b")
+        self.assertEqual(len(release.summary_for(["x" * 200])), 80)
+
+    def test_anything_unusable_falls_back_to_the_fixed_text(self):
+        for bad in (None, [], "text", [1, None, "  "], {"a": 1}):
+            self.assertEqual(release.summary_for(bad), release.BODY)
 
 
 class Origin(unittest.TestCase):
@@ -121,16 +132,19 @@ class Announce(unittest.TestCase):
         # Default: the live frontend already serves the release being announced.
         # Derived, not written out, so a version bump cannot break these tests.
         live = release.RELEASE_VERSION if live is UNSET else live
+        info = None if live is None else {"version": live, "highlights": HIGHLIGHTS}
         sent = []
+        self.payloads = []
 
         def fake_send(sub, payload):
             if send:
                 send(sub)
             sent.append(sub["id"])
+            self.payloads.append(payload)
 
         with patch.dict(os.environ, ENV), patch.object(push, "configured", return_value=configured), patch.object(
             release, "_already_claimed", return_value=claimed
-        ), patch.object(release, "live_version", return_value=live), patch.object(
+        ), patch.object(release, "live_info", return_value=info), patch.object(
             release, "_claim", return_value=claim
         ) as claim_mock, patch.object(release, "_subscribers", return_value=list(subs)), patch.object(
             push, "_send", side_effect=fake_send
@@ -143,6 +157,11 @@ class Announce(unittest.TestCase):
         self.assertEqual(out["status"], "sent")
         self.assertEqual(sent, ["s1"])
         record.assert_called_once_with(release.RELEASE_VERSION, 1)
+
+    def test_the_notification_carries_the_live_releases_highlights(self):
+        self.run_announce()
+        body = json.loads(self.payloads[0])["notification"]["body"]
+        self.assertEqual(body, "A bar tells you when an update is ready; Optional heads-up when a version is out")
 
     def test_a_version_already_claimed_sends_nothing(self):
         out, sent, claim, _ = self.run_announce(claimed=True)
@@ -166,18 +185,22 @@ class Announce(unittest.TestCase):
     def test_the_subscriber_query_gets_the_production_origin(self):
         with patch.dict(os.environ, ENV), patch.object(push, "configured", return_value=True), patch.object(
             release, "_already_claimed", return_value=False
-        ), patch.object(release, "live_version", return_value=release.RELEASE_VERSION), patch.object(
-            release, "_claim", return_value=True
-        ), patch.object(release, "_subscribers", return_value=[]) as subs, patch.object(release, "_record_sent"):
+        ), patch.object(
+            release, "live_info", return_value={"version": release.RELEASE_VERSION}
+        ), patch.object(release, "_claim", return_value=True), patch.object(
+            release, "_subscribers", return_value=[]
+        ) as subs, patch.object(release, "_record_sent"):
             release.announce()
         subs.assert_called_once_with(ORIGIN)
 
     def test_a_failing_subscriber_query_claims_nothing_so_the_next_call_retries(self):
         with patch.dict(os.environ, ENV), patch.object(push, "configured", return_value=True), patch.object(
             release, "_already_claimed", return_value=False
-        ), patch.object(release, "live_version", return_value=release.RELEASE_VERSION), patch.object(
-            release, "_subscribers", side_effect=httpx.ConnectError("down")
-        ), patch.object(release, "_claim") as claim:
+        ), patch.object(
+            release, "live_info", return_value={"version": release.RELEASE_VERSION}
+        ), patch.object(release, "_subscribers", side_effect=httpx.ConnectError("down")), patch.object(
+            release, "_claim"
+        ) as claim:
             with self.assertRaises(httpx.ConnectError):
                 release.announce()
         claim.assert_not_called()

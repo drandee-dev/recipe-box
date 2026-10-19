@@ -1,6 +1,16 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { announceView, applyAnnounce, clearAnnounceForSignOut, mirrorable, pushState, timerRow, urlBase64ToBytes } from './push.js'
+import {
+  ALERTS_TEXT,
+  announceView,
+  applyAnnounce,
+  clearAnnounceForSignOut,
+  mirrorable,
+  notifyCardOffer,
+  pushState,
+  timerRow,
+  urlBase64ToBytes,
+} from './push.js'
 
 const ready = { supported: true, ios: true, standalone: true, hasKey: true, signedIn: true, permission: 'default' }
 
@@ -48,6 +58,36 @@ test('mirrorable leaves out a timer that already rang or is already due', () => 
   const exactlyNow = { id: 'd', endsAt: now, rang: false }
   assert.deepEqual(mirrorable([live, rang, pastDue, exactlyNow], now).map((t) => t.id), ['a'])
   assert.deepEqual(mirrorable([], now), [])
+})
+
+const cardBase = { state: 'ask', announce: false, dismissed: false, standalone: true, signedIn: true, ready: true }
+
+test('the notifications card offers both when permission has not been asked', () => {
+  assert.deepEqual(notifyCardOffer(cardBase), { timers: true, versions: true })
+})
+
+test('the notifications card offers only new versions when timer alerts are already on', () => {
+  assert.deepEqual(notifyCardOffer({ ...cardBase, state: 'on' }), { timers: false, versions: true })
+  assert.deepEqual(notifyCardOffer({ ...cardBase, state: 'on', announce: null }), { timers: false, versions: true })
+})
+
+test('the notifications card stays away unless it can help, once, in the installed app', () => {
+  assert.equal(notifyCardOffer({ ...cardBase, state: 'on', announce: true }), null) // nothing left to offer
+  assert.equal(notifyCardOffer({ ...cardBase, announce: undefined }), null) // still reading it
+  assert.equal(notifyCardOffer({ ...cardBase, dismissed: true }), null)
+  assert.equal(notifyCardOffer({ ...cardBase, standalone: false }), null) // the install card's territory
+  assert.equal(notifyCardOffer({ ...cardBase, signedIn: false }), null)
+  assert.equal(notifyCardOffer({ ...cardBase, ready: false }), null) // a news banner or notice is up
+  for (const state of ['denied', 'needs-install', 'unsupported', 'no-key', 'signed-out']) {
+    assert.equal(notifyCardOffer({ ...cardBase, state }), null, state)
+  }
+})
+
+test('every timer-alert state has its words in one shared place', () => {
+  for (const state of ['on', 'ask', 'needs-install', 'signed-out', 'denied']) {
+    assert.ok(ALERTS_TEXT[state].length > 0, state)
+  }
+  assert.equal(ALERTS_TEXT.unsupported, undefined) // says nothing where nothing can be done
 })
 
 test('the new-versions switch is usable only when notifications can be asked for or are on', () => {

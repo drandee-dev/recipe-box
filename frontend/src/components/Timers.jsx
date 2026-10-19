@@ -10,6 +10,7 @@ import Sheet from './Sheet.jsx'
 import { formatClock } from '../lib/cook.js'
 import { MAX_SECONDS, isDue, manualSeconds, secondsLeft } from '../lib/timers.js'
 import { openRecipe, useTimers } from '../lib/useTimers.jsx'
+import { ALERTS_TEXT } from '../lib/push.js'
 
 function ClockIcon() {
   return (
@@ -119,13 +120,7 @@ export function TimersButton() {
 // about it. Says nothing where nothing can be done (an unsupported browser, a
 // build without a sender key).
 function AlertsNote({ state, onEnable }) {
-  const text = {
-    on: 'Lock-screen alerts are on. A finished timer shows on your lock screen even if the app is closed.',
-    ask: 'Get an alert on your lock screen when a timer finishes, even with the phone locked.',
-    'needs-install': "To get alerts on a locked phone, add this app to your Home Screen from Safari's Share menu and open it from there.",
-    'signed-out': 'Sign in to get alerts on your lock screen when a timer finishes.',
-    denied: "Alerts are blocked. Turn on notifications for this app in the phone's Settings.",
-  }[state]
+  const text = ALERTS_TEXT[state]
   if (!text) return null
   return (
     <div className="timers-alerts">
