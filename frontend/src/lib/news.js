@@ -47,7 +47,7 @@ export const NEWS = [
     notes: [
       'A bar now tells you when an update is ready. Tap Reload to switch, or Later.',
       'New versions, in your account menu, sends one notification when an update is ready. It is off until you choose it.',
-      'Timer alerts and New versions are together under Notifications.',
+      'Timer alerts and New versions now sit next to each other in your account menu.',
     ],
   },
   {

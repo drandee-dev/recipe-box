@@ -67,15 +67,17 @@ export default function NotifyCard({ signedIn, ready }) {
     if (busy) return
     setBusy(true)
     if (offer.timers) await turnOnAlerts()
-    await setAnnounce(true, true, false)
+    // Only once permission is settled as granted. A dismissed prompt leaves it
+    // undecided, and setAnnounce would then ask a second time, outside the tap.
+    if (currentPushState(true) === 'on') await setAnnounce(true, true, false)
     setBusy(false)
     close()
   }
 
   const heading = offer.timers ? 'Get notified' : 'Hear about new versions'
   const text = offer.timers
-    ? 'Timers that ring on a locked phone, and one heads-up when a new version of Recipe Box is ready. You can change this any time in the account menu.'
-    : 'One notification when a new version of Recipe Box is ready. You can change this any time in the account menu.'
+    ? 'Timers that ring on a locked phone, and one heads-up when a new version of Recipe Box is ready. You can manage this in the account menu.'
+    : 'One notification when a new version of Recipe Box is ready. You can turn it off any time in the account menu.'
 
   return (
     <section className="rb-news rb-news-update" aria-labelledby="rb-notify-title">
