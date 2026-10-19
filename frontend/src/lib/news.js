@@ -36,6 +36,7 @@ export const NEWS = [
       'A recipe you write by hand can now get a photo from your camera or your photo library.',
       'Imported recipes get more accurate tags.',
       'Timers can now alert you on a locked phone, if you install the app and allow notifications. On an iPhone this needs iOS 18.4 or later.',
+      'Turn on New versions in the account menu to get one notification when an update is ready. It is off until you choose it.',
       'Run several timers at once from a tray that follows you around, and add one by hand.',
       'Switch recipes and the shopping list between metric and US measures. Amounts of the same thing now add up across units, so ticks on weight and volume items start fresh once.',
       'Plan a meal for more or fewer people and the shopping list buys for that many. Tap a planned meal to open it, move it to another day, or mark it as leftovers so nothing is bought for it.',

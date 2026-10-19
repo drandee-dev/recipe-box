@@ -19,13 +19,14 @@
 //   - Every input needs an id with a matching label. Safari leans on
 //     autocomplete, but 1Password and Bitwarden score id/label heavily.
 
-import { useState } from 'react'
+import { useEffect, useState } from 'react'
 import Sheet from './Sheet.jsx'
 import UnitsToggle from './UnitsToggle.jsx'
 import { setUnits, useUnits } from '../lib/useUnits.js'
 import { getSupabase, supabaseEnabled } from '../lib/supabase.js'
 import { APP_VERSION } from '../lib/news.js'
 import { downloadExport } from '../lib/exportData.js'
+import { announceView, currentPushState, readAnnounce, setAnnounce } from '../lib/push.js'
 import { setTheme, useTheme } from '../lib/theme.js'
 
 const REMEMBER_EMAIL_KEY = 'recipebox:rememberedEmail'
@@ -97,6 +98,51 @@ function ThemeSetting() {
       <p className="account-label">Appearance</p>
       <UnitsToggle value={theme} onChange={setTheme} label="Appearance" options={THEME_OPTIONS} />
       <p className="account-hint">Cook mode is always dark.</p>
+    </div>
+  )
+}
+
+// One notification when a new version is ready (backend/app/release.py). Signed in
+// only: it is a column on this phone's push subscription, which belongs to an
+// account. Off by default, independent of timer alerts. Turning it on is the tap
+// that may ask for notification permission, so the handler passes straight through.
+function AnnounceSetting() {
+  const [push, setPush] = useState(() => currentPushState(true))
+  const [announce, setAnnounceState] = useState(false)
+  const [busy, setBusy] = useState(false)
+  const view = announceView(push)
+
+  useEffect(() => {
+    let live = true
+    if (push === 'on') readAnnounce().then((value) => live && setAnnounceState(value === true))
+    return () => {
+      live = false
+    }
+  }, [push])
+
+  async function change(next) {
+    const on = next === 'on'
+    if (busy || on === announce) return
+    setBusy(true)
+    const result = await setAnnounce(on, true, announce)
+    setPush(result.state)
+    setAnnounceState(result.announce)
+    setBusy(false)
+  }
+
+  return (
+    <div className="account-units">
+      <p className="account-label">New versions</p>
+      <UnitsToggle
+        value={view.usable && announce ? 'on' : 'off'}
+        onChange={change}
+        label="Tell me about new versions"
+        options={[
+          ['off', 'Off'],
+          ['on', 'Tell me'],
+        ]}
+      />
+      <p className="account-hint">{view.hint}</p>
     </div>
   )
 }
@@ -332,6 +378,7 @@ export default function Account({ session, recipes = [], exportReady = true, onW
 
             <UnitsSetting />
             <ThemeSetting />
+            <AnnounceSetting />
             <ExportSetting recipes={recipes} ready={exportReady} />
 
             {settingPassword ? (
