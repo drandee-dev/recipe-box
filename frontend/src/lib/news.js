@@ -32,7 +32,7 @@ export const NEWS = [
     id: '1.1.1',
     kind: 'release',
     version: '1.1.1',
-    date: '2026-10-18',
+    date: '2026-10-19',
     title: 'Version 1.1.1',
     body: 'A bar tells you when an update is ready, and you can ask to hear about new versions. Tap to see what changed.',
     // The short version, at most three lines of at most 60 characters, for the
