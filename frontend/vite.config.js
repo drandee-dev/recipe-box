@@ -1,6 +1,7 @@
 import { defineConfig } from 'vite'
 import react from '@vitejs/plugin-react'
 import { VitePWA } from 'vite-plugin-pwa'
+import { readFileSync } from 'node:fs'
 
 // Set only on the staging branch's Vercel scope. Staging installs as its own
 // home-screen app, so it needs its own name on the icon and in the manifest.
@@ -13,6 +14,17 @@ export default defineConfig({
       name: 'stage-title',
       transformIndexHtml: (html) =>
         staging ? html.replace('title" content="Recipes"', 'title" content="Recipes β"') : html,
+    },
+    {
+      // The API's release announcement (backend/app/release.py) fetches this from
+      // the live app and only sends once it matches, so a push never arrives while
+      // the tap would still open the old build. Not precached: the worker's
+      // default globs skip .json, and a cached copy would defeat the check.
+      name: 'version-json',
+      generateBundle() {
+        const { version } = JSON.parse(readFileSync(new URL('./package.json', import.meta.url), 'utf8'))
+        this.emitFile({ type: 'asset', fileName: 'version.json', source: JSON.stringify({ version }) })
+      },
     },
     VitePWA({
       // 'prompt': a new worker waits and UpdateBar offers the reload (lib/pwa.js).

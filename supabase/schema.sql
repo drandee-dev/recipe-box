@@ -368,3 +368,24 @@ alter table meal_plan add column if not exists leftover boolean not null default
 -- sections. Ingredient sections need no column: they are a `group` key inside the
 -- existing `ingredients` jsonb.
 alter table recipes add column if not exists instruction_groups jsonb;
+
+-- Release announcements (a push per release, opt-in). Additive only.
+--
+-- `announce` is the opt-in and defaults to false: nobody receives anything until
+-- they flip the switch in the app. `origin` is written by the app from
+-- window.location.origin; staging and production share this database, so without
+-- it a staging subscription would be sent production's announcement pointing at
+-- the production URL. A row with no origin is never announced to.
+alter table push_subscriptions add column if not exists announce boolean not null default false;
+alter table push_subscriptions add column if not exists origin text check (char_length(origin) <= 200);
+
+-- One row per version announced. The primary key is the claim: the API inserts it
+-- before sending, and a conflict means someone already sent, so a version goes
+-- out at most once even with two overlapping calls. RLS on and no policy: the
+-- service role only.
+create table if not exists release_announcements (
+  version text primary key check (char_length(version) <= 40),
+  announced_at timestamptz not null default now(),
+  sent int not null default 0
+);
+alter table release_announcements enable row level security;
