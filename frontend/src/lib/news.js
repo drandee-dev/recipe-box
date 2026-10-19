@@ -14,9 +14,21 @@
 // `upcoming` announces work before it ships and carries the feedback button.
 // Closing the banner remembers the entry's id, so a new id brings it back.
 
-export const APP_VERSION = '1.1.0'
+export const APP_VERSION = '1.1.1'
 
 export const NEWS = [
+  {
+    id: '1.1.1',
+    kind: 'release',
+    version: '1.1.1',
+    date: '2026-10-19',
+    title: 'Version 1.1.1',
+    body: 'A bar now tells you when an update is ready, and you can ask to be told about new versions. Tap to see what changed.',
+    notes: [
+      'When a new version is ready, a bar at the top says so. Tap Reload to switch to it, or Later to keep going. It waits while you are in the middle of saving a recipe.',
+      'Turn on New versions in the account menu to get one notification when an update is ready. It is off until you choose it, and it is separate from timer alerts. On an iPhone it needs the installed app and iOS 18.4 or later.',
+    ],
+  },
   {
     id: '1.1.0',
     kind: 'release',
@@ -36,7 +48,6 @@ export const NEWS = [
       'A recipe you write by hand can now get a photo from your camera or your photo library.',
       'Imported recipes get more accurate tags.',
       'Timers can now alert you on a locked phone, if you install the app and allow notifications. On an iPhone this needs iOS 18.4 or later.',
-      'Turn on New versions in the account menu to get one notification when an update is ready. It is off until you choose it.',
       'Run several timers at once from a tray that follows you around, and add one by hand.',
       'Switch recipes and the shopping list between metric and US measures. Amounts of the same thing now add up across units, so ticks on weight and volume items start fresh once.',
       'Plan a meal for more or fewer people and the shopping list buys for that many. Tap a planned meal to open it, move it to another day, or mark it as leftovers so nothing is bought for it.',
