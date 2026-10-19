@@ -1,6 +1,6 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { mirrorable, pushState, timerRow, urlBase64ToBytes } from './push.js'
+import { announceView, applyAnnounce, mirrorable, pushState, timerRow, urlBase64ToBytes } from './push.js'
 
 const ready = { supported: true, ios: true, standalone: true, hasKey: true, signedIn: true, permission: 'default' }
 
@@ -48,6 +48,68 @@ test('mirrorable leaves out a timer that already rang or is already due', () => 
   const exactlyNow = { id: 'd', endsAt: now, rang: false }
   assert.deepEqual(mirrorable([live, rang, pastDue, exactlyNow], now).map((t) => t.id), ['a'])
   assert.deepEqual(mirrorable([], now), [])
+})
+
+test('the new-versions switch is usable only when notifications can be asked for or are on', () => {
+  for (const state of ['ask', 'on']) assert.equal(announceView(state).usable, true)
+  for (const state of ['needs-install', 'denied', 'unsupported', 'no-key', 'signed-out']) {
+    const view = announceView(state)
+    assert.equal(view.usable, false)
+    assert.ok(view.hint.length > 0)
+  }
+  // Each blocked state says something different, so the person knows what to do.
+  assert.notEqual(announceView('denied').hint, announceView('needs-install').hint)
+})
+
+// A fake client that records the real call chain applyAnnounce makes.
+function fakeClient(result) {
+  const calls = []
+  const chain = {
+    from: (table) => (calls.push(['from', table]), chain),
+    update: (patch) => (calls.push(['update', patch]), chain),
+    eq: (col, val) => (calls.push(['eq', col, val]), chain),
+    select: (cols) => (calls.push(['select', cols]), Promise.resolve(result)),
+  }
+  return { client: chain, calls }
+}
+
+test('turning the switch on writes announce and the origin to this phone\'s row only', async () => {
+  const { client, calls } = fakeClient({ data: [{ id: 's1' }], error: null })
+  const ok = await applyAnnounce(client, 'https://push.example/x', true, 'https://app.example')
+  assert.equal(ok, true)
+  assert.deepEqual(calls, [
+    ['from', 'push_subscriptions'],
+    ['update', { announce: true, origin: 'https://app.example' }],
+    ['eq', 'endpoint', 'https://push.example/x'],
+    ['select', 'id'],
+  ])
+})
+
+test('turning it off only clears announce: the row is kept and the origin is left alone', async () => {
+  const { client, calls } = fakeClient({ data: [{ id: 's1' }], error: null })
+  await applyAnnounce(client, 'https://push.example/x', false, 'https://app.example')
+  assert.deepEqual(calls.find((c) => c[0] === 'update'), ['update', { announce: false }])
+  assert.equal(calls.some((c) => c[0] === 'delete'), false)
+})
+
+test('a write that changed no row, or errored, is reported as not done', async () => {
+  for (const result of [
+    { data: [], error: null },
+    { data: null, error: { message: 'x' } },
+    { data: [{ id: 'a' }, { id: 'b' }], error: null },
+  ]) {
+    assert.equal(await applyAnnounce(fakeClient(result).client, 'e', true, 'o'), false)
+  }
+})
+
+test('saving the subscription never touches announce', async () => {
+  // Re-subscribing (every app load) must not switch someone back on. The upsert's
+  // column list is what protects that, so read it out of the source.
+  const { readFileSync } = await import('node:fs')
+  const source = readFileSync(new URL('./push.js', import.meta.url), 'utf8')
+  const upsert = source.match(/from\('push_subscriptions'\)\.upsert\(\s*\{([\s\S]*?)\},/)
+  assert.ok(upsert, 'found the subscription upsert')
+  assert.doesNotMatch(upsert[1], /announce|origin/)
 })
 
 test('urlBase64ToBytes decodes URL-safe base64 with and without padding', () => {
