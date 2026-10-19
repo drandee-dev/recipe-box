@@ -2606,6 +2606,72 @@ textarea.field {
   box-shadow: var(--shadow-card);
 }
 
+/* "A new version is ready" (components/UpdateBar.jsx). The toast's dark pill,
+   but IN FLOW under the header like .rb-offline rather than fixed: fixed at the
+   top it sat over Timers and Sign in, and the bottom already holds the tab bar,
+   toast, install card and add button. Nothing is stacked, so nothing collides. */
+.rb-update {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-3);
+  margin-bottom: var(--sp-2);
+  padding: var(--sp-2) var(--sp-4);
+  border-radius: var(--r);
+  background: var(--txt);
+  color: var(--ground);
+  font-size: var(--fs-sm);
+  box-shadow: var(--shadow-card);
+}
+
+.rb-update {
+  flex-wrap: wrap;
+}
+
+.rb-update-text {
+  flex: 1;
+}
+
+/* A glance at what changed: three short lines at most, set quieter than the
+   message above them and on their own row. */
+.rb-update-list {
+  flex-basis: 100%;
+  margin: 0;
+  padding: 0 0 var(--sp-1) var(--sp-4);
+  font-size: var(--fs-sm);
+  opacity: 0.85;
+}
+
+.rb-update-list li + li {
+  margin-top: 2px;
+}
+
+.rb-update-reload,
+.rb-update-later {
+  flex-shrink: 0;
+  min-height: 44px;
+  border: 0;
+  background: none;
+  padding: 0 var(--sp-2);
+  /* The pill's own text colour, not --accent-lit: the pill inverts in dark mode
+     and the green is ~2:1 on its light ground there. */
+  color: inherit;
+  font: inherit;
+  font-weight: 700;
+  text-decoration: underline;
+  cursor: pointer;
+}
+
+.rb-update-later {
+  font-weight: 400;
+  text-decoration: none;
+  opacity: 0.8;
+}
+
+.rb-update-reload:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
 .rb-toast-undo {
   flex-shrink: 0;
   border: 0;

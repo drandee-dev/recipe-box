@@ -1,9 +1,10 @@
 // What's new: the banner on the Recipes tab and the list behind it.
 //
-// Ships with the code rather than living in a table, on purpose. pwa.js
-// installs a new build and reloads on the next open, so what this file says is
-// always about the build actually running: patch notes can't describe code the
-// phone doesn't have yet, and there is nothing to fetch or go stale offline.
+// Ships with the code rather than living in a table, on purpose. A new
+// build only replaces the running one when its worker takes over (pwa.js, the
+// update bar), so what this file says is always about the build actually
+// running: patch notes can't describe code the phone doesn't have yet, and
+// there is nothing to fetch or go stale offline.
 //
 // Newest first. A release prepends its entry in the same commit as the code it
 // describes, and bumps APP_VERSION and package.json together (news.test.js
@@ -13,9 +14,42 @@
 // `upcoming` announces work before it ships and carries the feedback button.
 // Closing the banner remembers the entry's id, so a new id brings it back.
 
-export const APP_VERSION = '1.1.0'
+export const APP_VERSION = '1.1.1'
+
+// What the update bar shows from version.json: up to three plain short lines.
+// Defensive about the shape since it arrives over the network from a build this
+// code has never seen; anything else is dropped rather than rendered.
+export function cleanHighlights(value) {
+  if (!Array.isArray(value)) return []
+  return value
+    .filter((line) => typeof line === 'string' && line.trim())
+    .map((line) => line.trim().slice(0, 80))
+    .slice(0, 3)
+}
 
 export const NEWS = [
+  {
+    id: '1.1.1',
+    kind: 'release',
+    version: '1.1.1',
+    date: '2026-10-19',
+    title: 'Version 1.1.1',
+    body: 'A bar tells you when an update is ready, and you can ask to hear about new versions. Tap to see what changed.',
+    // The short version, at most three lines of at most 60 characters, for the
+    // places with no room: the update bar and the notification. The build copies
+    // these into version.json, so the app that is still running (which cannot know
+    // what the next release holds) can show them. news.test.js enforces the size.
+    highlights: [
+      'A bar tells you when an update is ready',
+      'Optional heads-up when a new version is out',
+      'Notification settings are together in your account',
+    ],
+    notes: [
+      'A bar now tells you when an update is ready. Tap Reload to switch, or Later.',
+      'New versions, in your account menu, sends one notification when an update is ready. It is off until you choose it.',
+      'Timer alerts and New versions now sit next to each other in your account menu.',
+    ],
+  },
   {
     id: '1.1.0',
     kind: 'release',

@@ -87,6 +87,22 @@ create policy "own recipe images" on storage.objects
     and (storage.foldername(name))[1] = auth.uid()::text
   );
 
+-- The delete policy above did nothing on its own, which was found on 2026-10-18.
+-- Storage's remove call looks the objects up as the caller before it deletes them,
+-- so without a select policy it finds none, answers 200 with nothing removed, and
+-- every deleted recipe left its two photos behind (26 of 176 objects, about 10%
+-- of the bucket, were orphans). Reproduced and confirmed fixed against the live
+-- project: a recipe with a photo deleted from the app left 2 files before this
+-- policy and 0 after. Public image URLs are served by the public bucket and do
+-- not use it; it only lets a signed-in user see their own folder.
+drop policy if exists "read own recipe images" on storage.objects;
+create policy "read own recipe images" on storage.objects
+  for select to authenticated
+  using (
+    bucket_id = 'recipe-images'
+    and (storage.foldername(name))[1] = auth.uid()::text
+  );
+
 -- Phase 3: AI spend log. Written by the backend with the service role key, so
 -- RLS stays on with no policy — clients get nothing.
 create table if not exists ai_usage_events (
@@ -352,3 +368,24 @@ alter table meal_plan add column if not exists leftover boolean not null default
 -- sections. Ingredient sections need no column: they are a `group` key inside the
 -- existing `ingredients` jsonb.
 alter table recipes add column if not exists instruction_groups jsonb;
+
+-- Release announcements (a push per release, opt-in). Additive only.
+--
+-- `announce` is the opt-in and defaults to false: nobody receives anything until
+-- they flip the switch in the app. `origin` is written by the app from
+-- window.location.origin; staging and production share this database, so without
+-- it a staging subscription would be sent production's announcement pointing at
+-- the production URL. A row with no origin is never announced to.
+alter table push_subscriptions add column if not exists announce boolean not null default false;
+alter table push_subscriptions add column if not exists origin text check (char_length(origin) <= 200);
+
+-- One row per version announced. The primary key is the claim: the API inserts it
+-- before sending, and a conflict means someone already sent, so a version goes
+-- out at most once even with two overlapping calls. RLS on and no policy: the
+-- service role only.
+create table if not exists release_announcements (
+  version text primary key check (char_length(version) <= 40),
+  announced_at timestamptz not null default now(),
+  sent int not null default 0
+);
+alter table release_announcements enable row level security;
