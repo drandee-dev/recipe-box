@@ -5,9 +5,10 @@ every call does nothing. It sends exactly once, when the version in this file is
 the one the live frontend is serving, and never again for that version.
 
 * **Claim before send.** The version is inserted into `release_announcements`
-  (primary key) before anything is sent. A conflict means someone already sent,
-  so two overlapping calls cannot both announce. The cost is that a crash after
-  the claim loses that release's announcement rather than repeating it.
+  (primary key) before anything is sent, after the subscriber list is read. A
+  conflict means someone already sent, so two overlapping calls cannot both
+  announce. The cost is that a crash after the claim loses that release's
+  announcement rather than repeating it.
 * **Only once the tap would open the new build.** The API and the frontend deploy
   separately, so the live frontend's `version.json` (emitted at build) is compared
   with `RELEASE_VERSION` first. Not equal yet means wait for the next call.
@@ -146,12 +147,16 @@ def announce() -> dict:
     live = live_version(origin)
     if live != RELEASE_VERSION:
         return {"status": "waiting", "live": live}
+    # Read before the claim: a Supabase hiccup here costs one tick (the next call
+    # retries) instead of burning the release's one announcement. An empty list
+    # still claims, since a release nobody opted in to is announced to no one.
+    subscribers = _subscribers(origin)
     if not _claim(RELEASE_VERSION):
         return {"status": "already_sent"}
 
     payload = payload_for(origin)
     out = {"status": "sent", "sent": 0, "dropped": 0, "failed": 0}
-    for sub in _subscribers(origin):
+    for sub in subscribers:
         try:
             push._send(sub, payload)
             out["sent"] += 1

@@ -138,6 +138,25 @@ class Announce(unittest.TestCase):
             self.assertEqual(sent, [])
             claim.assert_not_called()
 
+    def test_the_subscriber_query_gets_the_production_origin(self):
+        with patch.dict(os.environ, ENV), patch.object(push, "configured", return_value=True), patch.object(
+            release, "_already_claimed", return_value=False
+        ), patch.object(release, "live_version", return_value=release.RELEASE_VERSION), patch.object(
+            release, "_claim", return_value=True
+        ), patch.object(release, "_subscribers", return_value=[]) as subs, patch.object(release, "_record_sent"):
+            release.announce()
+        subs.assert_called_once_with(ORIGIN)
+
+    def test_a_failing_subscriber_query_claims_nothing_so_the_next_call_retries(self):
+        with patch.dict(os.environ, ENV), patch.object(push, "configured", return_value=True), patch.object(
+            release, "_already_claimed", return_value=False
+        ), patch.object(release, "live_version", return_value=release.RELEASE_VERSION), patch.object(
+            release, "_subscribers", side_effect=httpx.ConnectError("down")
+        ), patch.object(release, "_claim") as claim:
+            with self.assertRaises(httpx.ConnectError):
+                release.announce()
+        claim.assert_not_called()
+
     def test_an_unconfigured_deployment_claims_nothing(self):
         # Claiming and then being unable to send would burn the one announcement.
         out, sent, claim, _ = self.run_announce(configured=False)
