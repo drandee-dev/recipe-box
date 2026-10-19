@@ -23,6 +23,7 @@ from app import push, release  # noqa: E402
 ORIGIN = "https://recipe-box-coral.vercel.app"
 SUB = {"id": "s1", "endpoint": "https://push.example/x", "p256dh": "k", "auth": "a"}
 ENV = {"RELEASE_APP_ORIGIN": ORIGIN}
+UNSET = object()
 
 
 class Drift(unittest.TestCase):
@@ -110,13 +111,16 @@ class Query(unittest.TestCase):
 
         with patch.object(push, "_rest", return_value=("https://x.test/r", {})):
             with patch.object(release.httpx, "post", return_value=Resp(201)):
-                self.assertTrue(release._claim("1.1.0"))
+                self.assertTrue(release._claim(release.RELEASE_VERSION))
             with patch.object(release.httpx, "post", return_value=Resp(409)):
-                self.assertFalse(release._claim("1.1.0"))
+                self.assertFalse(release._claim(release.RELEASE_VERSION))
 
 
 class Announce(unittest.TestCase):
-    def run_announce(self, *, claimed=False, live="1.1.0", claim=True, subs=(SUB,), send=None, configured=True):
+    def run_announce(self, *, claimed=False, live=UNSET, claim=True, subs=(SUB,), send=None, configured=True):
+        # Default: the live frontend already serves the release being announced.
+        # Derived, not written out, so a version bump cannot break these tests.
+        live = release.RELEASE_VERSION if live is UNSET else live
         sent = []
 
         def fake_send(sub, payload):
@@ -152,7 +156,8 @@ class Announce(unittest.TestCase):
         self.assertEqual(sent, [])
 
     def test_nothing_is_claimed_or_sent_until_the_live_frontend_serves_this_version(self):
-        for live in (None, "1.0.1", "1.1.1"):
+        # Not serving it yet: older, newer, empty, or the version file missing.
+        for live in (None, "0.0.1", release.RELEASE_VERSION + ".1", ""):
             out, sent, claim, _ = self.run_announce(live=live)
             self.assertEqual(out["status"], "waiting")
             self.assertEqual(sent, [])
