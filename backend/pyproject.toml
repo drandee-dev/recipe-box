@@ -10,10 +10,13 @@ requires-python = ">=3.11"
 # Vercel supplies its own server.
 dependencies = [
     "fastapi>=0.115",
+    # Floors below are the first versions with no known advisories (OSV,
+    # 2026-10-25); starlette comes in through fastapi.
+    "starlette>=1.10.0",
     "httpx>=0.27",
     "beautifulsoup4>=4.12",
     "anthropic>=0.52",
-    "pillow>=10.4",
+    "pillow>=13.0.0",
     "pywebpush>=2.0",
 ]
 

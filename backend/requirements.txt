@@ -1,5 +1,6 @@
 # Web framework
 fastapi>=0.115
+starlette>=1.10.0   # via fastapi; floor clears known advisories (OSV, 2026-10-25)
 uvicorn[standard]>=0.30
 
 # Recipe page fetching + parsing
@@ -10,7 +11,7 @@ beautifulsoup4>=4.12
 anthropic>=0.52
 
 # Image mirroring (phase 7: resize a saved photo before it goes in the bucket)
-pillow>=10.4
+pillow>=13.0.0
 
 # Lock-screen timer alerts (A2): VAPID-signed, encrypted Web Push. Imported inside
 # app/push.py's send function, so a missing install costs that endpoint only.
