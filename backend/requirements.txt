@@ -8,7 +8,7 @@ httpx>=0.27
 beautifulsoup4>=4.12
 
 # AI structuring (phase 3: caption/paste extraction)
-anthropic>=0.52
+anthropic==2.8.0
 
 # Image mirroring (phase 7: resize a saved photo before it goes in the bucket)
 pillow>=13.0.0
