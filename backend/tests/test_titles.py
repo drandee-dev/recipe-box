@@ -168,6 +168,34 @@ class FetchPostFromThePage(unittest.TestCase):
         self.assertEqual(post["caption"], "")
 
 
+class ImportedTextIsPlain(unittest.TestCase):
+    """Steps read "(Noodles &amp; Stir Fry)" and "9&#215;13-inch" in the app."""
+
+    def test_entities_leave_the_text_and_never_touch_a_link(self):
+        from app import extract
+
+        raw = {
+            "title": "Mac &amp; Cheese",
+            "source_url": "https://example.com/r?a=1&amp;b=2",
+            "image_url": "https://cdn.example.com/x.jpg?w=1&copy=2",
+            "ingredients": [{"raw": "1 9&#215;13-inch pan", "item": None, "group": "Pan &amp; lid"}],
+            "instructions": ["Use for Chow Mein (Noodles &amp; Stir Fry)."],
+            "instruction_groups": None,
+            "description": "R&D kitchen, salt&pepper, &copy that",
+            "servings": "4",
+        }
+        with patch.object(extract, "_extract_recipe", return_value=raw):
+            got = extract.extract_recipe("https://example.com/r")
+        self.assertEqual(got["title"], "Mac & Cheese")
+        self.assertEqual(got["ingredients"][0]["raw"], "1 9×13-inch pan")
+        self.assertEqual(got["ingredients"][0]["group"], "Pan & lid")
+        self.assertEqual(got["instructions"], ["Use for Chow Mein (Noodles & Stir Fry)."])
+        # No semicolon, no entity: ordinary ampersands in prose are left alone.
+        self.assertEqual(got["description"], "R&D kitchen, salt&pepper, &copy that")
+        self.assertEqual(got["source_url"], raw["source_url"])
+        self.assertEqual(got["image_url"], raw["image_url"])
+
+
 class LinkCardTitle(unittest.TestCase):
     def post(self):
         return {"caption": PUMPKIN, "image_url": "", "title": social.caption_title(PUMPKIN)}

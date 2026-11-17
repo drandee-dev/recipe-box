@@ -600,8 +600,9 @@ export default function RecipeDetail({
         <>
           {recipe.description && <p className="recipes-caption">{recipe.description}</p>}
           <p className="detail-meta">
-            No recipe was readable from this post. Fill it in by hand with Edit recipe in the ⋯ menu, or open the
-            source and paste the text into the + button's Paste recipe text.
+            {recipe.source_url
+              ? 'No recipe was readable from this post. Fill it in by hand with Edit recipe in the ⋯ menu, or open the source and paste the text into the + button’s Paste recipe text.'
+              : 'Nothing here yet. Add the ingredients and steps with Edit recipe in the ⋯ menu.'}
           </p>
         </>
       ) : (

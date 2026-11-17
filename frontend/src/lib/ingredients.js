@@ -171,7 +171,9 @@ function takeQuantity(text) {
     return [VULGAR[vulgarOnly[1]], rest.slice(vulgarOnly[0].length)]
   }
 
-  const plain = rest.match(/^(\d+(?:\.\d+)?)\s*(?:-|–|to\s)?\s*(?:\d+(?:\.\d+)?)?\s*/)
+  // The high end of a range is dropped, but only a number that follows a range
+  // mark is one. "2 15 oz cans corn" used to lose its 15 here and read as 2 oz.
+  const plain = rest.match(/^(\d+(?:\.\d+)?)\s*(?:(?:-|–|—|to\s)\s*(?:\d+(?:\.\d+)?)?)?\s*/)
   if (plain) {
     total = Number(plain[1])
     rest = rest.slice(plain[0].length)
@@ -234,8 +236,12 @@ export function parseIngredient(raw) {
   let text = original
     .replace(/^[-*•\s]+/, '')
     // Parentheticals are usually can sizes or notes. Dropping them loses some
-    // detail, but keeping them wrecks the merge key.
-    .replace(/\([^)]*\)/g, ' ')
+    // detail, but keeping them wrecks the merge key. Twice, innermost first:
+    // recipe plugins nest them ("soy sauce ( (Note 1))"), and one pass left a
+    // stray bracket on the shopping list. Any bracket still unpaired goes too.
+    .replace(/\([^()]*\)/g, ' ')
+    .replace(/\([^()]*\)/g, ' ')
+    .replace(/[()]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 

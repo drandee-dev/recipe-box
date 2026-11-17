@@ -92,6 +92,29 @@ test('drops parentheticals but keeps the ingredient', () => {
   assert.equal(got.name, 'crushed tomatoes')
 })
 
+test('nested parentheticals leave no stray bracket behind', () => {
+  // Real lines from a recipe plugin's markup; the list showed "light soy sauce )".
+  assert.equal(parseIngredient('1/2 cup light soy sauce ( (Note 1))').name, 'light soy sauce')
+  assert.equal(parseIngredient('1/4 cup Chinese wine ((or dry sherry) (Note 5))').name, 'Chinese wine')
+  assert.equal(parseIngredient('1 tsp sesame oil (, toasted)').name, 'sesame oil')
+})
+
+test('a count in front of a pack size keeps the size', () => {
+  // The second number was swallowed as the top of a range with no range mark,
+  // so two 15 oz cans went on the shopping list as "2 oz".
+  const cans = parseIngredient('2 15 oz cans corn')
+  assert.equal(cans.qty, 2)
+  assert.equal(cans.unit, null)
+  assert.equal(cans.name, '15 oz cans corn')
+  const round = parseIngredient('1 5.2-oz round Boursin cheese')
+  assert.equal(round.qty, 1)
+  assert.equal(round.name, '5.2-oz round Boursin cheese')
+  // A hyphen straight after the number is still read as before.
+  const pasta = parseIngredient('10 -oz short-cut pasta')
+  assert.equal(pasta.qty, 10)
+  assert.equal(pasta.unit, 'oz')
+})
+
 test('strips list bullets, and leaves an unrecognised word in the name', () => {
   const got = parseIngredient('- 2 large eggs')
   assert.equal(got.qty, 2)

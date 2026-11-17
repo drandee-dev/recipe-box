@@ -5,6 +5,7 @@ Every fetch of a user-supplied URL MUST go through fetch_html() — it carries
 the SSRF guard, timeout, and size cap.
 """
 
+import html
 import ipaddress
 import json
 import logging
@@ -592,7 +593,34 @@ def _extract_social(url: str, source_type: str) -> dict:
     return social.link_card(url, source_type, post, structured)
 
 
+# An entity with its semicolon, and nothing looser: html.unescape on its own also
+# rewrites bare "&copy" and "&not", which a caption can contain by accident.
+_ENTITY = re.compile(r"&(?:#\d+|#x[0-9a-fA-F]+|[A-Za-z][A-Za-z0-9]*);")
+
+# The fields a person reads. Never the links: a query string is full of "&".
+TEXT_FIELDS = ("title", "description", "ingredients", "instructions", "instruction_groups", "servings")
+
+
+def _plain(value):
+    """HTML entities out of every string in a value, however it is nested."""
+    if isinstance(value, str):
+        return _ENTITY.sub(lambda m: html.unescape(m.group(0)), value)
+    if isinstance(value, list):
+        return [_plain(v) for v in value]
+    if isinstance(value, dict):
+        return {k: _plain(v) for k, v in value.items()}
+    return value
+
+
 def extract_recipe(url: str) -> dict:
+    """Every import path's one way out, so the text is cleaned once for all of
+    them: sites double-encode inside JSON-LD ("Noodles &amp; Stir Fry") and
+    captions carry entities too ("9&#215;13-inch")."""
+    recipe = _extract_recipe(url)
+    return {**recipe, **{f: _plain(recipe[f]) for f in TEXT_FIELDS if f in recipe}}
+
+
+def _extract_recipe(url: str) -> dict:
     from . import ai, social
 
     source_type = social.detect_source(url)

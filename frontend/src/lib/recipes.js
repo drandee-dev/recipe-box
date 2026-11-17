@@ -151,8 +151,11 @@ export function metaParts(recipe, { exact = false, servings = true } = {}) {
     parts.push(/serv|portion|makes/i.test(raw) ? raw : `Serves ${raw}`)
   }
   // A link card has neither, and an empty meta line reads as a rendering bug.
+  // Only something with a link is a saved link: a recipe written by hand with
+  // just a title so far was being called one.
   if (parts.length === 0) {
-    parts.push(recipe.ingredients?.length > 0 ? `${recipe.ingredients.length} ingredients` : 'Saved link')
+    if (recipe.ingredients?.length > 0) parts.push(`${recipe.ingredients.length} ingredients`)
+    else parts.push(recipe.source_url ? 'Saved link' : 'No details yet')
   }
   return parts
 }

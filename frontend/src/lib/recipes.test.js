@@ -86,7 +86,9 @@ test('servings that already say so are not prefixed twice', () => {
 })
 
 test('a link card still has something to say', () => {
-  assert.deepEqual(metaParts({}), ['Saved link'])
+  assert.deepEqual(metaParts({ source_url: 'https://www.tiktok.com/t/x/' }), ['Saved link'])
+  // Written by hand with only a title so far: there is no link to have saved.
+  assert.deepEqual(metaParts({}), ['No details yet'])
   assert.deepEqual(metaParts({ ingredients: [1, 2, 3] }), ['3 ingredients'])
 })
 
@@ -172,6 +174,6 @@ test('metaParts can drop servings, for the surface that shows the stepper', () =
 test('dropping servings does not strand the meta line empty', () => {
   // The link-card fallback still has to fire, or the run renders as nothing and
   // reads as a bug.
-  const linkCard = { servings: '4', ingredients: [] }
+  const linkCard = { servings: '4', ingredients: [], source_url: 'https://www.tiktok.com/t/x/' }
   assert.deepEqual(metaParts(linkCard, { servings: false }), ['Saved link'])
 })

@@ -3931,6 +3931,10 @@ textarea.field {
   align-items: flex-start;
   gap: var(--sp-3);
   flex: 1;
+  /* Without this the label cannot shrink under its one-line source text, and on
+     a 360px phone the indented rows of a variant group pushed their ⋯ button
+     20px off the screen and made the whole page scroll sideways. */
+  min-width: 0;
   min-height: 44px;
   padding: var(--sp-1) 0;
   cursor: pointer;

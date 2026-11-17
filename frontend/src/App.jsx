@@ -677,6 +677,10 @@ export default function App() {
       setPasteOpen(false)
       setCaptureOpen(false)
       setOpenId(saved.id)
+      // The same banner a link import gets. Without it this path said nothing,
+      // and an earlier import's "Saved" stayed up under the new recipe.
+      setSavedTitle(saved.title)
+      setSavedPartial(saved.ingredients.length > 0 && saved.instructions.length === 0)
       mirrorImages([saved])
     } catch (err) {
       setError(writeError(err))
