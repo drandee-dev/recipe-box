@@ -17,6 +17,7 @@ import RecipeThumb from './RecipeThumb.jsx'
 import { TAG_VOCABULARY, normalizeTag } from '../lib/tags.js'
 import { fullPhotoLink } from '../lib/images.js'
 import { PhotoError, readPhoto } from '../lib/photo.js'
+import { servingsRefused } from '../lib/recipes.js'
 
 // Rows carry their own key. Using the array index would be fine until the first
 // removal, at which point every row below shifts onto a new index, React reuses
@@ -105,6 +106,7 @@ export default function RecipeEditor({ recipe, onSave, onClose, canUploadPhoto =
   const [tagDraft, setTagDraft] = useState('')
   const [saving, setSaving] = useState(false)
   const [error, setError] = useState('')
+  const [titleTouched, setTitleTouched] = useState(false)
   const [confirmDiscard, setConfirmDiscard] = useState(false)
 
   const formId = useRef(`editor-${Math.random().toString(36).slice(2, 9)}`)
@@ -128,7 +130,8 @@ export default function RecipeEditor({ recipe, onSave, onClose, canUploadPhoto =
   const title = form.title.trim()
   const imageOk = isHttpLink(form.image_url.trim())
   const sourceOk = isHttpLink(form.source_url.trim())
-  const canSave = title.length > 0 && imageOk && sourceOk && !saving
+  const servingsOk = !servingsRefused(form.servings)
+  const canSave = title.length > 0 && imageOk && sourceOk && servingsOk && !saving
 
   // Only for the thumbnail beside the link field, so a pasted URL, or a photo
   // just picked, can be seen to be the right one before it is saved. RecipeThumb
@@ -315,11 +318,23 @@ export default function RecipeEditor({ recipe, onSave, onClose, canUploadPhoto =
             <input
               className="field"
               value={form.title}
-              onChange={(e) => set('title', e.target.value)}
+              onChange={(e) => {
+                setTitleTouched(true)
+                set('title', e.target.value)
+              }}
               placeholder="Nan's apple cake"
               autoFocus={!editing}
               required
+              aria-invalid={titleTouched && !title}
+              aria-describedby={titleTouched && !title ? 'editor-title-hint' : undefined}
             />
+            {/* X1: only once it has been typed in, so a fresh form doesn't open
+                on an error. Without it Save just greys out and nothing says why. */}
+            {titleTouched && !title && (
+              <span className="editor-hint" id="editor-title-hint">
+                Give the recipe a name.
+              </span>
+            )}
           </label>
 
           <div className="editor-photo">
@@ -394,6 +409,7 @@ export default function RecipeEditor({ recipe, onSave, onClose, canUploadPhoto =
                 value={form.servings}
                 onChange={(e) => set('servings', e.target.value)}
                 placeholder="4"
+                aria-invalid={!servingsOk}
               />
             </label>
             <label className="editor-field">
@@ -425,6 +441,11 @@ export default function RecipeEditor({ recipe, onSave, onClose, canUploadPhoto =
               />
             </label>
           </div>
+          {!servingsOk && (
+            <p className="editor-hint editor-photo-error" role="alert">
+              Serves needs to be at least 1.
+            </p>
+          )}
 
           <EditableList
             legend="Ingredients"

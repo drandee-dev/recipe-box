@@ -110,6 +110,12 @@ export function baseServings(recipe) {
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
+// X3: the editor refuses servings whose number is 0, the one case `baseServings`
+// rejects that someone actually types. No number at all ("a crowd") is fine.
+export function servingsRefused(servings) {
+  return /\d/.test(String(servings ?? '')) && baseServings({ servings }) === null
+}
+
 // The stepper's own label, in the recipe's wording rather than ours. The count
 // is written back into the string it came out of, so "Makes 12 cookies" doubles
 // to "Makes 24 cookies" instead of becoming "Serves 24" — the recipe already
