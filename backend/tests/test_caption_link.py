@@ -128,6 +128,15 @@ class Grafting(unittest.TestCase):
     def test_nothing_found_leaves_the_recipe_exactly_as_it_was(self):
         self.assertEqual(social.graft_written_recipe(partial(), None), PARTIAL)
 
+    def test_a_long_time_from_the_link_takes_quick_off_the_caption(self):
+        """The caption could not know the time; the linked page says six hours."""
+        recipe = partial()
+        recipe["tags"] = ["chicken", "quick"]
+        linked = {"instructions": ["Braise."], "total_min": 360, "tags": ["dinner"]}
+        grafted = social.graft_written_recipe(recipe, linked)
+        self.assertEqual(grafted["total_min"], 360)
+        self.assertEqual(grafted["tags"], ["chicken", "dinner"])
+
 
 class WholeLinkedRecipe(unittest.TestCase):
     """When the caption yielded nothing, the linked page is the whole recipe —

@@ -664,6 +664,10 @@ export default function App() {
     if (!photo && text.length < 20) return
     setImporting(true)
     setError('')
+    // As importFromUrl does: a failed paste must not leave an earlier import's
+    // "Saved" banner up beside the error.
+    setSavedTitle('')
+    setSavedPartial(false)
     try {
       const recipe = photo ? await structureImage(photo.base64) : await structureText(text)
       const saved = await store.save({
