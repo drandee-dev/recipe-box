@@ -17,7 +17,14 @@ from bs4 import BeautifulSoup
 
 from . import sections
 from .tags import drop_unsupported, hashtags_in, infer_tags, merge_tags, strip_hashtags
-from .extract import ExtractError, absolute_url, assert_public_host, fetch_html, guarded_client
+from .extract import (
+    ExtractError,
+    absolute_url,
+    assert_public_host,
+    fetch_html,
+    fetch_page,
+    guarded_client,
+)
 
 log = logging.getLogger("recipe.social")
 
@@ -169,6 +176,62 @@ def _og_tags(url: str) -> dict:
     }
 
 
+# TikTok's page ships the post as JSON in this tag. It became the source when
+# oEmbed stopped carrying the caption (measured 2026-11-17: a video's oEmbed is
+# only the player iframe, with no `title` or `thumbnail_url`, and a photo post's
+# is a 400), which turned every TikTok import into an empty link card.
+_TIKTOK_STATE = re.compile(
+    r'<script[^>]+id="__UNIVERSAL_DATA_FOR_REHYDRATION__"[^>]*>(.*?)</script>', re.DOTALL
+)
+
+
+def _tiktok_item(html: str) -> dict:
+    """The post's own record out of a TikTok page, or {} when it has none."""
+    match = _TIKTOK_STATE.search(html)
+    if not match:
+        return {}
+    try:
+        item = json.loads(match.group(1))["__DEFAULT_SCOPE__"]["webapp.video-detail"]["itemInfo"][
+            "itemStruct"
+        ]
+    except (ValueError, KeyError, TypeError):
+        return {}
+    return item if isinstance(item, dict) else {}
+
+
+def _tiktok_page_post(url: str) -> dict | None:
+    """Caption and cover read off the post's page, or None when it gave neither."""
+    try:
+        final, html = fetch_page(url)
+        item = _tiktok_item(html)
+        # A photo post's own URL serves a page with no post in it; the same id
+        # under /video/ serves the caption and the pictures (measured).
+        if not item and "/photo/" in final:
+            item = _tiktok_item(fetch_html(final.split("?")[0].replace("/photo/", "/video/")))
+    except (ExtractError, httpx.HTTPError):
+        return None
+
+    caption = item.get("desc")
+    caption = caption if isinstance(caption, str) else ""
+    video = item.get("video")
+    video = video if isinstance(video, dict) else {}
+    try:
+        # A photo post's first picture: where a recipe card would be, and what
+        # the vision fallback reads when the caption has no recipe.
+        image = item["imagePost"]["images"][0]["imageURL"]["urlList"][0]
+    except (KeyError, IndexError, TypeError):
+        image = video.get("originCover") or video.get("cover") or ""
+    author = item.get("author")
+    if not caption and not image:
+        return None
+    return {
+        "caption": caption,
+        "image_url": absolute_url(url, image),
+        "title": caption_title(caption),
+        "author": author.get("nickname") or "" if isinstance(author, dict) else "",
+    }
+
+
 def fetch_post(url: str, source_type: str) -> dict:
     """Best-effort caption + thumbnail. Missing values come back empty, not raised."""
     if source_type == "tiktok":
@@ -185,6 +248,9 @@ def fetch_post(url: str, source_type: str) -> dict:
                 "title": caption_title(caption),
                 "author": data.get("author_name") or "",
             }
+        page = _tiktok_page_post(url)
+        if page:
+            return page
 
     tags = _og_tags(url)
     return {

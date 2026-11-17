@@ -71,7 +71,9 @@ def guarded_client(**headers: str):
         yield client, assert_public_host
 
 
-def fetch_html(url: str) -> str:
+def fetch_page(url: str) -> tuple[str, str]:
+    """(final URL, HTML). The URL is for a caller that has to know where a short
+    link landed; everyone else wants `fetch_html`."""
     assert_public_host(url)
     with guarded_client() as (client, check):
         resp = client.get(url)
@@ -79,7 +81,11 @@ def fetch_html(url: str) -> str:
         resp.raise_for_status()
         if len(resp.content) > MAX_BYTES:
             raise ExtractError("page too large")
-        return resp.text
+        return str(resp.url), resp.text
+
+
+def fetch_html(url: str) -> str:
+    return fetch_page(url)[1]
 
 
 def fetch_bytes(url: str, max_bytes: int = MAX_IMAGE_BYTES) -> tuple[bytes, str]:
