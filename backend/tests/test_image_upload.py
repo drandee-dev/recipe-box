@@ -41,6 +41,17 @@ def b64(data: bytes) -> str:
     return base64.b64encode(data).decode("ascii")
 
 
+class OversizedImage(unittest.TestCase):
+    def test_pillows_own_size_refusal_is_an_image_error(self):
+        """It is neither of the errors `_open` caught, so it used to escape the
+        vision fallback and turn an import into a 502."""
+        from app import images
+
+        with patch.object(Image, "MAX_IMAGE_PIXELS", 100):
+            with self.assertRaises(images.ImageError):
+                images._open(jpeg(size=(40, 30)))
+
+
 class UploadEndpoint(unittest.TestCase):
     def _post(self, image=None, recipe_id=RECIPE, token=True):
         from fastapi.testclient import TestClient

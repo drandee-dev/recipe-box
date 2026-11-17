@@ -41,7 +41,8 @@ def assert_public_host(url: str) -> None:
         raise ExtractError("URL has no host")
     try:
         infos = socket.getaddrinfo(host, None)
-    except socket.gaierror as exc:
+    except (socket.gaierror, UnicodeError) as exc:
+        # UnicodeError: a host that cannot be encoded at all ("a..tiktok.com").
         raise ExtractError("host does not resolve") from exc
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])

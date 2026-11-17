@@ -78,7 +78,9 @@ def _storage() -> tuple[str, str]:
 def _open(data: bytes) -> Image.Image:
     try:
         img = Image.open(io.BytesIO(data))
-    except (UnidentifiedImageError, OSError) as exc:
+    # DecompressionBombError: Pillow's own refusal of an absurdly large image,
+    # which is neither of the other two and used to escape as a 502.
+    except (UnidentifiedImageError, OSError, Image.DecompressionBombError) as exc:
         # Also the path a hotlink-block page takes: it arrives as HTML with a
         # 200, and Pillow is the thing that actually notices it isn't a photo.
         raise ImageError("that URL did not return an image") from exc

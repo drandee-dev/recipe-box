@@ -104,6 +104,46 @@ class LatinVocabulary(unittest.TestCase):
         self.assertTrue(CUISINE_TAGS <= set(ALLOWED_TAGS))
 
 
+class QuickAnswersToTheClock(unittest.TestCase):
+    """A six-hour cheesecake bar and a slow-cooker dinner both imported `quick`."""
+
+    def test_a_keyword_does_not_outvote_a_known_long_time(self):
+        tags = infer_tags(title="Quick and easy cheesecake bars", total_min=360)
+        self.assertNotIn("quick", tags)
+
+    def test_the_keyword_stands_when_the_time_is_unknown_or_short(self):
+        self.assertIn("quick", infer_tags(title="Quick weeknight pasta"))
+        self.assertIn("quick", infer_tags(title="Quick weeknight pasta", total_min=25))
+        self.assertIn("quick", infer_tags(title="Garlic rice", total_min=20))
+
+    def test_the_models_own_quick_is_held_to_the_same_clock(self):
+        from app import social
+
+        structured = {
+            "title": "Apple Crumble Cheesecake Bars",
+            "ingredients": [{"raw": "2 cups flour"}],
+            "instructions": ["Bake."],
+            "total_min": 360,
+            "tags": ["dessert", "baked", "quick"],
+        }
+        recipe = social.to_recipe(structured, "https://example.com/x", "web", {})
+        self.assertEqual(recipe["tags"], ["dessert", "baked"])
+
+    def test_a_slow_cooker_dinner_is_never_quick(self):
+        from app import social
+
+        structured = {
+            "title": "Carne Asada Bowls",
+            "ingredients": [{"raw": "2 lbs skirt steak"}],
+            "instructions": ["Slow cook."],
+            "total_min": None,
+            "tags": ["dinner", "beef", "quick", "slow-cooker"],
+        }
+        recipe = social.to_recipe(structured, "https://example.com/x", "instagram", {})
+        self.assertNotIn("quick", recipe["tags"])
+        self.assertIn("slow-cooker", recipe["tags"])
+
+
 if __name__ == "__main__":
     unittest.main()
 

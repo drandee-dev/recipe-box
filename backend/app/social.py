@@ -16,7 +16,14 @@ import httpx
 from bs4 import BeautifulSoup
 
 from . import sections
-from .tags import drop_unsupported, hashtags_in, infer_tags, merge_tags, strip_hashtags
+from .tags import (
+    drop_unsupported,
+    hashtags_in,
+    infer_tags,
+    merge_tags,
+    settle_quick,
+    strip_hashtags,
+)
 from .extract import (
     ExtractError,
     absolute_url,
@@ -366,22 +373,25 @@ def to_recipe(structured: dict, url: str, source_type: str, post: dict) -> dict:
         # The model's own tags lead; inference only fills slots it left empty.
         # It sees the recipe and the keyword list doesn't, so where they
         # disagree the model is the one to trust — this is a floor, not a vote.
-        "tags": merge_tags(
-            # The model leads, but not on a protein the text never mentions.
-            drop_unsupported(
-                structured.get("tags"),
-                title=structured.get("title") or "",
-                description=structured.get("description") or "",
-                ingredients=ingredients,
-                labels=hashtags_in(caption),
+        "tags": settle_quick(
+            merge_tags(
+                # The model leads, but not on a protein the text never mentions.
+                drop_unsupported(
+                    structured.get("tags"),
+                    title=structured.get("title") or "",
+                    description=structured.get("description") or "",
+                    ingredients=ingredients,
+                    labels=hashtags_in(caption),
+                ),
+                infer_tags(
+                    title=structured.get("title") or "",
+                    description=structured.get("description") or "",
+                    ingredients=ingredients,
+                    labels=hashtags_in(caption),
+                    total_min=total_min,
+                ),
             ),
-            infer_tags(
-                title=structured.get("title") or "",
-                description=structured.get("description") or "",
-                ingredients=ingredients,
-                labels=hashtags_in(caption),
-                total_min=total_min,
-            ),
+            total_min,
         ),
         "favorite": False,
     }
@@ -407,7 +417,10 @@ def graft_written_recipe(recipe: dict, linked: dict | None) -> dict:
             recipe[field] = linked[field]
     if not recipe.get("description") and linked.get("description"):
         recipe["description"] = (linked["description"] or "")[:2000] or None
-    recipe["tags"] = merge_tags(recipe.get("tags"), linked.get("tags"))
+    # After the times above: a linked page that says six hours settles `quick`.
+    recipe["tags"] = settle_quick(
+        merge_tags(recipe.get("tags"), linked.get("tags")), recipe.get("total_min")
+    )
     return recipe
 
 
