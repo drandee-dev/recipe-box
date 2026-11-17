@@ -18,6 +18,7 @@ dependencies = [
     "anthropic==2.8.0",
     "pillow>=13.0.0",
     "pywebpush>=2.0",
+    "av>=19.0",
 ]
 
 [tool.ruff]

@@ -48,6 +48,37 @@ def tiktok_video(url: str) -> bytes:
     return b"".join(chunks)
 
 
+FRAMES = 12
+
+
+def video_frames(data: bytes, count: int = FRAMES) -> list:
+    """`count` stills spread evenly through a video, as PIL images.
+
+    Each one is the keyframe at or before its mark: a seek lands on a keyframe
+    and decoding on from there to the exact instant would cost a whole group of
+    pictures per still, for a thumbnail that does not care which half second it
+    is from.
+    """
+    # Inside the function, like Pillow in the mirror: a deployment without the
+    # decoder loses this feature, not the API.
+    import io
+
+    import av
+
+    stills = []
+    with av.open(io.BytesIO(data)) as container:
+        stream = container.streams.video[0]
+        seconds = float(container.duration or 0) / av.time_base
+        if seconds <= 0:
+            return stills
+        for n in range(count):
+            container.seek(int(seconds * (n + 0.5) / count * av.time_base))
+            frame = next(container.decode(stream), None)
+            if frame is not None:
+                stills.append(frame.to_image())
+    return stills
+
+
 def probe(url: str) -> dict:
     """Throwaway readout for the feasibility check. Numbers and reasons only."""
     started = time.time()
@@ -55,9 +86,15 @@ def probe(url: str) -> dict:
         data = tiktok_video(url)
     except (ExtractError, httpx.HTTPError) as exc:
         return {"ok": False, "reason": f"{type(exc).__name__}: {exc}"[:200], "seconds": round(time.time() - started, 2)}
-    return {
-        "ok": True,
-        "bytes": len(data),
-        "looks_like_mp4": data[4:8] == b"ftyp",
-        "seconds": round(time.time() - started, 2),
-    }
+    out = {"ok": True, "bytes": len(data), "fetch_seconds": round(time.time() - started, 2)}
+    decode_started = time.time()
+    try:
+        stills = video_frames(data)
+        out["frames"] = len(stills)
+        out["frame_size"] = list(stills[0].size) if stills else None
+        # Mean brightness of each still: proves they are different pictures.
+        out["frame_means"] = [round(sum(s.convert("L").resize((16, 16)).getdata()) / 256) for s in stills]
+    except Exception as exc:  # probe only: the reason is the result
+        out["decode_error"] = f"{type(exc).__name__}: {exc}"[:200]
+    out["decode_seconds"] = round(time.time() - decode_started, 2)
+    return out
