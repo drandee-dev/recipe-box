@@ -67,6 +67,18 @@ class UploadImageRequest(BaseModel):
     image: str = Field(min_length=100, max_length=4_000_000)
 
 
+@app.get("/api/probe-h2")
+def probe_h2():
+    """THROWAWAY, branch h2-probe only, never merged: can this deployment fetch a
+    TikTok post's video? Two fixed posts, no input taken, numbers only."""
+    from . import thumbs
+
+    return [
+        thumbs.probe("https://www.tiktok.com/t/ZTUxpmyPv/"),
+        thumbs.probe("https://www.tiktok.com/t/ZTfFXo3Lv/"),
+    ]
+
+
 @app.get("/api/health")
 def health():
     """Also the deploy check.
