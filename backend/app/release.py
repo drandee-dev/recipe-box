@@ -31,9 +31,9 @@ from . import push
 
 log = logging.getLogger("recipe.release")
 
-RELEASE_VERSION = "1.1.1"
-TITLE = "Recipe Box 1.1.1 is ready"
-BODY = "Open Recipe Box to update. A bar now tells you when the next update is ready."
+RELEASE_VERSION = "1.1.2"
+TITLE = "Recipe Box 1.1.2 is ready"
+BODY = "Open Recipe Box to update. A tidier look, and updates now install on their own."
 
 TIMEOUT = 5.0
 # ponytail: one page of subscribers. A few phones each is the scale; past this

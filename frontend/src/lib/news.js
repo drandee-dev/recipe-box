@@ -14,7 +14,7 @@
 // `upcoming` announces work before it ships and carries the feedback button.
 // Closing the banner remembers the entry's id, so a new id brings it back.
 
-export const APP_VERSION = '1.1.1'
+export const APP_VERSION = '1.1.2'
 
 // What the update bar shows from version.json: up to three plain short lines.
 // Defensive about the shape since it arrives over the network from a build this
@@ -28,6 +28,28 @@ export function cleanHighlights(value) {
 }
 
 export const NEWS = [
+  {
+    id: '1.1.2',
+    kind: 'release',
+    version: '1.1.2',
+    date: '2026-11-18',
+    title: 'Version 1.1.2',
+    body: 'Updates install on their own, a tidier look across the app, and better TikTok imports. Tap to see what changed.',
+    highlights: [
+      'Updates install on their own when the app is idle',
+      'Tidier recipe, shopping list and timer screens',
+      'TikTok recipes import from the caption',
+    ],
+    notes: [
+      'Updates now install by themselves when you leave the app with nothing open. If you are in the middle of something, the update bar waits for you as before.',
+      'With New versions turned on, the app icon gets a badge when an update is out, and that notice no longer replaces a running timer\'s alert.',
+      'The shopping list shows how many items are left in each aisle, and a This week button brings you back from another week.',
+      'The timer bar fits on one line, and a step\'s ingredients sit in two columns.',
+      'Importing a TikTok recipe reads it from the post\'s caption.',
+      'The editor says why it will not save: a missing name, or Serves below 1.',
+      'Amounts like "1-1/2 cups" and "1 to 1 1/2 cups" read correctly.',
+    ],
+  },
   {
     id: '1.1.1',
     kind: 'release',
