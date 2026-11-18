@@ -61,6 +61,23 @@ class FoodCrop(unittest.TestCase):
         out = images.food_crop(self.img, answer(box(10, 40, 90, 70), text=[box(0, 35, 100, 75)]))
         self.assertIs(out, images.NO_FOOD)
 
+    def test_overlapping_captions_are_both_cut_out(self):
+        # Two caption boxes overlap at 50-55%; the clean piece below both (60-90%) wins.
+        out = images.food_crop(self.img, answer(box(0, 20, 100, 90), text=[box(0, 40, 100, 55), box(0, 50, 100, 60)]))
+        self.assertEqual(out.size, (400, 240))
+
+    def test_the_piece_a_4_3_cell_shows_most_of_beats_the_bigger_one(self):
+        # Text over the lower right leaves a full-width top strip (400x240) and a tall
+        # left column (200x800, more area). The cell shows 320x240 of the strip but
+        # only 200x150 of the column, so the strip is kept.
+        out = images.food_crop(self.img, answer(box(0, 0, 100, 100), text=[box(50, 30, 100, 100)]))
+        self.assertEqual(out.size, (400, 240))
+
+    def test_many_small_boxes_stay_bounded(self):
+        dots = [box(x, y, x + 1, y + 1) for x in range(5, 95, 9) for y in range(5, 95, 9)]  # 100 boxes
+        self.assertLessEqual(len(images._clean_pieces((0, 0, 100, 100), [images._pct_box(d) for d in dots])), images.MAX_PIECES)
+        self.assertIsNotNone(images.food_crop(self.img, answer(box(0, 0, 100, 100), text=dots)))
+
     def test_a_reversed_caption_box_is_still_cut_round(self):
         # Same as the caption test with the caption's edges given backwards.
         out = images.food_crop(self.img, answer(box(0, 20, 100, 90), text=[box(90, 50, 10, 40)]))
