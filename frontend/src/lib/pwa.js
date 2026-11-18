@@ -84,6 +84,9 @@ export function applyPendingUpdate() {
   // (reproduced). If the page is still here a moment later, drop the
   // registration and reload: a fresh install comes from the network.
   setTimeout(async () => {
+    // Auto-update fired this on hide; if they came back and opened something in
+    // these 3 s, leave it for the next hide rather than reloading over it.
+    if (document.visibilityState === 'visible' && document.querySelector('.sheet-backdrop')) return
     try {
       await registration?.unregister()
     } catch {
@@ -91,6 +94,23 @@ export function applyPendingUpdate() {
     }
     location.reload()
   }, 3000)
+}
+
+// Auto-update (job 2): a waiting update is applied by itself when the app goes
+// to the background with nothing in progress, so nobody has to press Reload; the
+// bar stays for the foreground. "In progress" is a capture (`busy`), any open
+// sheet (cook mode and the editor are sheets) or a focused field with typing in
+// it (the shopping list's add box is not in a sheet).
+export function quietForUpdate(doc = document) {
+  if (busy || !ready || !applyUpdate) return false
+  if (doc.querySelector('.sheet-backdrop')) return false
+  const el = doc.activeElement
+  if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName) && el.value) return false
+  return true
+}
+
+function updateWhenHidden() {
+  if (document.visibilityState === 'hidden' && quietForUpdate()) applyPendingUpdate()
 }
 
 export function useUpdateReady() {
@@ -125,6 +145,7 @@ export function initPwaUpdates() {
       }
 
       document.addEventListener('visibilitychange', check)
+      document.addEventListener('visibilitychange', updateWhenHidden)
       window.addEventListener('focus', check)
       // Covers an installed app left open for days without ever backgrounding.
       setInterval(check, CHECK_INTERVAL)
