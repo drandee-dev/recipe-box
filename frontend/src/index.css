@@ -162,12 +162,12 @@
 
   /* The shopping tab's sticky week nav + progress bar, measured off the
      rendered header rather than guessed — see .shopping-header. The sticky
-     aisle headings below it read this too, so the two layers stack. Sized
-     for the taller of two states (the "Clear picked" line adds a row when
-     something's checked, 82px -> 106px) rather than the shorter one — an
-     unclaimed gap under a short header reads as spacing; an aisle heading
-     sitting a few px into a tall one would overlap it. */
-  --shopping-header-h: 106px;
+     aisle headings below it read this too, so the two layers stack. One
+     height now (L1): the progress row is always there and "Clear picked"
+     keeps its place, and "This week" sits beside the range, so any week with
+     a list measures 121px at 360/390/412 (2026-11-17). An empty week is 77px,
+     but it has no aisle headings to place. */
+  --shopping-header-h: 121px;
 
   /* Layering tiers, same ladder as mtg-web. */
   --z-sticky: 10;
@@ -3999,24 +3999,50 @@ textarea.field {
 .shopping-header {
   position: sticky;
   top: 0;
-  z-index: var(--z-sticky);
+  /* One above the aisle headings: at the same tier they come later in the page
+     and painted over the week nav whenever a section was pushed up under it. */
+  z-index: calc(var(--z-sticky) + 1);
   background: var(--ground);
   padding: var(--sp-3) 0 var(--sp-2);
   border-bottom: 1px solid var(--line);
 }
 
-/* A caption ("0 of 20 picked up") became a bar: the number was accurate but
-   took reading, where a fill length is read at a glance. Saffron, not the
-   accent — this is something simply TRUE about the list, not a button. Its
-   own row, no button riding along in it: a .btn's 44px floor would drag a
-   "thin bar" up to button height, which is exactly the bug that shipped
-   first and got caught mid-pass (see the comment on .shopping-header). */
+/* L5: "This week" beside the range, not under it, so the header keeps one height. */
+.shopping-weeklabel {
+  flex-direction: row;
+  gap: var(--sp-2);
+}
+
+/* L1: bar, "N of M", Clear picked. One row, deliberately the height of the
+   button (a .btn's 44px floor sets it either way), present from the first view
+   so ticking never changes the header; --shopping-header-h is measured with it.
+   The bar is saffron, not the accent: progress is something simply TRUE about
+   the list, not a button, and a fill length is read at a glance. */
+.shopping-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+
 .shopping-progress-bar {
+  flex: 1;
   height: 5px;
-  margin-top: var(--sp-2);
   border-radius: var(--r-pill);
   background: var(--surface-2);
   overflow: hidden;
+}
+
+.shopping-progress-count {
+  flex-shrink: 0;
+  color: var(--txt-2);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.shopping-progress-clear {
+  flex-shrink: 0;
+  padding-inline: var(--sp-1);
 }
 
 .shopping-progress-fill {
@@ -4055,6 +4081,9 @@ textarea.field {
   position: sticky;
   top: var(--shopping-header-h);
   z-index: var(--z-sticky);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
   margin: 0;
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-sm);
@@ -4181,9 +4210,22 @@ textarea.field {
 /* --- Pass C: staples, aisle choices, share, the recipe strip ----------------
    The ⋯ on a derived row is the same quiet icon button the manual row's × is. It
    sits outside the <label>, so a tap on it never toggles the tick. */
-.shopping-more {
+/* L3: the count on the aisle band, in the row's quiet ink and not shouting in
+   the heading's capitals. */
+.shopping-aisle-left {
   flex-shrink: 0;
   color: var(--txt-2);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* L4: a shade lighter, so a ⋯ on every row stops drawing a dotted column down
+   the screen. Same 44px target. */
+.shopping-more {
+  flex-shrink: 0;
+  color: var(--txt-3);
 }
 
 /* Under the add form, above the first aisle. Not part of the sticky header: its
