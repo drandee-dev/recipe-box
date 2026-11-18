@@ -71,13 +71,18 @@ export function TimerTray({ inline = false, current = null }) {
       </span>
       <button type="button" className="timer-tray-main" onClick={() => setListOpen(true)}>
         <ClockIcon />
+        {/* T1: one line, time first then the name. T3: further timers are a
+            "+1" badge, which an ellipsis can no longer cut off. */}
         <span className="timer-tray-text">
           <span className="timer-tray-clock">{due ? "Time's up" : formatClock(secondsLeft(lead, now))}</span>
-          <span className="timer-tray-label">
-            {describe(lead)}
-            {more > 0 ? ` · +${more} more` : ''}
-          </span>
+          <span className="timer-tray-label">{describe(lead)}</span>
         </span>
+        {more > 0 && (
+          <span className="timer-tray-more">
+            +{more}
+            <span className="rb-sr-only"> more {more === 1 ? 'timer' : 'timers'}</span>
+          </span>
+        )}
       </button>
       {/* Both options on one row below the text, so each is a full-width target
           rather than two squeezed beside the clock. */}

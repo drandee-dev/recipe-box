@@ -3169,8 +3169,9 @@ textarea.field {
    Fixed copy hides while cook mode is open and cook mode draws its own in the
    flow above Back and Next; a fixed one there would sit on top of them. Sheets
    are at --z-sheet, so the tray is one above and stays visible over a recipe. */
+/* T1: one line, 48px (it was two lines and 64px). */
 :root {
-  --tray-h: 60px;
+  --tray-h: 48px;
 }
 
 .timer-tray {
@@ -3178,7 +3179,8 @@ textarea.field {
   align-items: stretch;
   gap: var(--sp-2);
   min-height: var(--tray-h);
-  padding: var(--sp-2) var(--sp-3);
+  /* 1px top and bottom: the 44px tap target plus the border is the 48. */
+  padding: 1px var(--sp-1) 1px var(--sp-3);
   border: 1px solid var(--saffron);
   border-radius: var(--r);
   background: var(--surface);
@@ -3250,21 +3252,43 @@ textarea.field {
 .timer-tray-text {
   display: flex;
   min-width: 0;
-  flex-direction: column;
+  align-items: baseline;
+  gap: var(--sp-2);
 }
 
 .timer-tray-clock {
+  flex-shrink: 0;
   font-size: var(--fs-md);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .timer-tray-label {
+  min-width: 0;
   overflow: hidden;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
-  opacity: 0.7;
+  opacity: 0.75;
+}
+
+/* T3: saffron, like every other timer state; dark ink for the same contrast
+   reason as the ringing tray. */
+.timer-tray-more {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: var(--saffron);
+  color: var(--on-saffron);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.timer-tray-ringing .timer-tray-more {
+  background: var(--on-saffron);
+  color: var(--saffron);
 }
 
 .timer-tray-actions {
@@ -3294,8 +3318,10 @@ textarea.field {
   flex: 1;
 }
 
+/* Two rows: 44 + gap + 38 + padding + border is 94; over that, so larger text
+   or a wrong guess costs an empty strip rather than an overlap. */
 :root:has(.timer-tray-two:not(.timer-tray-inline)) {
-  --tray-h: 116px;
+  --tray-h: 104px;
 }
 
 .timers-row-actions {
@@ -3304,10 +3330,12 @@ textarea.field {
   gap: var(--sp-2);
 }
 
+/* Drawn at 38px so the one-line tray is 48px; the ::after keeps the 44px target. */
 .timer-tray-stop {
+  position: relative;
   flex: none;
   min-width: 72px;
-  min-height: 44px;
+  min-height: 38px;
   align-self: center;
   border: 1px solid currentColor;
   border-radius: var(--r);
@@ -3317,6 +3345,12 @@ textarea.field {
   font-size: var(--fs-sm);
   font-weight: 600;
   cursor: pointer;
+}
+
+.timer-tray-stop::after {
+  content: '';
+  position: absolute;
+  inset: -3px 0;
 }
 
 /* Dark ink, not white: white on --saffron is 3.8:1, under the floor for the
