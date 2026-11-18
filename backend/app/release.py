@@ -33,7 +33,7 @@ log = logging.getLogger("recipe.release")
 
 RELEASE_VERSION = "1.1.3"
 TITLE = "Recipe Box 1.1.3 is ready"
-BODY = "Open Recipe Box to update. Imported recipe photos now show just the food."
+BODY = "Open Recipe Box to update. New imports from TikTok and Instagram now show just the food."
 
 TIMEOUT = 5.0
 # ponytail: one page of subscribers. A few phones each is the scale; past this
