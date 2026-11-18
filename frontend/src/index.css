@@ -1874,13 +1874,18 @@ textarea.field {
   list-style: none;
 }
 
+/* The rule is on the row, not the label, so a step's "Show all" (outside its
+   label) sits above it. */
+.detail-check {
+  border-bottom: 1px solid var(--line);
+}
+
 .detail-check label {
   display: flex;
   align-items: flex-start;
   gap: var(--sp-3);
   min-height: 44px;
   padding: var(--sp-2) 0;
-  border-bottom: 1px solid var(--line);
   /* Reading size: 18px is what Serious Eats, Bon Appetit and NYT Cooking all set
      recipe text at (measured), and this is read from the counter at arm's
      length. */
@@ -1902,11 +1907,11 @@ textarea.field {
   box-shadow: inset 3px 0 0 var(--saffron);
 }
 
-.detail-check-current label {
+.detail-check-current {
   border-bottom-color: transparent;
 }
 
-.detail-checks li:last-child label {
+.detail-checks li:last-child {
   border-bottom: none;
 }
 
@@ -1943,10 +1948,35 @@ textarea.field {
    Quiet and smaller than the step: it is a reminder of the amount, not part of
    the method. */
 .detail-step-needs {
-  display: block;
-  margin-top: var(--sp-1);
+  display: grid;
+  /* S1: two columns, so six lines take three rows. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px var(--sp-3);
+  margin-top: var(--sp-2);
   color: var(--txt-2);
   font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+
+.detail-step-needs > span {
+  overflow-wrap: anywhere;
+}
+
+/* S2. Outside the step's label, so it sits under the lines, indented to the
+   step text (checkbox 22 + gap + number 22 + gap). */
+.detail-step-more {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: calc(-1 * var(--sp-2)) 0 0 calc(44px + 2 * var(--sp-3));
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .detail-step-n {

@@ -43,6 +43,8 @@ const SLOT_LABELS = {
 // is asked about the days ahead of you; a Sunday-anchored week would offer
 // yesterday on a Wednesday and hide next Monday all week.
 const PLAN_DAYS = 7
+// A step's ingredient lines shown before "Show all" (S2): three rows of two.
+const NEEDS_SHOWN = 6
 
 
 function planDayLabel(date, offset) {
@@ -218,6 +220,8 @@ export default function RecipeDetail({
   // source had any (lib/sections). Null for a recipe with none.
   const ingGroups = useMemo(() => ingredientGroups(recipe.ingredients), [recipe.ingredients])
   const stepGroups = useMemo(() => sectionsFor(recipe), [recipe])
+  // Steps whose ingredient lines are unfolded past the first NEEDS_SHOWN (S2).
+  const [openNeeds, setOpenNeeds] = useState(() => new Set())
 
   const host = hostOf(recipe.source_url)
   const tags = recipe.tags || []
@@ -714,14 +718,34 @@ export default function RecipeDetail({
                     </span>
                     <span>
                       <StepText text={step} recipe={recipe} step={n} units={units} />
-                      {stepMap[n]?.map((m) => (
-                        <span key={m.index} className="detail-step-needs">
-                          {ingLines[m.index]}
-                          {m.shared && m.group ? ` (${m.group})` : ''}
+                      {stepMap[n]?.length > 0 && (
+                        // S1: two columns of short lines. S2: past six, the rest
+                        // fold behind "Show all" (cook mode keeps every line).
+                        // S3: the section in brackets is dropped when it is the
+                        // section this step already sits under.
+                        <span className="detail-step-needs">
+                          {(openNeeds.has(n) ? stepMap[n] : stepMap[n].slice(0, NEEDS_SHOWN)).map((m) => (
+                            <span key={m.index}>
+                              {ingLines[m.index]}
+                              {m.shared && m.group && m.group !== stepGroups?.[n] ? ` (${m.group})` : ''}
+                            </span>
+                          ))}
                         </span>
-                      ))}
+                      )}
                     </span>
                   </label>
+                  {/* Outside the label: a second control inside it would be
+                      taken for what the label names, and a press here must not
+                      tick the step. */}
+                  {stepMap[n]?.length > NEEDS_SHOWN && !openNeeds.has(n) && (
+                    <button
+                      type="button"
+                      className="detail-step-more"
+                      onClick={() => setOpenNeeds((prev) => new Set(prev).add(n))}
+                    >
+                      Show all {stepMap[n].length}
+                    </button>
+                  )}
                 </li>
                 </Fragment>
               ))}
