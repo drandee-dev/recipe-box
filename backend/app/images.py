@@ -285,12 +285,18 @@ CELL_ASPECT = 4 / 3
 MAX_PIECES = 64
 
 
-def _pct_box(raw) -> tuple[int, int, int, int] | None:
-    """A model box as (left, top, right, bottom) in percent, clamped; None if malformed or empty."""
+def _pct_box(raw, *, swap=False) -> tuple[int, int, int, int] | None:
+    """A model box as (left, top, right, bottom) in percent, clamped; None if malformed or empty.
+
+    `swap` puts reversed edges in order: right for an obstacle, since dropping a
+    caption box leaves the caption in the crop. A reversed food box stays None."""
     try:
         left, top, right, bottom = (int(raw[k]) for k in ("left", "top", "right", "bottom"))
-    except (KeyError, TypeError, ValueError):
+    except (KeyError, TypeError, ValueError, OverflowError):
         return None
+    if swap:
+        left, right = sorted((left, right))
+        top, bottom = sorted((top, bottom))
     left, top, right, bottom = max(0, left), max(0, top), min(100, right), min(100, bottom)
     return (left, top, right, bottom) if right > left and bottom > top else None
 
@@ -329,7 +335,8 @@ def food_crop(img: Image.Image, pick: dict):
     food = _pct_box(pick.get("food"))
     if food is None:
         return None
-    obstacles = [b for b in map(_pct_box, [*(pick.get("text") or []), *(pick.get("people") or [])]) if b]
+    raw = [*(pick.get("text") or []), *(pick.get("people") or [])]
+    obstacles = [b for b in (_pct_box(o, swap=True) for o in raw) if b]
     w, h = img.size
 
     def shown(p):  # pixels a 4:3 cover-fit cell keeps of this piece
@@ -377,13 +384,13 @@ def _pick(img: Image.Image, picker, recipe_id: str) -> Image.Image | None:
     cover better or remove it, never lose a mirror that would have worked."""
     try:
         pick = picker(*_vision_jpeg(_grid(img)))
-    except Exception as exc:
+        if pick.get("verdict") == "none":
+            log.info("no food in the cover for %s", recipe_id)
+            return None
+        cropped = food_crop(img, pick)
+    except Exception as exc:  # junk past the schema (e.g. "text": 5) must not lose the mirror either
         log.info("food pick failed for %s, keeping the cover: %s", recipe_id, exc)
         return img
-    if pick.get("verdict") == "none":
-        log.info("no food in the cover for %s", recipe_id)
-        return None
-    cropped = food_crop(img, pick)
     if cropped is NO_FOOD:
         log.info("no clean food in the cover for %s", recipe_id)
         return None

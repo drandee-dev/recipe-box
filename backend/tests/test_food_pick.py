@@ -61,6 +61,11 @@ class FoodCrop(unittest.TestCase):
         out = images.food_crop(self.img, answer(box(10, 40, 90, 70), text=[box(0, 35, 100, 75)]))
         self.assertIs(out, images.NO_FOOD)
 
+    def test_a_reversed_caption_box_is_still_cut_round(self):
+        # Same as the caption test with the caption's edges given backwards.
+        out = images.food_crop(self.img, answer(box(0, 20, 100, 90), text=[box(90, 50, 10, 40)]))
+        self.assertEqual(out.size, (400, 320))
+
     def test_a_malformed_or_empty_food_box_is_refused(self):
         self.assertIsNone(images.food_crop(self.img, answer(box(90, 90, 10, 10))))
         self.assertIsNone(images.food_crop(self.img, {"verdict": "food"}))
@@ -108,6 +113,11 @@ class MirrorWithPicker(unittest.TestCase):
     def test_a_malformed_answer_keeps_the_whole_cover(self):
         _, _, stored = self._mirror(lambda *_: answer(box(50, 50, 10, 10)))
         self.assertEqual(stored["size"], (360, 640))
+
+    def test_junk_past_the_schema_keeps_the_whole_cover(self):
+        for junk in ({**answer(box(0, 0, 100, 100)), "text": 5}, {**answer(box(0, 0, 100, 100)), "people": [{"left": float("inf"), "top": 0, "right": 1, "bottom": 1}]}, "not a dict"):
+            _, _, stored = self._mirror(lambda *_, j=junk: j)
+            self.assertEqual(stored["size"], (360, 640), junk)
 
     def test_the_model_sees_the_grid_but_the_stored_photo_does_not(self):
         seen = {}
