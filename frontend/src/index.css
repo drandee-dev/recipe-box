@@ -561,9 +561,11 @@ textarea.field {
   width: 44px;
   height: 44px;
   padding: 0;
-  border: 1px solid var(--line-strong);
+  /* G1: a plain icon matching Timers beside it. The ring made it the heaviest
+     thing in the header. */
+  border: 0;
   border-radius: var(--r-pill);
-  background: var(--surface);
+  background: transparent;
   color: var(--txt-2);
   font: inherit;
   cursor: pointer;
@@ -576,13 +578,18 @@ textarea.field {
 
 /* Signed in it carries the address's initial on the accent, which is the one
    place a filled accent is identity rather than an action — and it is the only
-   way the header can say "you are signed in" in 44px. */
-.rb-avatar-in {
-  border-color: var(--accent);
+   way the header can say "you are signed in" in 44px. The disc is the icon's
+   size, not the target's, so the pair still matches. */
+.rb-avatar-in span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
   background: var(--accent);
   color: var(--on-accent);
   font-family: 'Clash Display', 'Satoshi', sans-serif;
-  font-size: var(--fs-md);
+  font-size: var(--fs-sm);
   font-weight: 600;
 }
 
@@ -1949,12 +1956,32 @@ textarea.field {
   gap: var(--sp-2);
 }
 
+/* G2: the magnifier says "search" before the placeholder is read. It sits over
+   the field, so the field keeps the whole row bar the sort button. */
+.recipes-search-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.recipes-search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  transform: translateY(-50%);
+  color: var(--txt-3);
+  pointer-events: none;
+}
+
 .recipes-search input {
   flex: 1;
   min-width: 0;
   width: 100%;
   min-height: 46px;
-  padding: 0 14px;
+  padding: 0 14px 0 44px;
   /* #ddd was 1.36:1. A field whose only affordance is its outline owes 3:1. */
   border: 1px solid var(--line-strong);
   border-radius: var(--r);
@@ -1971,19 +1998,43 @@ textarea.field {
   outline-offset: 1px;
 }
 
-/* Same face, height and border as the field beside it. A native select, so the
-   phone's own picker opens; 16px so iOS does not zoom when it does. */
+/* G3: one icon button, same height and border as the field beside it. The
+   native select is still the control, laid invisibly over the icon, so a tap
+   opens the phone's own short picker and keyboard and screen readers get a real
+   select; 16px so iOS does not zoom when it opens. As a visible select its label
+   was cut to "Newest savec" at every phone width. */
 .recipes-sort {
+  position: relative;
   flex-shrink: 0;
-  width: 132px;
+  display: grid;
+  place-items: center;
+  width: 46px;
   min-height: 46px;
-  padding: 0 var(--sp-2);
   border: 1px solid var(--line-strong);
   border-radius: var(--r);
   background: var(--surface);
-  color: var(--txt);
-  font: inherit;
+  color: var(--txt-2);
+}
+
+.recipes-sort svg {
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+}
+
+.recipes-sort select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
   font-size: var(--fs-input);
+  cursor: pointer;
+}
+
+.recipes-sort:has(select:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* One row, scrolling horizontally rather than wrapping (finding 4) — nine
@@ -2000,6 +2051,11 @@ textarea.field {
   overflow-x: auto;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+  /* G4: a soft fade says "there is more" better than a chip sliced in half. The
+     end padding lets the last chip scroll out from under the fade. */
+  padding-right: 32px;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
 }
 
 .recipes-chips::-webkit-scrollbar {
@@ -2029,6 +2085,16 @@ textarea.field {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--on-accent);
+}
+
+/* Saffron, like the star on a favourite cell: a favourite is simply true. On
+   the filled accent it takes the chip's ink instead. */
+.recipes-chip-star {
+  color: var(--saffron);
+}
+
+.recipes-chip-on .recipes-chip-star {
+  color: inherit;
 }
 
 .recipes-chip-count {

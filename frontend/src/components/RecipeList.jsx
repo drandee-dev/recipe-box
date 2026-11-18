@@ -123,28 +123,37 @@ export default function RecipeList({
       {shown.length > 0 && (
         <div className="recipes-filters">
           <div className="recipes-search">
-            <input
-              type="search"
-              placeholder="Search recipes"
-              value={query}
-              onChange={(e) => onQueryChange(e.target.value)}
-              aria-label="Search recipes"
-            />
-            {/* A native select: it is the control a phone already knows how to
-                use, and its picker is the platform's own. Sixteen-pixel text so
-                iOS does not zoom the page when it opens. */}
-            <select
-              className="recipes-sort"
-              value={sort}
-              onChange={(e) => changeSort(e.target.value)}
-              aria-label="Sort recipes"
-            >
-              {SORT_MODES.map((mode) => (
-                <option key={mode} value={mode}>
-                  {SORT_LABELS[mode]}
-                </option>
-              ))}
-            </select>
+            <div className="recipes-search-field">
+              <svg className="recipes-search-icon" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true" focusable="false">
+                <circle cx="10.5" cy="10.5" r="6.5" />
+                <path d="M15.5 15.5 20 20" />
+              </svg>
+              <input
+                type="search"
+                placeholder="Search recipes"
+                value={query}
+                onChange={(e) => onQueryChange(e.target.value)}
+                aria-label="Search recipes"
+              />
+            </div>
+            {/* A native select under an icon (G3): the phone's own picker is the
+                short menu, and assistive tech gets a real select. */}
+            <label className="recipes-sort">
+              <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true" focusable="false">
+                <path d="M4 7h16M7 12h10M10 17h4" />
+              </svg>
+              <select
+                value={sort}
+                onChange={(e) => changeSort(e.target.value)}
+                aria-label="Sort recipes"
+              >
+                {SORT_MODES.map((mode) => (
+                  <option key={mode} value={mode}>
+                    {SORT_LABELS[mode]}
+                  </option>
+                ))}
+              </select>
+            </label>
           </div>
           <div className="recipes-chips">
             {favoriteCount > 0 && (
@@ -154,7 +163,7 @@ export default function RecipeList({
                 aria-pressed={favoritesOnly}
                 onClick={onToggleFavoritesOnly}
               >
-                ★ Favorites <span className="recipes-chip-count">{favoriteCount}</span>
+                <span className="recipes-chip-star" aria-hidden="true">★</span> Favourites <span className="recipes-chip-count">{favoriteCount}</span>
               </button>
             )}
             {chips.map(({ tag, count }) => {
