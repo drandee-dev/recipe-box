@@ -25,7 +25,7 @@ import { SERVINGS_MAX_FACTOR, baseServings, hostOf, metaParts, servingsLabel } f
 import { OPTIONS as UNIT_OPTIONS } from './UnitsToggle.jsx'
 import { displayIngredient } from '../lib/convert.js'
 import { qtyColumnCh } from '../lib/ingredients.js'
-import { stepIngredientMap } from '../lib/stepIngredients.js'
+import { stepIngredientMap, stepNeeds } from '../lib/stepIngredients.js'
 import { headingAt, ingredientGroups, sectionsFor } from '../lib/sections.js'
 import { cookedLabel } from '../lib/cooked.js'
 import IngredientLine from './IngredientLine.jsx'
@@ -43,8 +43,6 @@ const SLOT_LABELS = {
 // is asked about the days ahead of you; a Sunday-anchored week would offer
 // yesterday on a Wednesday and hide next Monday all week.
 const PLAN_DAYS = 7
-// A step's ingredient lines shown before "Show all" (S2): three rows of two.
-const NEEDS_SHOWN = 6
 
 
 function planDayLabel(date, offset) {
@@ -220,7 +218,7 @@ export default function RecipeDetail({
   // source had any (lib/sections). Null for a recipe with none.
   const ingGroups = useMemo(() => ingredientGroups(recipe.ingredients), [recipe.ingredients])
   const stepGroups = useMemo(() => sectionsFor(recipe), [recipe])
-  // Steps whose ingredient lines are unfolded past the first NEEDS_SHOWN (S2).
+  // Steps whose ingredient lines are unfolded past the first few (S2, stepNeeds).
   const [openNeeds, setOpenNeeds] = useState(() => new Set())
 
   const host = hostOf(recipe.source_url)
@@ -724,10 +722,10 @@ export default function RecipeDetail({
                         // S3: the section in brackets is dropped when it is the
                         // section this step already sits under.
                         <span className="detail-step-needs">
-                          {(openNeeds.has(n) ? stepMap[n] : stepMap[n].slice(0, NEEDS_SHOWN)).map((m) => (
+                          {stepNeeds(stepMap[n], stepGroups?.[n], openNeeds.has(n)).lines.map((m) => (
                             <span key={m.index}>
                               {ingLines[m.index]}
-                              {m.shared && m.group && m.group !== stepGroups?.[n] ? ` (${m.group})` : ''}
+                              {m.section ? ` (${m.section})` : ''}
                             </span>
                           ))}
                         </span>
@@ -737,7 +735,7 @@ export default function RecipeDetail({
                   {/* Outside the label: a second control inside it would be
                       taken for what the label names, and a press here must not
                       tick the step. */}
-                  {stepMap[n]?.length > NEEDS_SHOWN && !openNeeds.has(n) && (
+                  {stepNeeds(stepMap[n] || [], stepGroups?.[n], openNeeds.has(n)).folded > 0 && (
                     <button
                       type="button"
                       className="detail-step-more"

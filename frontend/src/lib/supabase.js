@@ -24,6 +24,8 @@
 // the stores — which import this transitively — could not be unit-tested at all.
 // That gap is how a temporal-dead-zone bug in all three stores reached
 // production. Under Vite both values are inlined at build time exactly as before.
+import { countingFetch } from './inflight.js'
+
 const url = import.meta.env?.VITE_SUPABASE_URL
 const anon = import.meta.env?.VITE_SUPABASE_ANON_KEY
 
@@ -54,6 +56,7 @@ export function getSupabase() {
           autoRefreshToken: true,
           detectSessionInUrl: true,
         },
+        global: { fetch: countingFetch },
       }),
     )
   }

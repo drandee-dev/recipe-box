@@ -113,6 +113,10 @@
      cook surface, where it is 9.3:1. --- */
   --saffron: #b1731b;
   --saffron-lit: #e6aa56;
+  /* A saffron fill with --on-saffron text on it (ringing timers, the timer
+     counts): one step lighter than --saffron, 4.74:1 against 4.37:1, so 11-12px
+     bold clears 4.5. The dark blocks set it back to their own --saffron (7:1). */
+  --saffron-fill: #b8791e;
   --star: var(--saffron);
   /* The off state is a neutral, not a faded saffron: a dimmed accent reads as
      disabled rather than as unset. 3.6:1 on --surface; the old #bbb was 1.92:1. */
@@ -227,6 +231,7 @@
     --on-accent: #0f1a14;
     --on-danger: #1b0a09;
     --saffron: #d99a3e;
+    --saffron-fill: #d99a3e;
     --star-off: #8a9083;
     --warn-bg: #2b2812;
     --warn-line: #5a5326;
@@ -261,6 +266,7 @@
   --on-accent: #0f1a14;
   --on-danger: #1b0a09;
   --saffron: #d99a3e;
+  --saffron-fill: #d99a3e;
   --star-off: #8a9083;
   --warn-bg: #2b2812;
   --warn-line: #5a5326;
@@ -1826,7 +1832,9 @@ textarea.field {
   display: flex;
   flex-wrap: nowrap;
   gap: 6px;
-  margin-bottom: var(--sp-3);
+  /* Room for the focus ring inside the clip, taken back by the margins. */
+  padding: 4px;
+  margin: -4px 0 calc(var(--sp-3) - 4px) -4px;
   overflow-x: auto;
   scrollbar-width: none;
 }
@@ -2106,13 +2114,15 @@ textarea.field {
   display: flex;
   flex-wrap: nowrap;
   gap: 6px;
-  margin-top: 10px;
+  /* 4px of padding all round, taken back by the margins: overflow-x clips at the
+     padding edge, and the 2px ring at 2px offset needs that room. */
+  margin: 6px 0 -4px -4px;
   overflow-x: auto;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
   /* G4: a soft fade says "there is more" better than a chip sliced in half. The
      end padding lets the last chip scroll out from under the fade. */
-  padding-right: 32px;
+  padding: 4px 32px 4px 4px;
   -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
   mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
 }
@@ -3138,8 +3148,8 @@ textarea.field {
 }
 
 .step-time-ringing {
-  border-bottom-color: var(--saffron);
-  background: var(--saffron);
+  border-bottom-color: var(--saffron-fill);
+  background: var(--saffron-fill);
   color: var(--on-saffron);
   animation: cook-pulse 1s ease-in-out infinite;
 }
@@ -3279,7 +3289,7 @@ textarea.field {
   margin-left: auto;
   padding: 1px 8px;
   border-radius: var(--r-pill);
-  background: var(--saffron);
+  background: var(--saffron-fill);
   color: var(--on-saffron);
   font-size: var(--fs-xs);
   font-weight: 700;
@@ -3288,7 +3298,7 @@ textarea.field {
 
 .timer-tray-ringing .timer-tray-more {
   background: var(--on-saffron);
-  color: var(--saffron);
+  color: var(--saffron-fill);
 }
 
 .timer-tray-actions {
@@ -3356,7 +3366,7 @@ textarea.field {
 /* Dark ink, not white: white on --saffron is 3.8:1, under the floor for the
    12px label. */
 .timer-tray-ringing {
-  background: var(--saffron);
+  background: var(--saffron-fill);
   color: var(--on-saffron);
   animation: cook-pulse 1s ease-in-out infinite;
 }
@@ -3388,7 +3398,7 @@ textarea.field {
   height: 16px;
   padding: 0 4px;
   border-radius: 8px;
-  background: var(--saffron);
+  background: var(--saffron-fill);
   color: var(--on-saffron);
   font-size: 11px;
   font-weight: 700;
@@ -4236,7 +4246,9 @@ textarea.field {
   flex-wrap: nowrap;
   align-items: center;
   gap: var(--sp-2);
-  margin: calc(-1 * var(--sp-2)) 0 var(--sp-3);
+  /* 4px padding for the focus ring inside the clip, taken back by the margins. */
+  padding: 4px;
+  margin: calc(-1 * var(--sp-2) - 4px) 0 calc(var(--sp-3) - 4px) -4px;
   /* One row that scrolls sideways: the two tools first, the recipes after. A
      chip cut at the edge is the cue that there are more. */
   overflow-x: auto;

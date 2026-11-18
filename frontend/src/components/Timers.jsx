@@ -8,7 +8,7 @@
 import { useState } from 'react'
 import Sheet from './Sheet.jsx'
 import { formatClock } from '../lib/cook.js'
-import { MAX_SECONDS, isDue, manualSeconds, secondsLeft } from '../lib/timers.js'
+import { MAX_SECONDS, isDue, manualTimerSeconds, secondsLeft } from '../lib/timers.js'
 import { openRecipe, useTimers } from '../lib/useTimers.jsx'
 import { ALERTS_TEXT } from '../lib/push.js'
 
@@ -150,8 +150,8 @@ export function TimersSheet() {
 
   function submit(e) {
     e.preventDefault()
-    const seconds = manualSeconds(minutes)
-    if (seconds === null || seconds < 60) {
+    const seconds = manualTimerSeconds(minutes)
+    if (seconds === null) {
       setError(`A timer needs at least 1 minute, and at most ${MAX_SECONDS / 60}.`)
       return
     }

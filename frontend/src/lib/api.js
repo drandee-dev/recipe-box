@@ -1,3 +1,5 @@
+import { countingFetch } from './inflight.js'
+
 const API_BASE = import.meta.env.VITE_API_BASE || 'http://localhost:8002'
 
 async function post(path, body, token) {
@@ -5,7 +7,7 @@ async function post(path, body, token) {
   // Only the image endpoint sends one. It writes to our storage bucket and keeps
   // what it fetches, so it wants to know whose folder the objects go in.
   if (token) headers.Authorization = `Bearer ${token}`
-  const resp = await fetch(`${API_BASE}${path}`, {
+  const resp = await countingFetch(`${API_BASE}${path}`, {
     method: 'POST',
     headers,
     body: JSON.stringify(body),

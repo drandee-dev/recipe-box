@@ -1,6 +1,12 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { MAX_SECONDS, MAX_TIMERS, isDue, loadTimers, makeTimer, manualSeconds, saveTimers, secondsLeft, sortTimers } from './timers.js'
+import { MAX_SECONDS, MAX_TIMERS, isDue, loadTimers, makeTimer, manualSeconds, manualTimerSeconds, saveTimers, secondsLeft, sortTimers } from './timers.js'
+
+test('the timer form takes at least one minute and at most the cap (X2)', () => {
+  assert.equal(manualTimerSeconds('1'), 60)
+  assert.equal(manualTimerSeconds('240'), MAX_SECONDS)
+  for (const bad of ['0.5', '0', '', '-3', '241', 'abc']) assert.equal(manualTimerSeconds(bad), null, bad)
+})
 
 function shim(initial = {}) {
   const data = { ...initial }

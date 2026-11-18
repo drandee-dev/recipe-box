@@ -497,6 +497,7 @@ export default function ShoppingList({
           className="field"
           type="text"
           placeholder="Add an item (milk, coffee…)"
+          data-draft
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
           enterKeyHint="done"
