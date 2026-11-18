@@ -272,6 +272,23 @@ function matchStep(step, stepGroup, ingredients, alts, hasGroups) {
     .map((f) => ({ index: f.i, shared: f.shared, group: ingredients[f.i].group || null }))
 }
 
+// A step's ingredient lines shown before "Show all" (S2): three rows of two.
+export const NEEDS_SHOWN = 6
+
+// What the open recipe shows under one step: the first NEEDS_SHOWN matches
+// unless unfolded (S2), each with its section in brackets only when shared and
+// not the section the step already sits under (S3). Cook mode shows every line.
+export function stepNeeds(matches, sectionOfStep, open) {
+  const shown = open ? matches : matches.slice(0, NEEDS_SHOWN)
+  return {
+    lines: shown.map((m) => ({
+      index: m.index,
+      section: m.shared && m.group && m.group !== sectionOfStep ? m.group : null,
+    })),
+    folded: open ? 0 : Math.max(0, matches.length - NEEDS_SHOWN),
+  }
+}
+
 // One list per step: [{ index, shared, group }], `index` into recipe.ingredients,
 // in the order the step mentions them.
 export function stepIngredientMap(recipe) {

@@ -99,6 +99,12 @@ test('a range with a mixed-number end, and a hyphenated mixed number (item 11)',
   assert.equal(scaleIngredientText('1 to 1 1/2 cups cotija', 2), '2 to 3 cups cotija')
 })
 
+test('"to" with no amount after it is part of the name, not a range', () => {
+  assert.equal(parseIngredient('1/2 to taste').name, 'to taste')
+  assert.equal(parseIngredient('2 to 3 apples').qty, 2)
+  assert.equal(parseIngredient('2 to 3 apples').name, 'apples')
+})
+
 test('unit aliases collapse to one canonical unit', () => {
   for (const line of ['1 tablespoon butter', '1 tbsp butter', '1 tbs butter']) {
     assert.equal(parseIngredient(line).unit, 'tbsp', line)

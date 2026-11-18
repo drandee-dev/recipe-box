@@ -80,6 +80,12 @@ export function saveTimers(timers, storage = globalThis.localStorage) {
   }
 }
 
+// The timer list's own form takes whole minutes, at least one (X2).
+export function manualTimerSeconds(minutes) {
+  const seconds = manualSeconds(minutes)
+  return seconds !== null && seconds >= 60 ? seconds : null
+}
+
 // Minutes and seconds from the manual form. A bare number is minutes, which is
 // what anyone typing "10" into a timer means. Returns null for nothing usable.
 export function manualSeconds(minutes, seconds = 0) {

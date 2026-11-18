@@ -2,10 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { fullPhotoLink, isMirrored, mirrorSource, needsGlyphRepair, needsMirror } from './images.js'
+import { fullPhotoLink, isMirrored, mirrorSource, needsGlyphRepair, needsMirror, pickFrom } from './images.js'
 
 const BUCKET = 'https://ref.supabase.co/storage/v1/object/public/recipe-images'
-const OURS = `${BUCKET}/user-1/recipe-1-lg.jpg?v=3`
+const OURS = `${BUCKET}/user-1/recipe-1-lg.jpg?v=4`
+const OURS_V3 = `${BUCKET}/user-1/recipe-1-lg.jpg?v=3`
 const OURS_V2 = `${BUCKET}/user-1/recipe-1-lg.jpg?v=2`
 const OURS_V1 = `${BUCKET}/user-1/recipe-1-lg.jpg`
 const POST = 'https://www.instagram.com/reel/DQjVXGrkx8K/'
@@ -33,6 +34,10 @@ test('and so is one repaired by the pipeline that did it badly', () => {
   // v2 filled a large blurred circle over the play button. Those bytes are
   // worse than the ones they replaced, and the only way back is the post.
   assert.equal(needsGlyphRepair({ source_type: 'instagram', image_url: OURS_V2 }), true)
+})
+
+test('and one from v3, whose disc came out pale with a bright rim (H3)', () => {
+  assert.equal(needsGlyphRepair({ source_type: 'instagram', image_url: OURS_V3 }), true)
 })
 
 test('a repair goes back to the post, a first mirror does not', () => {
@@ -91,6 +96,16 @@ test('the version here matches MIRROR_VERSION in the backend', () => {
   const front = here.match(/^const MIRROR_VERSION\s*=\s*(\d+)/m)
   assert.ok(front, 'MIRROR_VERSION not found in lib/images.js')
   assert.equal(front[1], backend[1])
+})
+
+test('only a first mirror of a social import asks for the food pick', () => {
+  assert.equal(pickFrom({ source_type: 'instagram', image_url: THEIRS, source_url: POST }), POST)
+  assert.equal(pickFrom({ source_type: 'tiktok', image_url: THEIRS, source_url: POST }), POST)
+  // A repair, or anything already ours, keeps its photo.
+  assert.equal(pickFrom({ source_type: 'instagram', image_url: OURS_V2, source_url: POST }), undefined)
+  assert.equal(pickFrom({ source_type: 'web', image_url: THEIRS, source_url: POST }), undefined)
+  assert.equal(pickFrom({ source_type: 'tiktok', image_url: THEIRS }), undefined)
+  assert.equal(pickFrom({ source_type: 'tiktok', source_url: POST }), undefined)
 })
 
 test('a photo we do not hold yet is a mirror, not a repair', () => {

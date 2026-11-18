@@ -21,6 +21,7 @@
 import { registerSW } from 'virtual:pwa-register'
 import { useSyncExternalStore } from 'react'
 import { cleanHighlights } from './news.js'
+import { writesInFlight } from './inflight.js'
 
 const CHECK_INTERVAL = 60 * 60 * 1000
 
@@ -99,13 +100,15 @@ export function applyPendingUpdate() {
 // Auto-update (job 2): a waiting update is applied by itself when the app goes
 // to the background with nothing in progress, so nobody has to press Reload; the
 // bar stays for the foreground. "In progress" is a capture (`busy`), any open
-// sheet (cook mode and the editor are sheets) or a focused field with typing in
-// it (the shopping list's add box is not in a sheet).
-export function quietForUpdate(doc = document) {
-  if (busy || !ready || !applyUpdate) return false
+// sheet (cook mode and the editor are sheets), a focused field with typing in
+// it, a `data-draft` field holding text even unfocused (the shopping list's add
+// box is not in a sheet), or a cloud save still on the wire.
+export function quietForUpdate(doc = document, pendingWrites = writesInFlight()) {
+  if (busy || !ready || !applyUpdate || pendingWrites > 0) return false
   if (doc.querySelector('.sheet-backdrop')) return false
   const el = doc.activeElement
   if (el && /^(INPUT|TEXTAREA)$/.test(el.tagName) && el.value) return false
+  if ([...doc.querySelectorAll('[data-draft]')].some((f) => f.value)) return false
   return true
 }
 

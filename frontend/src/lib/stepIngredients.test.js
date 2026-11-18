@@ -5,7 +5,28 @@
 
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { stepIngredientMap } from './stepIngredients.js'
+import { NEEDS_SHOWN, stepIngredientMap, stepNeeds } from './stepIngredients.js'
+
+test('a step shows six lines until unfolded (S2)', () => {
+  const matches = Array.from({ length: 8 }, (_, index) => ({ index }))
+  const folded = stepNeeds(matches, null, false)
+  assert.equal(folded.lines.length, NEEDS_SHOWN)
+  assert.equal(folded.folded, 2)
+  const open = stepNeeds(matches, null, true)
+  assert.equal(open.lines.length, 8)
+  assert.equal(open.folded, 0)
+  assert.equal(stepNeeds(matches.slice(0, 6), null, false).folded, 0)
+})
+
+test('the section bracket is dropped when the step sits in that section (S3)', () => {
+  const matches = [
+    { index: 0, shared: true, group: 'Sauce' },
+    { index: 1, shared: true, group: 'Dough' },
+    { index: 2, shared: false, group: 'Dough' },
+  ]
+  const { lines } = stepNeeds(matches, 'Sauce', false)
+  assert.deepEqual(lines.map((l) => l.section), [null, 'Dough', null])
+})
 
 const SECTIONS = [
   ['For the Crust', [

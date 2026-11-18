@@ -41,8 +41,9 @@ TIMEOUT = 15.0
 # lets the client tell a photo mirrored by an older pipeline from a current one
 # without a new column, and it keeps the "read it off the URL, never a flag"
 # rule the rest of phase 7 follows. v2 was the first play-glyph strip; v3 is the
-# one that divides the dark disc out instead of filling over it.
-MIRROR_VERSION = 3
+# one that divides the dark disc out instead of filling over it; v4 divides it
+# out at the overlay's fixed strength and fills the smeared edge (H3).
+MIRROR_VERSION = 4
 
 # 960 is the copy of record: big enough that we are not the reason a photo looks
 # bad later, small enough to be a couple of hundred KB. 320 covers the 128px card
@@ -136,9 +137,14 @@ def image_for_vision(data: bytes) -> tuple[str, str]:
     JPEG also normalises whatever the origin served (PNG screenshots, WEBP,
     a rotation living in EXIF) into the one format the API definitely accepts.
     """
+    return _vision_jpeg(_open(data))
+
+
+def _vision_jpeg(img: Image.Image) -> tuple[str, str]:
+    """image_for_vision for a picture already decoded (the mirror's, after repair)."""
     from .ai import VISION_MAX_PIXELS, VISION_MAX_PX, VISION_QUALITY
 
-    img = _open(data)
+    img = img.copy()
     img.thumbnail((VISION_MAX_PX, VISION_MAX_PX), Image.LANCZOS)
     width, height = img.size
     if width * height > VISION_MAX_PIXELS:
@@ -264,8 +270,162 @@ def _resolve_source(url: str) -> str:
     return image
 
 
-def mirror_image(user_id: str, recipe_id: str, source_url: str) -> dict:
-    """Fetch, resize and store one recipe photo. Returns the columns to save."""
+# The smallest food crop worth keeping, as a fraction of the cover. The model is
+# told a quarter of the width; height gets less because covers are 9:16.
+MIN_CROP_WIDTH = 0.25
+MIN_CROP_HEIGHT = 0.15
+
+NO_PHOTO = {"image_url": None, "image_thumb_url": None, "image_blur": None}
+
+
+# The grid cell's shape. A clean piece is scored by how much of it a 4:3 cell
+# would show under `object-fit: cover`, so a thin strip loses to a squarer piece.
+CELL_ASPECT = 4 / 3
+# Pieces kept between obstacles; each obstacle can split a piece four ways.
+MAX_PIECES = 64
+
+
+def _pct_box(raw, *, swap=False) -> tuple[int, int, int, int] | None:
+    """A model box as (left, top, right, bottom) in percent, clamped; None if malformed or empty.
+
+    `swap` puts reversed edges in order: right for an obstacle, since dropping a
+    caption box leaves the caption in the crop. A reversed food box stays None."""
+    try:
+        left, top, right, bottom = (int(raw[k]) for k in ("left", "top", "right", "bottom"))
+    except (KeyError, TypeError, ValueError, OverflowError):
+        return None
+    if swap:
+        left, right = sorted((left, right))
+        top, bottom = sorted((top, bottom))
+    left, top, right, bottom = max(0, left), max(0, top), min(100, right), min(100, bottom)
+    return (left, top, right, bottom) if right > left and bottom > top else None
+
+
+def _clean_pieces(food, obstacles):
+    """The food box with every obstacle box cut out, as the axis-aligned pieces left over."""
+    pieces = [food]
+    for ol, ot, orr, ob in obstacles:
+        nxt = []
+        for l, t, r, b in pieces:
+            if orr <= l or ol >= r or ob <= t or ot >= b:
+                nxt.append((l, t, r, b))
+                continue
+            if ot > t:
+                nxt.append((l, t, r, ot))
+            if ob < b:
+                nxt.append((l, ob, r, b))
+            if ol > l:
+                nxt.append((l, t, ol, b))
+            if orr < r:
+                nxt.append((orr, t, r, b))
+        pieces = sorted(nxt, key=lambda p: (p[2] - p[0]) * (p[3] - p[1]), reverse=True)[:MAX_PIECES]
+    return pieces
+
+
+def food_crop(img: Image.Image, pick: dict):
+    """Cut the thumbnail out of the cover from the model's boxes.
+
+    Returns the cropped picture; NO_FOOD when the food box exists but no clean
+    piece of it is big enough (text over all of it); None when the answer is
+    malformed, which the caller treats as "keep the cover".
+
+    The piece is kept exactly, never widened to the grid's 4:3: everything inside
+    it is clean food, and widening it is how a face or a caption comes back.
+    """
+    food = _pct_box(pick.get("food"))
+    if food is None:
+        return None
+    raw = [*(pick.get("text") or []), *(pick.get("people") or [])]
+    obstacles = [b for b in (_pct_box(o, swap=True) for o in raw) if b]
+    w, h = img.size
+
+    def shown(p):  # pixels a 4:3 cover-fit cell keeps of this piece
+        pw, ph = (p[2] - p[0]) * w / 100, (p[3] - p[1]) * h / 100
+        return min(pw, ph * CELL_ASPECT) * min(ph, pw / CELL_ASPECT)
+
+    usable = [
+        p for p in _clean_pieces(food, obstacles)
+        if (p[2] - p[0]) / 100 >= MIN_CROP_WIDTH and (p[3] - p[1]) / 100 >= MIN_CROP_HEIGHT
+    ]
+    if not usable:
+        return NO_FOOD
+    l, t, r, b = max(usable, key=shown)
+    return img.crop((round(w * l / 100), round(h * t / 100), round(w * r / 100), round(h * b / 100)))
+
+
+NO_FOOD = object()
+
+
+def _grid(img: Image.Image) -> Image.Image:
+    """The model's copy only: thin lines every 10% so it measures rather than guesses.
+
+    Each line carries its number: unlabelled, the model counted lines and put
+    caption boxes 10-25% below the real text (job 11 run 3)."""
+    from PIL import ImageDraw, ImageFont
+
+    out = img.copy()
+    draw = ImageDraw.Draw(out)
+    w, h = out.size
+    font = ImageFont.load_default(size=max(10, min(w, h) // 25))
+    label = {"font": font, "fill": (255, 255, 255), "stroke_width": 2, "stroke_fill": (0, 0, 0)}
+    for i in range(1, 10):
+        x, y = w * i / 10, h * i / 10
+        draw.line([(x, 0), (x, h)], fill=(128, 128, 128), width=1)
+        draw.line([(0, y), (w, y)], fill=(128, 128, 128), width=1)
+        draw.text((2, y), str(i * 10), anchor="ld", **label)  # left edge, sitting on its line
+        draw.text((w - 2, y), str(i * 10), anchor="rd", **label)  # right edge too: captions often cover one side
+        draw.text((x + 2, 2), str(i * 10), anchor="lt", **label)  # top edge, beside its line
+    return out
+
+
+def _pick(img: Image.Image, picker, recipe_id: str) -> Image.Image | None:
+    """H1/H4. Returns the food crop, the picture unchanged, or None for "no clean
+    food in it". Any failure is the picture unchanged: the picker can only make a
+    cover better or remove it, never lose a mirror that would have worked."""
+    try:
+        pick = picker(*_vision_jpeg(_grid(img)))
+        if pick.get("verdict") == "none":
+            log.info("no food in the cover for %s", recipe_id)
+            return None
+        cropped = food_crop(img, pick)
+    except Exception as exc:  # junk past the schema (e.g. "text": 5) must not lose the mirror either
+        log.info("food pick failed for %s, keeping the cover: %s", recipe_id, exc)
+        return img
+    if cropped is NO_FOOD:
+        log.info("no clean food in the cover for %s", recipe_id)
+        return None
+    if cropped is None:
+        log.info("unusable food boxes for %s: %s", recipe_id, pick)
+        return img
+    return cropped
+
+
+def _video_pick(video, picker, recipe_id: str) -> Image.Image | None:
+    """H2: the cover had no clean food, so pick the food out of the video still
+    that best shows the dish. None (the tile) when there is no video, no still
+    with food, or any failure on the way."""
+    try:
+        frame = video()
+    except Exception as exc:
+        log.info("no video frame for %s: %s", recipe_id, exc)
+        return None
+    if frame is None:
+        log.info("no video still shows food for %s", recipe_id)
+        return None
+    cropped = _pick(frame, picker, recipe_id)
+    # _pick hands back the picture itself when it fails. Right for a cover, but a
+    # still has been judged only "shows food", faces and captions included: tile.
+    return None if cropped is frame else cropped
+
+
+def mirror_image(user_id: str, recipe_id: str, source_url: str, picker=None, video=None) -> dict:
+    """Fetch, resize and store one recipe photo. Returns the columns to save.
+
+    `picker` (ai.pick_food_crop) is passed only for the first mirror of a social
+    import; with it, the stored photo is the food alone, or NO_PHOTO. `video`, a
+    no-argument callable returning a still or None (TikTok only), is tried when
+    the cover has no clean food.
+    """
     # Both go straight into an object path. They are already validated upstream,
     # but a traversal here would write outside the caller's own folder.
     user_id = str(uuid.UUID(user_id))
@@ -286,6 +446,13 @@ def mirror_image(user_id: str, recipe_id: str, source_url: str) -> dict:
     img, stripped = strip_play_glyph(img)
     if stripped:
         log.info("stripped a play glyph from the cover for %s", recipe_id)
+
+    if picker is not None:
+        img = _pick(img, picker, recipe_id)
+        if img is None and video is not None:
+            img = _video_pick(video, picker, recipe_id)
+        if img is None:
+            return dict(NO_PHOTO)
 
     return _store(user_id, recipe_id, img)
 

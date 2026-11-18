@@ -58,6 +58,9 @@ class ImageRequest(BaseModel):
     # Canonical UUID text, which is what both the DB and the storage path want.
     recipe_id: str = Field(min_length=36, max_length=36)
     url: str = Field(min_length=10, max_length=2000)
+    # The social post the cover came from, sent only on the first mirror right
+    # after an import. Its presence is what asks for the food-only pick (H1/H4).
+    post_url: str | None = Field(default=None, min_length=10, max_length=2000)
 
 
 class UploadImageRequest(BaseModel):
@@ -311,8 +314,51 @@ def _photo_caller(authorization: str | None, recipe_id: str) -> str:
     return user_id
 
 
+def _food_picker(post_url: str | None, request: Request):
+    """ai.pick_food_crop when this mirror should pick the food out of a social
+    cover, else None. The only branch of the image route that reaches the model,
+    so it is the only one metered. Over the cap, or without a model, the mirror
+    simply goes ahead as it always has: a thumbnail is never worth a failed save.
+    """
+    if not post_url or not ai_available():
+        return None
+    from .social import detect_source
+
+    if detect_source(post_url) not in ("tiktok", "instagram"):
+        return None
+    try:
+        meter_caller(request)
+    except HTTPException:
+        return None
+    from .ai import pick_food_crop
+
+    return pick_food_crop
+
+
+def _video_fallback(post_url: str | None, request: Request):
+    """H2 for a TikTok post: a no-argument callable that returns the video still
+    best showing the dish, or None. It runs only when the cover had no clean food,
+    and meters again then, since it spends two more model calls."""
+    from .social import detect_source
+
+    if not post_url or detect_source(post_url) != "tiktok":
+        return None
+
+    def still():
+        try:
+            meter_caller(request)
+        except HTTPException:
+            return None
+        from .ai import pick_frame
+        from .thumbs import best_frame
+
+        return best_frame(post_url, pick_frame)
+
+    return still
+
+
 @app.post("/api/recipes/image")
-def recipe_image(body: ImageRequest, authorization: str | None = Header(default=None)):
+def recipe_image(body: ImageRequest, request: Request, authorization: str | None = Header(default=None)):
     """Mirror a recipe photo into our own bucket. Signed in only.
 
     Unlike the two endpoints above this one keeps what it fetches, so it asks who
@@ -327,8 +373,10 @@ def recipe_image(body: ImageRequest, authorization: str | None = Header(default=
     user_id = _photo_caller(authorization, body.recipe_id)
     from .images import ImageError, mirror_image
 
+    picker = _food_picker(body.post_url, request)
+    video = _video_fallback(body.post_url, request) if picker else None
     try:
-        return mirror_image(user_id, body.recipe_id, body.url)
+        return mirror_image(user_id, body.recipe_id, body.url, picker=picker, video=video)
     except ValueError:
         raise HTTPException(status_code=422, detail="Not a valid recipe id")
     except ImageError as exc:

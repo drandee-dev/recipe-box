@@ -333,7 +333,8 @@ export const AMOUNT = '(?:\\d+(?:\\s+|-)\\d+\\s*/\\s*\\d+|\\d+\\s*[½⅓⅔¼¾�
 // that "2-3 cloves" doubles to "4-6 cloves" rather than collapsing to its low
 // end — takeQuantity drops the high end because a shopping list has to commit to
 // one number, but a recipe on screen has no reason to.
-const RANGE_TAIL = new RegExp(`^\\s*(?:-|–|—|to\\s)\\s*(?:${AMOUNT})?\\s*`)
+// "to" only joins a range when an amount follows: "1/2 to taste" keeps its "to".
+const RANGE_TAIL = new RegExp(`^\\s*(?:[-–—]\\s*(?:${AMOUNT})?|to\\s+(?:${AMOUNT}))\\s*`)
 
 const LEADING_AMOUNT = new RegExp(`^([-*•\\s]*)(${AMOUNT})(?:(\\s*(?:-|–|—|to)\\s*)(${AMOUNT}))?`)
 

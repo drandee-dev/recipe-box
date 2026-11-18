@@ -15,7 +15,7 @@ const BUCKET_PATH = '/storage/v1/object/public/recipe-images/'
 // URL. It is the `?v=N` the upload appends — `MIRROR_VERSION` in images.py, and
 // the two have to move together. Same principle as isMirrored below: the URL
 // says what it is, so there is no column that can disagree with it.
-const MIRROR_VERSION = 3
+const MIRROR_VERSION = 4
 
 // Concurrency for the backfill. Each item is a full download, resize and upload
 // on the backend, so this is about not queueing thirty serverless invocations at
@@ -70,6 +70,14 @@ export function needsGlyphRepair(recipe) {
 export function mirrorSource(recipe) {
   if (needsMirror(recipe)) return recipe.image_url
   return recipe.source_url || recipe.image_url
+}
+
+// The post to pick the food from (H1/H4), or undefined. Only a first mirror of a
+// TikTok or Instagram import: a repair or a backfill leaves existing recipes'
+// photos as they are.
+export function pickFrom(recipe) {
+  const social = recipe?.source_type === 'tiktok' || recipe?.source_type === 'instagram'
+  return social && needsMirror(recipe) && recipe.source_url ? recipe.source_url : undefined
 }
 
 // srcset only exists for mirrored recipes, since a borrowed URL comes in exactly
