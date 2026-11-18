@@ -350,15 +350,24 @@ NO_FOOD = object()
 
 
 def _grid(img: Image.Image) -> Image.Image:
-    """The model's copy only: thin lines every 10% so it measures rather than guesses."""
-    from PIL import ImageDraw
+    """The model's copy only: thin lines every 10% so it measures rather than guesses.
+
+    Each line carries its number: unlabelled, the model counted lines and put
+    caption boxes 10-25% below the real text (job 11 run 3)."""
+    from PIL import ImageDraw, ImageFont
 
     out = img.copy()
     draw = ImageDraw.Draw(out)
     w, h = out.size
+    font = ImageFont.load_default(size=max(10, min(w, h) // 25))
+    label = {"font": font, "fill": (255, 255, 255), "stroke_width": 2, "stroke_fill": (0, 0, 0)}
     for i in range(1, 10):
-        draw.line([(w * i / 10, 0), (w * i / 10, h)], fill=(128, 128, 128), width=1)
-        draw.line([(0, h * i / 10), (w, h * i / 10)], fill=(128, 128, 128), width=1)
+        x, y = w * i / 10, h * i / 10
+        draw.line([(x, 0), (x, h)], fill=(128, 128, 128), width=1)
+        draw.line([(0, y), (w, y)], fill=(128, 128, 128), width=1)
+        draw.text((2, y), str(i * 10), anchor="ld", **label)  # left edge, sitting on its line
+        draw.text((w - 2, y), str(i * 10), anchor="rd", **label)  # right edge too: captions often cover one side
+        draw.text((x + 2, 2), str(i * 10), anchor="lt", **label)  # top edge, beside its line
     return out
 
 

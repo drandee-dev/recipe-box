@@ -122,6 +122,9 @@ class MirrorWithPicker(unittest.TestCase):
         # The flat test cover is one colour; a grid line on the model's copy is grey.
         w, h = seen["img"].size
         self.assertNotEqual(seen["img"].getpixel((w // 10, h // 2)), seen["img"].getpixel((w // 20, h // 2)))
+        # Each line is numbered: white label text sits at the left edge just above the 50% line.
+        band = seen["img"].crop((0, h // 2 - h // 25, w // 10, h // 2)).getdata()
+        self.assertTrue(any(min(p) > 200 for p in band), "no line label on the model's copy")
         self.assertEqual(stored["size"], (360, 640))
 
     def test_without_a_picker_nothing_changes(self):

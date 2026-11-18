@@ -293,9 +293,12 @@ def structure_recipe_image(image_b64: str, media_type: str, *, text: str = "", c
 # most covers (job 11, first run).
 PICK_SYSTEM = """You locate things in a social media cover image so a recipe thumbnail can be cut from it.
 
-Thin grey grid lines every 10% have been drawn over the image to help you measure. They are
-not part of the picture. Give every box as whole percentages: left and right of the image's
-width, top and bottom of its height, 0 at the top-left corner, 100 at the far edge.
+Thin grey grid lines every 10% have been drawn over the image to help you measure, each
+labelled with its percentage in white numbers at the image edges. They are not part of the
+picture. Give every box as whole percentages: left and right of the image's width, top and
+bottom of its height, 0 at the top-left corner, 100 at the far edge. Read each edge off the
+labelled lines nearest it; never count lines. A text box's top must be at or above the top of
+its first row of letters, and its bottom at or below its last row.
 
 - food: the tightest box around the main dish (the cooked or prepared food, with its plate,
   bowl, pan or tray). Hands holding or serving the food count as part of it.
