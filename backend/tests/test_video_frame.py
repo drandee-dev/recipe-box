@@ -107,6 +107,77 @@ class MirrorWithVideo(unittest.TestCase):
         result, _, _ = self._mirror([NONE, NONE], lambda: still())
         self.assertEqual(result, dict(images.NO_PHOTO))
 
+    def test_a_failed_or_malformed_pick_on_the_still_is_the_tile_not_the_whole_still(self):
+        malformed = {**ALL_FOOD, "food": {"left": 90, "top": 90, "right": 10, "bottom": 10}}
+        for second in (RuntimeError("budget"), malformed):
+            result, stored, _ = self._mirror([NONE, second], lambda: still())
+            self.assertEqual(result, dict(images.NO_PHOTO), second)
+            self.assertEqual(stored, {})
+
+
+class Resp:
+    def __init__(self, status=200, content=b"<html>", ctype="text/html", url="https://www.tiktok.com/@a/video/1"):
+        self.status_code, self.content, self.url = status, content, url
+        self.text = content.decode("latin-1")
+        self.headers = {"content-type": ctype}
+
+    def iter_bytes(self):
+        yield from (self.content[i : i + 4] for i in range(0, len(self.content), 4))
+
+    def __enter__(self):
+        return self
+
+    def __exit__(self, *_):
+        return False
+
+
+class TikTokVideo(unittest.TestCase):
+    PLAY = "https://v16.tiktokcdn.com/video.mp4"
+
+    def _fetch(self, page=None, video=None, item=None):
+        from contextlib import contextmanager
+
+        client = MagicMock()
+        client.get.return_value = page or Resp()
+        client.stream.return_value = video or Resp(content=b"mp4-bytes", ctype="video/mp4", url=self.PLAY)
+
+        @contextmanager
+        def guarded():
+            yield client, lambda _url: None
+
+        item = {"video": {"playAddr": self.PLAY}} if item is None else item
+        with patch("app.thumbs.guarded_client", guarded), patch("app.thumbs.assert_public_host") as public, patch(
+            "app.social._tiktok_item", return_value=item
+        ):
+            return thumbs.tiktok_video("https://www.tiktok.com/@a/video/1"), public
+
+    def test_the_video_bytes_come_back_and_the_video_host_is_checked(self):
+        data, public = self._fetch()
+        self.assertEqual(data, b"mp4-bytes")
+        public.assert_any_call(self.PLAY)
+
+    def test_each_refusal_is_an_extract_error(self):
+        from app.extract import ExtractError
+
+        cases = {
+            "page status": {"page": Resp(status=404)},
+            "no video address": {"item": {"video": {}}},
+            "not a video": {"video": Resp(content=b"x", ctype="text/html", url=self.PLAY)},
+        }
+        for name, kw in cases.items():
+            with self.assertRaises(ExtractError, msg=name):
+                self._fetch(**kw)
+
+    def test_size_and_time_limits_stop_the_download(self):
+        from app.extract import ExtractError
+
+        with patch("app.thumbs.MAX_VIDEO_BYTES", 4), self.assertRaisesRegex(ExtractError, "too large"):
+            self._fetch()
+        with patch("app.thumbs.MAX_BYTES", 2), self.assertRaisesRegex(ExtractError, "page too large"):
+            self._fetch()
+        with patch("app.thumbs.VIDEO_DEADLINE_SECONDS", -1), self.assertRaisesRegex(ExtractError, "too slow"):
+            self._fetch()
+
 
 class WhenTheVideoIsTried(unittest.TestCase):
     def test_only_a_tiktok_post_gets_a_video(self):

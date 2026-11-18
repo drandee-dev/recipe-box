@@ -5,11 +5,16 @@ finished dish is in the video. Used only after the cover pick found no food
 (`images._video_pick`). This module only fetches and decodes; it keeps nothing.
 """
 
-from .extract import ExtractError, assert_public_host, guarded_client
+import time
+
+from .extract import MAX_BYTES, ExtractError, assert_public_host, guarded_client
 
 # A minute of TikTok video is about 12 MB. Anything past this is not a recipe
 # short, and the function should not hold it in memory.
 MAX_VIDEO_BYTES = 24 * 1024 * 1024
+# Page plus video, whole. The per-read timeout alone lets a drip-fed body run
+# past the function's own limit; the live check took 2.5-6 s.
+VIDEO_DEADLINE_SECONDS = 20
 FRAMES = 12
 SHEET_COLUMNS = 4
 TILE_WIDTH = 270  # 9:16 tiles, so the sheet is 1080 wide before the vision shrink
@@ -24,11 +29,14 @@ def tiktok_video(url: str) -> bytes:
     from . import social
 
     assert_public_host(url)
+    deadline = time.monotonic() + VIDEO_DEADLINE_SECONDS
     with guarded_client() as (client, check):
         page = client.get(url)
         check(str(page.url))
         if page.status_code != 200:
             raise ExtractError(f"page answered {page.status_code}")
+        if len(page.content) > MAX_BYTES:
+            raise ExtractError("page too large")
         video = social._tiktok_item(page.text).get("video")
         play = video.get("playAddr") if isinstance(video, dict) else None
         if not isinstance(play, str) or not play.startswith("http"):
@@ -44,6 +52,8 @@ def tiktok_video(url: str) -> bytes:
                 total += len(chunk)
                 if total > MAX_VIDEO_BYTES:
                     raise ExtractError("video too large")
+                if time.monotonic() > deadline:
+                    raise ExtractError("video too slow")
                 chunks.append(chunk)
     return b"".join(chunks)
 

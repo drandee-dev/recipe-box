@@ -412,7 +412,10 @@ def _video_pick(video, picker, recipe_id: str) -> Image.Image | None:
     if frame is None:
         log.info("no video still shows food for %s", recipe_id)
         return None
-    return _pick(frame, picker, recipe_id)
+    cropped = _pick(frame, picker, recipe_id)
+    # _pick hands back the picture itself when it fails. Right for a cover, but a
+    # still has been judged only "shows food", faces and captions included: tile.
+    return None if cropped is frame else cropped
 
 
 def mirror_image(user_id: str, recipe_id: str, source_url: str, picker=None, video=None) -> dict:
