@@ -335,6 +335,28 @@ def _food_picker(post_url: str | None, request: Request):
     return pick_food_crop
 
 
+def _video_fallback(post_url: str | None, request: Request):
+    """H2 for a TikTok post: a no-argument callable that returns the video still
+    best showing the dish, or None. It runs only when the cover had no clean food,
+    and meters again then, since it spends two more model calls."""
+    from .social import detect_source
+
+    if not post_url or detect_source(post_url) != "tiktok":
+        return None
+
+    def still():
+        try:
+            meter_caller(request)
+        except HTTPException:
+            return None
+        from .ai import pick_frame
+        from .thumbs import best_frame
+
+        return best_frame(post_url, pick_frame)
+
+    return still
+
+
 @app.post("/api/recipes/image")
 def recipe_image(body: ImageRequest, request: Request, authorization: str | None = Header(default=None)):
     """Mirror a recipe photo into our own bucket. Signed in only.
@@ -352,8 +374,9 @@ def recipe_image(body: ImageRequest, request: Request, authorization: str | None
     from .images import ImageError, mirror_image
 
     picker = _food_picker(body.post_url, request)
+    video = _video_fallback(body.post_url, request) if picker else None
     try:
-        return mirror_image(user_id, body.recipe_id, body.url, picker=picker)
+        return mirror_image(user_id, body.recipe_id, body.url, picker=picker, video=video)
     except ValueError:
         raise HTTPException(status_code=422, detail="Not a valid recipe id")
     except ImageError as exc:

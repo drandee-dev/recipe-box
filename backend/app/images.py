@@ -400,11 +400,28 @@ def _pick(img: Image.Image, picker, recipe_id: str) -> Image.Image | None:
     return cropped
 
 
-def mirror_image(user_id: str, recipe_id: str, source_url: str, picker=None) -> dict:
+def _video_pick(video, picker, recipe_id: str) -> Image.Image | None:
+    """H2: the cover had no clean food, so pick the food out of the video still
+    that best shows the dish. None (the tile) when there is no video, no still
+    with food, or any failure on the way."""
+    try:
+        frame = video()
+    except Exception as exc:
+        log.info("no video frame for %s: %s", recipe_id, exc)
+        return None
+    if frame is None:
+        log.info("no video still shows food for %s", recipe_id)
+        return None
+    return _pick(frame, picker, recipe_id)
+
+
+def mirror_image(user_id: str, recipe_id: str, source_url: str, picker=None, video=None) -> dict:
     """Fetch, resize and store one recipe photo. Returns the columns to save.
 
     `picker` (ai.pick_food_crop) is passed only for the first mirror of a social
-    import; with it, the stored photo is the food alone, or NO_PHOTO.
+    import; with it, the stored photo is the food alone, or NO_PHOTO. `video`, a
+    no-argument callable returning a still or None (TikTok only), is tried when
+    the cover has no clean food.
     """
     # Both go straight into an object path. They are already validated upstream,
     # but a traversal here would write outside the caller's own folder.
@@ -429,6 +446,8 @@ def mirror_image(user_id: str, recipe_id: str, source_url: str, picker=None) -> 
 
     if picker is not None:
         img = _pick(img, picker, recipe_id)
+        if img is None and video is not None:
+            img = _video_pick(video, picker, recipe_id)
         if img is None:
             return dict(NO_PHOTO)
 
