@@ -14,7 +14,7 @@
 // `upcoming` announces work before it ships and carries the feedback button.
 // Closing the banner remembers the entry's id, so a new id brings it back.
 
-export const APP_VERSION = '1.1.2'
+export const APP_VERSION = '1.1.3'
 
 // What the update bar shows from version.json: up to three plain short lines.
 // Defensive about the shape since it arrives over the network from a build this
@@ -28,6 +28,27 @@ export function cleanHighlights(value) {
 }
 
 export const NEWS = [
+  {
+    id: '1.1.3',
+    kind: 'release',
+    version: '1.1.3',
+    date: '2026-11-18',
+    title: 'Version 1.1.3',
+    body: 'Recipe photos from TikTok and Instagram now show the food. Tap to see what changed.',
+    highlights: [
+      'Imported TikTok and Instagram photos show just the food',
+      'Play buttons no longer cover recipe photos',
+      'A shopping item you are typing survives an update',
+    ],
+    notes: [
+      'When you import a TikTok or Instagram recipe, its photo is trimmed to the food, leaving out captions and faces.',
+      'If a TikTok cover shows no food, the recipe takes a picture of the dish from its video instead. When nothing clean is found, the recipe shows its coloured tile.',
+      'The play button and its ring are cleared off Instagram reel covers.',
+      'An item you are typing into the shopping list, or a change that is still saving, is no longer lost when an update installs.',
+      'Amounts like "1/2 to taste" keep all their words.',
+      'Text on the saffron colour is easier to read, and buttons in rows that scroll sideways show their full focus outline.',
+    ],
+  },
   {
     id: '1.1.2',
     kind: 'release',
