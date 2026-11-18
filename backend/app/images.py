@@ -278,23 +278,88 @@ MIN_CROP_HEIGHT = 0.15
 NO_PHOTO = {"image_url": None, "image_thumb_url": None, "image_blur": None}
 
 
-def food_crop(img: Image.Image, pick: dict) -> Image.Image | None:
-    """The model's rectangle, cut out. None when the answer is not a usable box.
+# The grid cell's shape. A clean piece is scored by how much of it a 4:3 cell
+# would show under `object-fit: cover`, so a thin strip loses to a squarer piece.
+CELL_ASPECT = 4 / 3
+# Pieces kept between obstacles; each obstacle can split a piece four ways.
+MAX_PIECES = 64
 
-    The box is kept exactly, never widened to the grid's 4:3: everything inside
-    it is clean food, and widening it is how a face or a caption comes back.
-    `object-fit: cover` trims a tall box from its middle, which is still food.
-    """
+
+def _pct_box(raw) -> tuple[int, int, int, int] | None:
+    """A model box as (left, top, right, bottom) in percent, clamped; None if malformed or empty."""
     try:
-        left, top, right, bottom = (int(pick[k]) for k in ("left", "top", "right", "bottom"))
+        left, top, right, bottom = (int(raw[k]) for k in ("left", "top", "right", "bottom"))
     except (KeyError, TypeError, ValueError):
         return None
-    left, top = max(0, left), max(0, top)
-    right, bottom = min(100, right), min(100, bottom)
-    if (right - left) / 100 < MIN_CROP_WIDTH or (bottom - top) / 100 < MIN_CROP_HEIGHT:
+    left, top, right, bottom = max(0, left), max(0, top), min(100, right), min(100, bottom)
+    return (left, top, right, bottom) if right > left and bottom > top else None
+
+
+def _clean_pieces(food, obstacles):
+    """The food box with every obstacle box cut out, as the axis-aligned pieces left over."""
+    pieces = [food]
+    for ol, ot, orr, ob in obstacles:
+        nxt = []
+        for l, t, r, b in pieces:
+            if orr <= l or ol >= r or ob <= t or ot >= b:
+                nxt.append((l, t, r, b))
+                continue
+            if ot > t:
+                nxt.append((l, t, r, ot))
+            if ob < b:
+                nxt.append((l, ob, r, b))
+            if ol > l:
+                nxt.append((l, t, ol, b))
+            if orr < r:
+                nxt.append((orr, t, r, b))
+        pieces = sorted(nxt, key=lambda p: (p[2] - p[0]) * (p[3] - p[1]), reverse=True)[:MAX_PIECES]
+    return pieces
+
+
+def food_crop(img: Image.Image, pick: dict):
+    """Cut the thumbnail out of the cover from the model's boxes.
+
+    Returns the cropped picture; NO_FOOD when the food box exists but no clean
+    piece of it is big enough (text over all of it); None when the answer is
+    malformed, which the caller treats as "keep the cover".
+
+    The piece is kept exactly, never widened to the grid's 4:3: everything inside
+    it is clean food, and widening it is how a face or a caption comes back.
+    """
+    food = _pct_box(pick.get("food"))
+    if food is None:
         return None
+    obstacles = [b for b in map(_pct_box, [*(pick.get("text") or []), *(pick.get("people") or [])]) if b]
     w, h = img.size
-    return img.crop((round(w * left / 100), round(h * top / 100), round(w * right / 100), round(h * bottom / 100)))
+
+    def shown(p):  # pixels a 4:3 cover-fit cell keeps of this piece
+        pw, ph = (p[2] - p[0]) * w / 100, (p[3] - p[1]) * h / 100
+        return min(pw, ph * CELL_ASPECT) * min(ph, pw / CELL_ASPECT)
+
+    usable = [
+        p for p in _clean_pieces(food, obstacles)
+        if (p[2] - p[0]) / 100 >= MIN_CROP_WIDTH and (p[3] - p[1]) / 100 >= MIN_CROP_HEIGHT
+    ]
+    if not usable:
+        return NO_FOOD
+    l, t, r, b = max(usable, key=shown)
+    return img.crop((round(w * l / 100), round(h * t / 100), round(w * r / 100), round(h * b / 100)))
+
+
+NO_FOOD = object()
+
+
+def _grid(img: Image.Image) -> Image.Image:
+    """The model's copy only: thin lines every 10% so it measures rather than guesses."""
+    from PIL import ImageDraw
+
+    out = img.copy()
+    draw = ImageDraw.Draw(out)
+    w, h = out.size
+    for i in range(1, 10):
+        draw.line([(w * i / 10, 0), (w * i / 10, h)], fill=(128, 128, 128), width=1)
+        draw.line([(0, h * i / 10), (w, h * i / 10)], fill=(128, 128, 128), width=1)
+    return out
 
 
 def _pick(img: Image.Image, picker, recipe_id: str) -> Image.Image | None:
@@ -302,16 +367,19 @@ def _pick(img: Image.Image, picker, recipe_id: str) -> Image.Image | None:
     food in it". Any failure is the picture unchanged: the picker can only make a
     cover better or remove it, never lose a mirror that would have worked."""
     try:
-        pick = picker(*_vision_jpeg(img))
+        pick = picker(*_vision_jpeg(_grid(img)))
     except Exception as exc:
         log.info("food pick failed for %s, keeping the cover: %s", recipe_id, exc)
         return img
     if pick.get("verdict") == "none":
-        log.info("no clean food in the cover for %s", recipe_id)
+        log.info("no food in the cover for %s", recipe_id)
         return None
     cropped = food_crop(img, pick)
+    if cropped is NO_FOOD:
+        log.info("no clean food in the cover for %s", recipe_id)
+        return None
     if cropped is None:
-        log.info("unusable food crop for %s: %s", recipe_id, pick)
+        log.info("unusable food boxes for %s: %s", recipe_id, pick)
         return img
     return cropped
 
