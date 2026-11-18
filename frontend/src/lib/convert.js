@@ -199,7 +199,18 @@ export function convertTemperatures(text, mode) {
   }, source)
 }
 
-// The one call the screens make for an ingredient line: scale it, then convert it.
+// R5: a range is set "2-3". The app's face draws its en dash as wide as an em
+// dash, so "2 – 3" read as "2 —3". Only a dash between two amounts changes; a
+// lone hyphen with no spaces ("2-3", "1-1/2") is already right.
+const RANGE_DIGIT = '[\\d½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]'
+const RANGE_DASH = new RegExp(`(${RANGE_DIGIT})(?:\\s*[–—]\\s*|\\s+-\\s+)(?=\\d|${RANGE_DIGIT})`, 'g')
+
+export function tidyRanges(text) {
+  return String(text ?? '').replace(RANGE_DASH, '$1-')
+}
+
+// The one call the screens make for an ingredient line: scale it, convert it,
+// then set its ranges.
 export function displayIngredient(raw, { factor = 1, units = 'original' } = {}) {
-  return convertLine(scaleIngredientText(raw, factor), units)
+  return tidyRanges(convertLine(scaleIngredientText(raw, factor), units))
 }

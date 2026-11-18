@@ -2,7 +2,7 @@
 // sheet, and on an open recipe to flip that one recipe without changing the
 // setting. The styling is the feedback sheet's Suggestion / Bug control.
 
-const OPTIONS = [
+export const OPTIONS = [
   ['original', 'As written'],
   ['metric', 'Metric'],
   ['us', 'US'],

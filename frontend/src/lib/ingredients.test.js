@@ -79,6 +79,26 @@ test('a range takes its low end', () => {
   assert.equal(parseIngredient('2 to 3 cloves garlic').unit, 'clove')
 })
 
+test('a range with a mixed-number end, and a hyphenated mixed number (item 11)', () => {
+  // Each used to leave "/2" or "1/2" in the name and the wrong amount on the list.
+  const flour = parseIngredient('1-1/2 cups flour')
+  assert.equal(flour.qty, 1.5)
+  assert.equal(flour.unit, 'cup')
+  assert.equal(flour.name, 'flour')
+  const cheese = parseIngredient('1 to 1 1/2 cups cotija cheese')
+  assert.equal(cheese.qty, 1)
+  assert.equal(cheese.unit, 'cup')
+  assert.equal(cheese.name, 'cotija cheese')
+  const roast = parseIngredient('2 1/2-3 lb roast')
+  assert.equal(roast.qty, 2.5)
+  assert.equal(roast.unit, 'lb')
+  assert.equal(roast.name, 'roast')
+  assert.equal(parseIngredient('½-1 tsp salt').qty, 0.5)
+  assert.equal(parseIngredient('½-1 tsp salt').name, 'salt')
+  assert.equal(scaleIngredientText('1-1/2 cups flour', 2), '3 cups flour')
+  assert.equal(scaleIngredientText('1 to 1 1/2 cups cotija', 2), '2 to 3 cups cotija')
+})
+
 test('unit aliases collapse to one canonical unit', () => {
   for (const line of ['1 tablespoon butter', '1 tbsp butter', '1 tbs butter']) {
     assert.equal(parseIngredient(line).unit, 'tbsp', line)

@@ -1621,11 +1621,39 @@ textarea.field {
 /* The serving stepper (finding 12). It sits on a quiet surface rather than
    floating in the text column because it is a control, and the two glyphs beside
    a number need something to say where the control ends. */
-.detail-servings {
+/* R4: the time line with "I cooked this" at its end. */
+.detail-metarow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.detail-metarow .detail-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-cooked-btn {
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+/* R3: the stepper and the units menu on one row, the stepper taking the room. */
+.detail-settings {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  margin: var(--sp-4) 0 0;
+  margin: var(--sp-4) 0 var(--sp-4);
+}
+
+.detail-servings {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
   padding: 4px 4px 4px var(--sp-3);
   border: 1px solid var(--line);
   border-radius: var(--r);
@@ -1707,7 +1735,8 @@ textarea.field {
    palette rule from pass 1a. Off, it is a hairline outline of the same glyph,
    which keeps the head from changing width when it flips. */
 .detail-star,
-.detail-more {
+.detail-more,
+.sheet-close-icon {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -3368,8 +3397,39 @@ textarea.field {
   margin: var(--sp-4) 0;
 }
 
+/* A pill showing the current choice, with the native select laid invisibly over
+   it so the platform picker opens (the same pattern as the recipes sort). */
 .detail-units {
-  margin: var(--sp-3) 0 var(--sp-4);
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-left: auto;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--txt);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.detail-units select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  font-size: var(--fs-input);
+  cursor: pointer;
+}
+
+.detail-units:has(select:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .account-units .account-hint {
