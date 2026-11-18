@@ -110,6 +110,12 @@ export function baseServings(recipe) {
   return Number.isFinite(n) && n > 0 ? n : null
 }
 
+// X3: the editor refuses servings whose number is 0, the one case `baseServings`
+// rejects that someone actually types. No number at all ("a crowd") is fine.
+export function servingsRefused(servings) {
+  return /\d/.test(String(servings ?? '')) && baseServings({ servings }) === null
+}
+
 // The stepper's own label, in the recipe's wording rather than ours. The count
 // is written back into the string it came out of, so "Makes 12 cookies" doubles
 // to "Makes 24 cookies" instead of becoming "Serves 24" — the recipe already
@@ -151,8 +157,11 @@ export function metaParts(recipe, { exact = false, servings = true } = {}) {
     parts.push(/serv|portion|makes/i.test(raw) ? raw : `Serves ${raw}`)
   }
   // A link card has neither, and an empty meta line reads as a rendering bug.
+  // Only something with a link is a saved link: a recipe written by hand with
+  // just a title so far was being called one.
   if (parts.length === 0) {
-    parts.push(recipe.ingredients?.length > 0 ? `${recipe.ingredients.length} ingredients` : 'Saved link')
+    if (recipe.ingredients?.length > 0) parts.push(`${recipe.ingredients.length} ingredients`)
+    else parts.push(recipe.source_url ? 'Saved link' : 'No details yet')
   }
   return parts
 }

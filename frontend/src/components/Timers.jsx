@@ -71,13 +71,18 @@ export function TimerTray({ inline = false, current = null }) {
       </span>
       <button type="button" className="timer-tray-main" onClick={() => setListOpen(true)}>
         <ClockIcon />
+        {/* T1: one line, time first then the name. T3: further timers are a
+            "+1" badge, which an ellipsis can no longer cut off. */}
         <span className="timer-tray-text">
           <span className="timer-tray-clock">{due ? "Time's up" : formatClock(secondsLeft(lead, now))}</span>
-          <span className="timer-tray-label">
-            {describe(lead)}
-            {more > 0 ? ` · +${more} more` : ''}
-          </span>
+          <span className="timer-tray-label">{describe(lead)}</span>
         </span>
+        {more > 0 && (
+          <span className="timer-tray-more">
+            +{more}
+            <span className="rb-sr-only"> more {more === 1 ? 'timer' : 'timers'}</span>
+          </span>
+        )}
       </button>
       {/* Both options on one row below the text, so each is a full-width target
           rather than two squeezed beside the clock. */}
@@ -146,8 +151,8 @@ export function TimersSheet() {
   function submit(e) {
     e.preventDefault()
     const seconds = manualSeconds(minutes)
-    if (seconds === null) {
-      setError(`Enter a number of minutes, up to ${MAX_SECONDS / 60}.`)
+    if (seconds === null || seconds < 60) {
+      setError(`A timer needs at least 1 minute, and at most ${MAX_SECONDS / 60}.`)
       return
     }
     start({ label: name.trim() || `${minutes} min`, seconds })
@@ -188,7 +193,9 @@ export function TimersSheet() {
         </ul>
       )}
 
-      <form className="timers-add" onSubmit={submit}>
+      {/* noValidate: the browser's own min check blocked -5 before submit ran,
+          and iOS Safari shows no bubble for it, so Start silently did nothing. */}
+      <form className="timers-add" onSubmit={submit} noValidate>
         <h3 className="detail-heading">Add a timer</h3>
         <div className="timers-add-fields">
           <input
@@ -204,12 +211,16 @@ export function TimersSheet() {
             className="field timers-minutes"
             type="number"
             inputMode="decimal"
-            min="0"
+            min="1"
             step="any"
+            aria-invalid={Boolean(error)}
             value={minutes}
             placeholder="Minutes"
             aria-label="Minutes"
-            onChange={(e) => setMinutes(e.target.value)}
+            onChange={(e) => {
+              setMinutes(e.target.value)
+              setError('')
+            }}
           />
         </div>
         {error && <p className="timers-error" role="alert">{error}</p>}

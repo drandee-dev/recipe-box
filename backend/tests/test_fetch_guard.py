@@ -47,6 +47,12 @@ class Guard(unittest.TestCase):
         with self.assertRaises(ExtractError):
             assert_public_host("http://this-host-does-not-exist.invalid/x")
 
+    def test_a_host_that_cannot_be_encoded_is_refused_not_raised(self):
+        """An empty label fails in the codec before any lookup, as a UnicodeError
+        that every caller's `except ExtractError` let through as a 502."""
+        with self.assertRaises(ExtractError):
+            assert_public_host("https://a..tiktok.com/x")
+
 
 class GuardedClient(unittest.TestCase):
     def test_it_yields_a_client_and_a_working_check(self):

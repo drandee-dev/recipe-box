@@ -31,9 +31,9 @@ from . import push
 
 log = logging.getLogger("recipe.release")
 
-RELEASE_VERSION = "1.1.1"
-TITLE = "Recipe Box 1.1.1 is ready"
-BODY = "Open Recipe Box to update. A bar now tells you when the next update is ready."
+RELEASE_VERSION = "1.1.2"
+TITLE = "Recipe Box 1.1.2 is ready"
+BODY = "Open Recipe Box to update. A tidier look, and updates now install on their own."
 
 TIMEOUT = 5.0
 # ponytail: one page of subscribers. A few phones each is the scale; past this
@@ -146,15 +146,22 @@ def _record_sent(version: str, sent: int) -> None:
 
 def payload_for(origin: str, highlights=None) -> str:
     """A Declarative Web Push (the shape push.payload_for sends): the payload is
-    the notification, and `navigate` opens the app."""
+    the notification, and `navigate` opens the app.
+
+    `tag` keeps it from replacing a running timer's notification (push-sw.js
+    falls back to 'timer'). `app_badge` badges the home-screen icon on iOS; it is
+    top level, where WebKit bug 293457 moved it from inside `notification`. Which
+    placement his iPhone reads is unproven until a real announcement lands."""
     return json.dumps(
         {
             "web_push": 8030,
+            "app_badge": "1",
             "notification": {
                 "title": TITLE,
                 "body": summary_for(highlights),
                 "silent": False,
                 "navigate": f"{origin}/",
+                "tag": "release",
             },
         }
     )

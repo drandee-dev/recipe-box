@@ -17,6 +17,7 @@ came back with a name, on a call that had already been paid for — and the
 link-card path was throwing it away.
 """
 
+import json
 import os
 import sys
 import unittest
@@ -86,6 +87,113 @@ class FetchPost(unittest.TestCase):
             post = social.fetch_post("https://www.tiktok.com/@a/video/1", "tiktok")
         self.assertEqual(post["caption"], PUMPKIN, "the model and the description need it all")
         self.assertEqual(post["title"], "Pumpkin Cheesecake Cookies")
+
+
+def tiktok_page(item: dict | None) -> str:
+    """A TikTok page the way it is served: the post as JSON inside one tag."""
+    scope = {"webapp.app-context": {}}
+    if item is not None:
+        scope["webapp.video-detail"] = {"itemInfo": {"itemStruct": item}, "statusCode": 0}
+    return (
+        '<html><script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">'
+        + json.dumps({"__DEFAULT_SCOPE__": scope})
+        + "</script></html>"
+    )
+
+
+# What oEmbed answers for a video since it stopped carrying the caption: the
+# keys of a real response, none of which is `title` or `thumbnail_url`.
+OEMBED_NOW = {"version": "1.0", "type": "video", "html": "<iframe></iframe>", "embed_type": "video"}
+
+
+class FetchPostFromThePage(unittest.TestCase):
+    """Every TikTok import was saving as an empty "Saved from tiktok.com" card."""
+
+    def test_a_video_is_read_off_its_page_when_oembed_has_no_caption(self):
+        page = tiktok_page(
+            {
+                "desc": PUMPKIN,
+                "video": {"originCover": "https://cdn/origin.jpg", "cover": "https://cdn/c.jpg"},
+                "author": {"nickname": "In Bloom"},
+            }
+        )
+        landed = "https://www.tiktok.com/@a/video/1?_r=1"
+        with (
+            patch.object(social, "_fetch_json", return_value=OEMBED_NOW),
+            patch.object(social, "fetch_page", return_value=(landed, page)),
+        ):
+            post = social.fetch_post("https://www.tiktok.com/t/ZTabc/", "tiktok")
+        self.assertEqual(post["caption"], PUMPKIN)
+        self.assertEqual(post["title"], "Pumpkin Cheesecake Cookies")
+        self.assertEqual(post["image_url"], "https://cdn/origin.jpg")
+        self.assertEqual(post["author"], "In Bloom")
+
+    def test_a_photo_post_is_read_from_the_video_shape_of_its_address(self):
+        """oEmbed refuses a photo post and its own page carries no post."""
+        landed = "https://www.tiktok.com/@a/photo/77?_r=1&_t=x"
+        item = {
+            "desc": "Breakfast casserole. Ingredients: 6 eggs",
+            "imagePost": {"images": [{"imageURL": {"urlList": ["https://cdn/p1.jpg"]}}]},
+            "video": {"cover": "https://cdn/blank.jpg"},
+        }
+        with (
+            patch.object(social, "_fetch_json", return_value=None),
+            patch.object(social, "fetch_page", return_value=(landed, tiktok_page(None))),
+            patch.object(social, "fetch_html", return_value=tiktok_page(item)) as second,
+        ):
+            post = social.fetch_post("https://www.tiktok.com/t/ZPabc/", "tiktok")
+        second.assert_called_once_with("https://www.tiktok.com/@a/video/77")
+        self.assertEqual(post["caption"], "Breakfast casserole. Ingredients: 6 eggs")
+        self.assertEqual(post["image_url"], "https://cdn/p1.jpg")
+
+    def test_a_page_with_no_post_in_it_is_an_empty_post_not_an_error(self):
+        landed = "https://www.tiktok.com/@a/video/1"
+        for page in (tiktok_page(None), "<html>nothing</html>", tiktok_page({"desc": 5})):
+            with (
+                self.subTest(page=page[:40]),
+                patch.object(social, "_fetch_json", return_value=OEMBED_NOW),
+                patch.object(social, "fetch_page", return_value=(landed, page)),
+                patch.object(social, "fetch_html", return_value=page),
+            ):
+                post = social.fetch_post(landed, "tiktok")
+            self.assertEqual((post["caption"], post["image_url"]), ("", ""))
+
+    def test_an_unreachable_page_is_an_empty_post_not_an_error(self):
+        with (
+            patch.object(social, "_fetch_json", return_value=OEMBED_NOW),
+            patch.object(social, "fetch_page", side_effect=social.ExtractError("blocked")),
+            patch.object(social, "fetch_html", side_effect=social.ExtractError("blocked")),
+        ):
+            post = social.fetch_post("https://www.tiktok.com/@a/video/1", "tiktok")
+        self.assertEqual(post["caption"], "")
+
+
+class ImportedTextIsPlain(unittest.TestCase):
+    """Steps read "(Noodles &amp; Stir Fry)" and "9&#215;13-inch" in the app."""
+
+    def test_entities_leave_the_text_and_never_touch_a_link(self):
+        from app import extract
+
+        raw = {
+            "title": "Mac &amp; Cheese",
+            "source_url": "https://example.com/r?a=1&amp;b=2",
+            "image_url": "https://cdn.example.com/x.jpg?w=1&copy=2",
+            "ingredients": [{"raw": "1 9&#215;13-inch pan", "item": None, "group": "Pan &amp; lid"}],
+            "instructions": ["Use for Chow Mein (Noodles &amp; Stir Fry)."],
+            "instruction_groups": None,
+            "description": "R&D kitchen, salt&pepper, &copy that",
+            "servings": "4",
+        }
+        with patch.object(extract, "_extract_recipe", return_value=raw):
+            got = extract.extract_recipe("https://example.com/r")
+        self.assertEqual(got["title"], "Mac & Cheese")
+        self.assertEqual(got["ingredients"][0]["raw"], "1 9×13-inch pan")
+        self.assertEqual(got["ingredients"][0]["group"], "Pan & lid")
+        self.assertEqual(got["instructions"], ["Use for Chow Mein (Noodles & Stir Fry)."])
+        # No semicolon, no entity: ordinary ampersands in prose are left alone.
+        self.assertEqual(got["description"], "R&D kitchen, salt&pepper, &copy that")
+        self.assertEqual(got["source_url"], raw["source_url"])
+        self.assertEqual(got["image_url"], raw["image_url"])
 
 
 class LinkCardTitle(unittest.TestCase):

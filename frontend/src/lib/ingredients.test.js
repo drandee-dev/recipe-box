@@ -79,6 +79,26 @@ test('a range takes its low end', () => {
   assert.equal(parseIngredient('2 to 3 cloves garlic').unit, 'clove')
 })
 
+test('a range with a mixed-number end, and a hyphenated mixed number (item 11)', () => {
+  // Each used to leave "/2" or "1/2" in the name and the wrong amount on the list.
+  const flour = parseIngredient('1-1/2 cups flour')
+  assert.equal(flour.qty, 1.5)
+  assert.equal(flour.unit, 'cup')
+  assert.equal(flour.name, 'flour')
+  const cheese = parseIngredient('1 to 1 1/2 cups cotija cheese')
+  assert.equal(cheese.qty, 1)
+  assert.equal(cheese.unit, 'cup')
+  assert.equal(cheese.name, 'cotija cheese')
+  const roast = parseIngredient('2 1/2-3 lb roast')
+  assert.equal(roast.qty, 2.5)
+  assert.equal(roast.unit, 'lb')
+  assert.equal(roast.name, 'roast')
+  assert.equal(parseIngredient('½-1 tsp salt').qty, 0.5)
+  assert.equal(parseIngredient('½-1 tsp salt').name, 'salt')
+  assert.equal(scaleIngredientText('1-1/2 cups flour', 2), '3 cups flour')
+  assert.equal(scaleIngredientText('1 to 1 1/2 cups cotija', 2), '2 to 3 cups cotija')
+})
+
 test('unit aliases collapse to one canonical unit', () => {
   for (const line of ['1 tablespoon butter', '1 tbsp butter', '1 tbs butter']) {
     assert.equal(parseIngredient(line).unit, 'tbsp', line)
@@ -90,6 +110,29 @@ test('drops parentheticals but keeps the ingredient', () => {
   assert.equal(got.qty, 1)
   assert.equal(got.unit, 'can')
   assert.equal(got.name, 'crushed tomatoes')
+})
+
+test('nested parentheticals leave no stray bracket behind', () => {
+  // Real lines from a recipe plugin's markup; the list showed "light soy sauce )".
+  assert.equal(parseIngredient('1/2 cup light soy sauce ( (Note 1))').name, 'light soy sauce')
+  assert.equal(parseIngredient('1/4 cup Chinese wine ((or dry sherry) (Note 5))').name, 'Chinese wine')
+  assert.equal(parseIngredient('1 tsp sesame oil (, toasted)').name, 'sesame oil')
+})
+
+test('a count in front of a pack size keeps the size', () => {
+  // The second number was swallowed as the top of a range with no range mark,
+  // so two 15 oz cans went on the shopping list as "2 oz".
+  const cans = parseIngredient('2 15 oz cans corn')
+  assert.equal(cans.qty, 2)
+  assert.equal(cans.unit, null)
+  assert.equal(cans.name, '15 oz cans corn')
+  const round = parseIngredient('1 5.2-oz round Boursin cheese')
+  assert.equal(round.qty, 1)
+  assert.equal(round.name, '5.2-oz round Boursin cheese')
+  // A hyphen straight after the number is still read as before.
+  const pasta = parseIngredient('10 -oz short-cut pasta')
+  assert.equal(pasta.qty, 10)
+  assert.equal(pasta.unit, 'oz')
 })
 
 test('strips list bullets, and leaves an unrecognised word in the name', () => {

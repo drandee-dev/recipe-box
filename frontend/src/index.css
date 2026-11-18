@@ -162,12 +162,12 @@
 
   /* The shopping tab's sticky week nav + progress bar, measured off the
      rendered header rather than guessed — see .shopping-header. The sticky
-     aisle headings below it read this too, so the two layers stack. Sized
-     for the taller of two states (the "Clear picked" line adds a row when
-     something's checked, 82px -> 106px) rather than the shorter one — an
-     unclaimed gap under a short header reads as spacing; an aisle heading
-     sitting a few px into a tall one would overlap it. */
-  --shopping-header-h: 106px;
+     aisle headings below it read this too, so the two layers stack. One
+     height now (L1): the progress row is always there and "Clear picked"
+     keeps its place, and "This week" sits beside the range, so any week with
+     a list measures 121px at 360/390/412 (2026-11-17). An empty week is 77px,
+     but it has no aisle headings to place. */
+  --shopping-header-h: 121px;
 
   /* Layering tiers, same ladder as mtg-web. */
   --z-sticky: 10;
@@ -561,9 +561,11 @@ textarea.field {
   width: 44px;
   height: 44px;
   padding: 0;
-  border: 1px solid var(--line-strong);
+  /* G1: a plain icon matching Timers beside it. The ring made it the heaviest
+     thing in the header. */
+  border: 0;
   border-radius: var(--r-pill);
-  background: var(--surface);
+  background: transparent;
   color: var(--txt-2);
   font: inherit;
   cursor: pointer;
@@ -576,13 +578,18 @@ textarea.field {
 
 /* Signed in it carries the address's initial on the accent, which is the one
    place a filled accent is identity rather than an action — and it is the only
-   way the header can say "you are signed in" in 44px. */
-.rb-avatar-in {
-  border-color: var(--accent);
+   way the header can say "you are signed in" in 44px. The disc is the icon's
+   size, not the target's, so the pair still matches. */
+.rb-avatar-in span {
+  display: grid;
+  place-items: center;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
   background: var(--accent);
   color: var(--on-accent);
   font-family: 'Clash Display', 'Satoshi', sans-serif;
-  font-size: var(--fs-md);
+  font-size: var(--fs-sm);
   font-weight: 600;
 }
 
@@ -1614,11 +1621,39 @@ textarea.field {
 /* The serving stepper (finding 12). It sits on a quiet surface rather than
    floating in the text column because it is a control, and the two glyphs beside
    a number need something to say where the control ends. */
-.detail-servings {
+/* R4: the time line with "I cooked this" at its end. */
+.detail-metarow {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--sp-2);
+}
+
+.detail-metarow .detail-meta {
+  flex: 1;
+  min-width: 0;
+}
+
+.detail-cooked-btn {
+  flex-shrink: 0;
+  gap: 6px;
+}
+
+/* R3: the stepper and the units menu on one row, the stepper taking the room. */
+.detail-settings {
   display: flex;
   align-items: center;
   gap: var(--sp-2);
-  margin: var(--sp-4) 0 0;
+  margin: var(--sp-4) 0 var(--sp-4);
+}
+
+.detail-servings {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin: 0;
   padding: 4px 4px 4px var(--sp-3);
   border: 1px solid var(--line);
   border-radius: var(--r);
@@ -1700,7 +1735,8 @@ textarea.field {
    palette rule from pass 1a. Off, it is a hairline outline of the same glyph,
    which keeps the head from changing width when it flips. */
 .detail-star,
-.detail-more {
+.detail-more,
+.sheet-close-icon {
   display: flex;
   align-items: center;
   justify-content: center;
@@ -1838,13 +1874,18 @@ textarea.field {
   list-style: none;
 }
 
+/* The rule is on the row, not the label, so a step's "Show all" (outside its
+   label) sits above it. */
+.detail-check {
+  border-bottom: 1px solid var(--line);
+}
+
 .detail-check label {
   display: flex;
   align-items: flex-start;
   gap: var(--sp-3);
   min-height: 44px;
   padding: var(--sp-2) 0;
-  border-bottom: 1px solid var(--line);
   /* Reading size: 18px is what Serious Eats, Bon Appetit and NYT Cooking all set
      recipe text at (measured), and this is read from the counter at arm's
      length. */
@@ -1866,11 +1907,11 @@ textarea.field {
   box-shadow: inset 3px 0 0 var(--saffron);
 }
 
-.detail-check-current label {
+.detail-check-current {
   border-bottom-color: transparent;
 }
 
-.detail-checks li:last-child label {
+.detail-checks li:last-child {
   border-bottom: none;
 }
 
@@ -1907,10 +1948,35 @@ textarea.field {
    Quiet and smaller than the step: it is a reminder of the amount, not part of
    the method. */
 .detail-step-needs {
-  display: block;
-  margin-top: var(--sp-1);
+  display: grid;
+  /* S1: two columns, so six lines take three rows. */
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 2px var(--sp-3);
+  margin-top: var(--sp-2);
   color: var(--txt-2);
   font-size: var(--fs-sm);
+  line-height: 1.35;
+}
+
+.detail-step-needs > span {
+  overflow-wrap: anywhere;
+}
+
+/* S2. Outside the step's label, so it sits under the lines, indented to the
+   step text (checkbox 22 + gap + number 22 + gap). */
+.detail-step-more {
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  margin: calc(-1 * var(--sp-2)) 0 0 calc(44px + 2 * var(--sp-3));
+  padding: 0;
+  border: 0;
+  background: none;
+  color: var(--accent-ink);
+  font: inherit;
+  font-size: var(--fs-sm);
+  font-weight: 600;
+  cursor: pointer;
 }
 
 .detail-step-n {
@@ -1949,12 +2015,32 @@ textarea.field {
   gap: var(--sp-2);
 }
 
+/* G2: the magnifier says "search" before the placeholder is read. It sits over
+   the field, so the field keeps the whole row bar the sort button. */
+.recipes-search-field {
+  position: relative;
+  flex: 1;
+  min-width: 0;
+  display: flex;
+}
+
+.recipes-search-icon {
+  position: absolute;
+  left: 14px;
+  top: 50%;
+  width: 20px;
+  height: 20px;
+  transform: translateY(-50%);
+  color: var(--txt-3);
+  pointer-events: none;
+}
+
 .recipes-search input {
   flex: 1;
   min-width: 0;
   width: 100%;
   min-height: 46px;
-  padding: 0 14px;
+  padding: 0 14px 0 44px;
   /* #ddd was 1.36:1. A field whose only affordance is its outline owes 3:1. */
   border: 1px solid var(--line-strong);
   border-radius: var(--r);
@@ -1971,19 +2057,43 @@ textarea.field {
   outline-offset: 1px;
 }
 
-/* Same face, height and border as the field beside it. A native select, so the
-   phone's own picker opens; 16px so iOS does not zoom when it does. */
+/* G3: one icon button, same height and border as the field beside it. The
+   native select is still the control, laid invisibly over the icon, so a tap
+   opens the phone's own short picker and keyboard and screen readers get a real
+   select; 16px so iOS does not zoom when it opens. As a visible select its label
+   was cut to "Newest savec" at every phone width. */
 .recipes-sort {
+  position: relative;
   flex-shrink: 0;
-  width: 132px;
+  display: grid;
+  place-items: center;
+  width: 46px;
   min-height: 46px;
-  padding: 0 var(--sp-2);
   border: 1px solid var(--line-strong);
   border-radius: var(--r);
   background: var(--surface);
-  color: var(--txt);
-  font: inherit;
+  color: var(--txt-2);
+}
+
+.recipes-sort svg {
+  width: 20px;
+  height: 20px;
+  pointer-events: none;
+}
+
+.recipes-sort select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
   font-size: var(--fs-input);
+  cursor: pointer;
+}
+
+.recipes-sort:has(select:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 1px;
 }
 
 /* One row, scrolling horizontally rather than wrapping (finding 4) — nine
@@ -2000,6 +2110,11 @@ textarea.field {
   overflow-x: auto;
   scrollbar-width: none;
   -webkit-overflow-scrolling: touch;
+  /* G4: a soft fade says "there is more" better than a chip sliced in half. The
+     end padding lets the last chip scroll out from under the fade. */
+  padding-right: 32px;
+  -webkit-mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
+  mask-image: linear-gradient(to right, #000 calc(100% - 32px), transparent);
 }
 
 .recipes-chips::-webkit-scrollbar {
@@ -2029,6 +2144,16 @@ textarea.field {
   background: var(--accent);
   border-color: var(--accent);
   color: var(--on-accent);
+}
+
+/* Saffron, like the star on a favourite cell: a favourite is simply true. On
+   the filled accent it takes the chip's ink instead. */
+.recipes-chip-star {
+  color: var(--saffron);
+}
+
+.recipes-chip-on .recipes-chip-star {
+  color: inherit;
 }
 
 .recipes-chip-count {
@@ -3044,8 +3169,9 @@ textarea.field {
    Fixed copy hides while cook mode is open and cook mode draws its own in the
    flow above Back and Next; a fixed one there would sit on top of them. Sheets
    are at --z-sheet, so the tray is one above and stays visible over a recipe. */
+/* T1: one line, 48px (it was two lines and 64px). */
 :root {
-  --tray-h: 60px;
+  --tray-h: 48px;
 }
 
 .timer-tray {
@@ -3053,7 +3179,8 @@ textarea.field {
   align-items: stretch;
   gap: var(--sp-2);
   min-height: var(--tray-h);
-  padding: var(--sp-2) var(--sp-3);
+  /* 1px top and bottom: the 44px tap target plus the border is the 48. */
+  padding: 1px var(--sp-1) 1px var(--sp-3);
   border: 1px solid var(--saffron);
   border-radius: var(--r);
   background: var(--surface);
@@ -3125,21 +3252,43 @@ textarea.field {
 .timer-tray-text {
   display: flex;
   min-width: 0;
-  flex-direction: column;
+  align-items: baseline;
+  gap: var(--sp-2);
 }
 
 .timer-tray-clock {
+  flex-shrink: 0;
   font-size: var(--fs-md);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .timer-tray-label {
+  min-width: 0;
   overflow: hidden;
-  font-size: var(--fs-xs);
+  font-size: var(--fs-sm);
   text-overflow: ellipsis;
   white-space: nowrap;
-  opacity: 0.7;
+  opacity: 0.75;
+}
+
+/* T3: saffron, like every other timer state; dark ink for the same contrast
+   reason as the ringing tray. */
+.timer-tray-more {
+  flex-shrink: 0;
+  margin-left: auto;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  background: var(--saffron);
+  color: var(--on-saffron);
+  font-size: var(--fs-xs);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.timer-tray-ringing .timer-tray-more {
+  background: var(--on-saffron);
+  color: var(--saffron);
 }
 
 .timer-tray-actions {
@@ -3169,8 +3318,10 @@ textarea.field {
   flex: 1;
 }
 
+/* Two rows: 44 + gap + 38 + padding + border is 94; over that, so larger text
+   or a wrong guess costs an empty strip rather than an overlap. */
 :root:has(.timer-tray-two:not(.timer-tray-inline)) {
-  --tray-h: 116px;
+  --tray-h: 104px;
 }
 
 .timers-row-actions {
@@ -3179,10 +3330,12 @@ textarea.field {
   gap: var(--sp-2);
 }
 
+/* Drawn at 38px so the one-line tray is 48px; the ::after keeps the 44px target. */
 .timer-tray-stop {
+  position: relative;
   flex: none;
   min-width: 72px;
-  min-height: 44px;
+  min-height: 38px;
   align-self: center;
   border: 1px solid currentColor;
   border-radius: var(--r);
@@ -3192,6 +3345,12 @@ textarea.field {
   font-size: var(--fs-sm);
   font-weight: 600;
   cursor: pointer;
+}
+
+.timer-tray-stop::after {
+  content: '';
+  position: absolute;
+  inset: -3px 0;
 }
 
 /* Dark ink, not white: white on --saffron is 3.8:1, under the floor for the
@@ -3302,8 +3461,39 @@ textarea.field {
   margin: var(--sp-4) 0;
 }
 
+/* A pill showing the current choice, with the native select laid invisibly over
+   it so the platform picker opens (the same pattern as the recipes sort). */
 .detail-units {
-  margin: var(--sp-3) 0 var(--sp-4);
+  position: relative;
+  flex-shrink: 0;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-height: 44px;
+  margin-left: auto;
+  padding: 0 var(--sp-3);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  background: var(--surface);
+  color: var(--txt);
+  font-size: var(--fs-sm);
+  font-weight: 500;
+  white-space: nowrap;
+}
+
+.detail-units select {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  opacity: 0;
+  font-size: var(--fs-input);
+  cursor: pointer;
+}
+
+.detail-units:has(select:focus-visible) {
+  outline: 2px solid var(--accent);
+  outline-offset: 2px;
 }
 
 .account-units .account-hint {
@@ -3809,24 +3999,50 @@ textarea.field {
 .shopping-header {
   position: sticky;
   top: 0;
-  z-index: var(--z-sticky);
+  /* One above the aisle headings: at the same tier they come later in the page
+     and painted over the week nav whenever a section was pushed up under it. */
+  z-index: calc(var(--z-sticky) + 1);
   background: var(--ground);
   padding: var(--sp-3) 0 var(--sp-2);
   border-bottom: 1px solid var(--line);
 }
 
-/* A caption ("0 of 20 picked up") became a bar: the number was accurate but
-   took reading, where a fill length is read at a glance. Saffron, not the
-   accent — this is something simply TRUE about the list, not a button. Its
-   own row, no button riding along in it: a .btn's 44px floor would drag a
-   "thin bar" up to button height, which is exactly the bug that shipped
-   first and got caught mid-pass (see the comment on .shopping-header). */
+/* L5: "This week" beside the range, not under it, so the header keeps one height. */
+.shopping-weeklabel {
+  flex-direction: row;
+  gap: var(--sp-2);
+}
+
+/* L1: bar, "N of M", Clear picked. One row, deliberately the height of the
+   button (a .btn's 44px floor sets it either way), present from the first view
+   so ticking never changes the header; --shopping-header-h is measured with it.
+   The bar is saffron, not the accent: progress is something simply TRUE about
+   the list, not a button, and a fill length is read at a glance. */
+.shopping-progress {
+  display: flex;
+  align-items: center;
+  gap: var(--sp-2);
+  margin-top: var(--sp-1);
+}
+
 .shopping-progress-bar {
+  flex: 1;
   height: 5px;
-  margin-top: var(--sp-2);
   border-radius: var(--r-pill);
   background: var(--surface-2);
   overflow: hidden;
+}
+
+.shopping-progress-count {
+  flex-shrink: 0;
+  color: var(--txt-2);
+  font-size: var(--fs-sm);
+  font-variant-numeric: tabular-nums;
+}
+
+.shopping-progress-clear {
+  flex-shrink: 0;
+  padding-inline: var(--sp-1);
 }
 
 .shopping-progress-fill {
@@ -3865,6 +4081,9 @@ textarea.field {
   position: sticky;
   top: var(--shopping-header-h);
   z-index: var(--z-sticky);
+  display: flex;
+  justify-content: space-between;
+  gap: var(--sp-2);
   margin: 0;
   padding: var(--sp-2) var(--sp-3);
   border-radius: var(--r-sm);
@@ -3931,6 +4150,10 @@ textarea.field {
   align-items: flex-start;
   gap: var(--sp-3);
   flex: 1;
+  /* Without this the label cannot shrink under its one-line source text, and on
+     a 360px phone the indented rows of a variant group pushed their ⋯ button
+     20px off the screen and made the whole page scroll sideways. */
+  min-width: 0;
   min-height: 44px;
   padding: var(--sp-1) 0;
   cursor: pointer;
@@ -3987,9 +4210,22 @@ textarea.field {
 /* --- Pass C: staples, aisle choices, share, the recipe strip ----------------
    The ⋯ on a derived row is the same quiet icon button the manual row's × is. It
    sits outside the <label>, so a tap on it never toggles the tick. */
-.shopping-more {
+/* L3: the count on the aisle band, in the row's quiet ink and not shouting in
+   the heading's capitals. */
+.shopping-aisle-left {
   flex-shrink: 0;
   color: var(--txt-2);
+  font-weight: 500;
+  text-transform: none;
+  letter-spacing: 0;
+  font-variant-numeric: tabular-nums;
+}
+
+/* L4: a shade lighter, so a ⋯ on every row stops drawing a dotted column down
+   the screen. Same 44px target. */
+.shopping-more {
+  flex-shrink: 0;
+  color: var(--txt-3);
 }
 
 /* Under the add form, above the first aisle. Not part of the sticky header: its

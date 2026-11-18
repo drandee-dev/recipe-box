@@ -1,6 +1,19 @@
 import test from 'node:test'
 import assert from 'node:assert/strict'
-import { convertLine, convertTemperatures, displayIngredient } from './convert.js'
+import { convertLine, convertTemperatures, displayIngredient, tidyRanges } from './convert.js'
+
+test('ranges are set with a plain hyphen and no spaces (R5)', () => {
+  assert.equal(tidyRanges('2 – 3 lbs steak'), '2-3 lbs steak')
+  assert.equal(tidyRanges('2–3 lbs'), '2-3 lbs')
+  assert.equal(tidyRanges('bake 25 — 30 minutes'), 'bake 25-30 minutes')
+  assert.equal(tidyRanges('simmer 10 - 12 minutes'), 'simmer 10-12 minutes')
+  assert.equal(tidyRanges('½ – 1 tsp salt'), '½-1 tsp salt')
+  // Left alone: words, a dash not between amounts, and what is already right.
+  assert.equal(tidyRanges('salt – to taste'), 'salt – to taste')
+  assert.equal(tidyRanges('1-1/2 cups'), '1-1/2 cups')
+  assert.equal(tidyRanges('Serves 4 — enough for a crowd'), 'Serves 4 — enough for a crowd')
+  assert.equal(displayIngredient('2 – 3 cloves garlic', { factor: 2 }), '4-6 cloves garlic')
+})
 
 const metric = (line) => convertLine(line, 'metric')
 const us = (line) => convertLine(line, 'us')

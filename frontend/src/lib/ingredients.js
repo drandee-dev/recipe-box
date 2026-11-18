@@ -145,40 +145,43 @@ export function aisleFor(name) {
 // A range takes its low end: buying for the smaller amount and topping up beats
 // silently doubling a shopping list.
 function takeQuantity(text) {
-  let rest = text
-  let total = null
+  const rest = text
 
-  const mixed = rest.match(/^(\d+)\s+(\d+)\s*\/\s*(\d+)\s*/)
+  // "1-1/2" is how many recipes write one and a half, not a range from 1 to ½.
+  const mixed = rest.match(/^(\d+)(?:\s+|-)(\d+)\s*\/\s*(\d+)\s*/)
   if (mixed) {
-    total = Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3])
-    return [total, rest.slice(mixed[0].length)]
+    return dropRangeTail(Number(mixed[1]) + Number(mixed[2]) / Number(mixed[3]), rest.slice(mixed[0].length))
   }
 
   const wholeAndVulgar = rest.match(/^(\d+)\s*([½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])\s*/)
   if (wholeAndVulgar) {
-    total = Number(wholeAndVulgar[1]) + VULGAR[wholeAndVulgar[2]]
-    return [total, rest.slice(wholeAndVulgar[0].length)]
+    return dropRangeTail(Number(wholeAndVulgar[1]) + VULGAR[wholeAndVulgar[2]], rest.slice(wholeAndVulgar[0].length))
   }
 
   const fraction = rest.match(/^(\d+)\s*\/\s*(\d+)\s*/)
   if (fraction) {
-    total = Number(fraction[1]) / Number(fraction[2])
-    return [total, rest.slice(fraction[0].length)]
+    return dropRangeTail(Number(fraction[1]) / Number(fraction[2]), rest.slice(fraction[0].length))
   }
 
   const vulgarOnly = rest.match(/^([½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞])\s*/)
   if (vulgarOnly) {
-    return [VULGAR[vulgarOnly[1]], rest.slice(vulgarOnly[0].length)]
+    return dropRangeTail(VULGAR[vulgarOnly[1]], rest.slice(vulgarOnly[0].length))
   }
 
-  const plain = rest.match(/^(\d+(?:\.\d+)?)\s*(?:-|–|to\s)?\s*(?:\d+(?:\.\d+)?)?\s*/)
+  const plain = rest.match(/^(\d+(?:\.\d+)?)\s*/)
   if (plain) {
-    total = Number(plain[1])
-    rest = rest.slice(plain[0].length)
-    return [total, rest]
+    return dropRangeTail(Number(plain[1]), rest.slice(plain[0].length))
   }
 
   return [null, rest]
+}
+
+// The high end of a range is dropped, whatever form either end takes ("1 to
+// 1 1/2", "2 1/2-3"), but only a number that follows a range mark is one: "2 15 oz
+// cans corn" used to lose its 15 and read as 2 oz. The high end may be missing.
+function dropRangeTail(total, rest) {
+  const tail = rest.match(RANGE_TAIL)
+  return [total, tail ? rest.slice(tail[0].length) : rest]
 }
 
 // "fl oz" is two words, and a lone "oz" is weight: reading "8 fl oz milk" as 8
@@ -234,8 +237,12 @@ export function parseIngredient(raw) {
   let text = original
     .replace(/^[-*•\s]+/, '')
     // Parentheticals are usually can sizes or notes. Dropping them loses some
-    // detail, but keeping them wrecks the merge key.
-    .replace(/\([^)]*\)/g, ' ')
+    // detail, but keeping them wrecks the merge key. Twice, innermost first:
+    // recipe plugins nest them ("soy sauce ( (Note 1))"), and one pass left a
+    // stray bracket on the shopping list. Any bracket still unpaired goes too.
+    .replace(/\([^()]*\)/g, ' ')
+    .replace(/\([^()]*\)/g, ' ')
+    .replace(/[()]/g, ' ')
     .replace(/\s+/g, ' ')
     .trim()
 
@@ -319,13 +326,15 @@ export function unitLabel(unit, qty) {
 
 // One quantity token, in the same forms takeQuantity accepts and in the same
 // order, longest first: "1 1/2", "1½", "1/2", "½", "1.5".
-export const AMOUNT = '(?:\\d+\\s+\\d+\\s*/\\s*\\d+|\\d+\\s*[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|\\d+\\s*/\\s*\\d+|[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|\\d+(?:\\.\\d+)?)'
+export const AMOUNT = '(?:\\d+(?:\\s+|-)\\d+\\s*/\\s*\\d+|\\d+\\s*[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|\\d+\\s*/\\s*\\d+|[½⅓⅔¼¾⅕⅖⅗⅘⅙⅚⅛⅜⅝⅞]|\\d+(?:\\.\\d+)?)'
 
 // Group 1 is any bullet the line was written with, group 2 the amount, group 3
 // the separator of a range and group 4 its high end. A range is matched whole so
 // that "2-3 cloves" doubles to "4-6 cloves" rather than collapsing to its low
 // end — takeQuantity drops the high end because a shopping list has to commit to
 // one number, but a recipe on screen has no reason to.
+const RANGE_TAIL = new RegExp(`^\\s*(?:-|–|—|to\\s)\\s*(?:${AMOUNT})?\\s*`)
+
 const LEADING_AMOUNT = new RegExp(`^([-*•\\s]*)(${AMOUNT})(?:(\\s*(?:-|–|—|to)\\s*)(${AMOUNT}))?`)
 
 export function amountValue(token) {

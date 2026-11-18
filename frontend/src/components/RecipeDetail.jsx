@@ -22,7 +22,7 @@ import StepText from './StepText.jsx'
 import { loadProgress, saveProgress } from '../lib/cookProgress.js'
 import { useWakeLock } from '../lib/useWakeLock.js'
 import { SERVINGS_MAX_FACTOR, baseServings, hostOf, metaParts, servingsLabel } from '../lib/recipes.js'
-import UnitsToggle from './UnitsToggle.jsx'
+import { OPTIONS as UNIT_OPTIONS } from './UnitsToggle.jsx'
 import { displayIngredient } from '../lib/convert.js'
 import { qtyColumnCh } from '../lib/ingredients.js'
 import { stepIngredientMap } from '../lib/stepIngredients.js'
@@ -43,6 +43,8 @@ const SLOT_LABELS = {
 // is asked about the days ahead of you; a Sunday-anchored week would offer
 // yesterday on a Wednesday and hide next Monday all week.
 const PLAN_DAYS = 7
+// A step's ingredient lines shown before "Show all" (S2): three rows of two.
+const NEEDS_SHOWN = 6
 
 
 function planDayLabel(date, offset) {
@@ -218,6 +220,8 @@ export default function RecipeDetail({
   // source had any (lib/sections). Null for a recipe with none.
   const ingGroups = useMemo(() => ingredientGroups(recipe.ingredients), [recipe.ingredients])
   const stepGroups = useMemo(() => sectionsFor(recipe), [recipe])
+  // Steps whose ingredient lines are unfolded past the first NEEDS_SHOWN (S2).
+  const [openNeeds, setOpenNeeds] = useState(() => new Set())
 
   const host = hostOf(recipe.source_url)
   const tags = recipe.tags || []
@@ -332,6 +336,7 @@ export default function RecipeDetail({
       className="sheet-tall"
       title={recipe.title}
       closeLabel="Close"
+      closeIcon
       onClose={onClose}
       action={
         <>
@@ -388,31 +393,39 @@ export default function RecipeDetail({
           `exact` is what keeps the real duration here: a grid cell replaces
           "12 hr" with "Overnight" because it has one line and that word is the
           answer, but by the time you have opened a recipe you want the number. */}
-      <p className="detail-meta">
-        {[...metaParts(recipe, { exact: true, servings: !base }), ...(host ? [host] : [])].map((part, n) => (
-          <Fragment key={part}>
-            {n > 0 && <span className="recipes-meta-dot" />}
-            <span>{part}</span>
-          </Fragment>
-        ))}
-      </p>
-
-      {/* The cooked log, said in one line, and the one tap that adds to it. Cook
-          mode's Done logs a cook by itself; this is for a meal made without it.
-          Undo is offered for the cook logged from this open sheet only: a mistaken
-          tap is one row to take back, and an old cook is not something a stray
-          tap here should be able to erase. */}
-      <div className="detail-cooked">
-        {cookedLabel(cookStat) && <span className="detail-cooked-label">{cookedLabel(cookStat)}</span>}
-        <button type="button" className="btn btn-quiet" onClick={markCooked} disabled={cookBusy}>
+      {/* R4: "I cooked this" is a small button with a tick on the time line,
+          one row less than its own line and no longer looking like a link. Cook
+          mode's Done logs a cook by itself; this is for a meal made without it. */}
+      <div className="detail-metarow">
+        <p className="detail-meta">
+          {[...metaParts(recipe, { exact: true, servings: !base }), ...(host ? [host] : [])].map((part, n) => (
+            <Fragment key={part}>
+              {n > 0 && <span className="recipes-meta-dot" />}
+              <span>{part}</span>
+            </Fragment>
+          ))}
+        </p>
+        <button type="button" className="btn btn-secondary btn-sm detail-cooked-btn" onClick={markCooked} disabled={cookBusy}>
+          <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+            <path d="m5 12.5 4.5 4.5L19 7.5" />
+          </svg>
           I cooked this
         </button>
-        {lastCookId && (
-          <button type="button" className="btn btn-quiet" onClick={undoCooked}>
-            Undo
-          </button>
-        )}
       </div>
+
+      {/* The cooked log in one line. Undo is offered for the cook logged from this
+          open sheet only: a mistaken tap is one row to take back, and an old cook
+          is not something a stray tap here should be able to erase. */}
+      {(cookedLabel(cookStat) || lastCookId) && (
+        <div className="detail-cooked">
+          {cookedLabel(cookStat) && <span className="detail-cooked-label">{cookedLabel(cookStat)}</span>}
+          {lastCookId && (
+            <button type="button" className="btn btn-quiet" onClick={undoCooked}>
+              Undo
+            </button>
+          )}
+        </div>
+      )}
 
       {/* Read-only (finding 15). Every tag used to carry a remove cross and an
           "Add a tag" field sat open underneath, so reading a recipe put you one
@@ -427,53 +440,9 @@ export default function RecipeDetail({
         </p>
       )}
 
-      {/* The serving count moved out of the meta run and became this, which is
-          why `metaParts` is asked to drop it above: the stepper *is* the serving
-          count, and the two stated separately would disagree the moment you
-          press +. Only rendered when there was a number to step from. */}
-      {base !== null && (
-        <div className="detail-servings">
-          <button
-            type="button"
-            className="detail-serving-step"
-            onClick={() => stepServings(-1)}
-            disabled={servings <= 1}
-            aria-label="One fewer serving"
-          >
-            <span aria-hidden="true">−</span>
-          </button>
-          {/* aria-live, because the ingredient quantities below change with it
-              and nothing else announces that they have. */}
-          <span className="detail-serving-count" aria-live="polite">
-            {servingsLabel(recipe, servings)}
-          </span>
-          <button
-            type="button"
-            className="detail-serving-step"
-            onClick={() => stepServings(1)}
-            disabled={servings >= base * SERVINGS_MAX_FACTOR}
-            aria-label="One more serving"
-          >
-            <span aria-hidden="true">+</span>
-          </button>
-          {factor !== 1 && (
-            <button type="button" className="detail-serving-reset" onClick={() => setServings(base)}>
-              Reset
-            </button>
-          )}
-        </div>
-      )}
-
-      {/* Units for this recipe only. Beside the servings stepper because both change
-          what the lines below say, and Original is the first choice so the recipe
-          opens as it was written unless the person has asked otherwise. */}
-      {recipe.ingredients.length > 0 && (
-        <div className="detail-units">
-          <UnitsToggle value={units} onChange={setLocalUnits} label="Measurements for this recipe" />
-        </div>
-      )}
-
-      {/* The one verb this screen exists for, so it gets the width and the fill.
+      {/* R2: the three verbs come straight after the tags; they are why the
+          sheet was opened. The servings and units row follows them.
+          The one verb this screen exists for, so it gets the width and the fill.
           It drops to secondary while the plan panel is open for the same reason
           Add to plan does — one filled accent per region. A recipe with no steps
           (a link card, or one still being filled in by hand) has nothing to cook
@@ -596,12 +565,74 @@ export default function RecipeDetail({
         </p>
       )}
 
+      {/* R3: servings and units share one row; both change what the lines below
+          say. The serving count moved out of the meta run and became the stepper,
+          which is why `metaParts` is asked to drop it above: the stepper *is* the
+          serving count, and the two stated separately would disagree the moment
+          you press +. It only exists when there was a number to step from. */}
+      {(base !== null || recipe.ingredients.length > 0) && (
+        <div className="detail-settings">
+          {base !== null && (
+            <div className="detail-servings">
+              <button
+                type="button"
+                className="detail-serving-step"
+                onClick={() => stepServings(-1)}
+                disabled={servings <= 1}
+                aria-label="One fewer serving"
+              >
+                <span aria-hidden="true">−</span>
+              </button>
+              {/* aria-live, because the ingredient quantities below change with it
+                  and nothing else announces that they have. */}
+              <span className="detail-serving-count" aria-live="polite">
+                {servingsLabel(recipe, servings)}
+              </span>
+              <button
+                type="button"
+                className="detail-serving-step"
+                onClick={() => stepServings(1)}
+                disabled={servings >= base * SERVINGS_MAX_FACTOR}
+                aria-label="One more serving"
+              >
+                <span aria-hidden="true">+</span>
+              </button>
+              {factor !== 1 && (
+                <button type="button" className="detail-serving-reset" onClick={() => setServings(base)}>
+                  Reset
+                </button>
+              )}
+            </div>
+          )}
+          {/* Units for this recipe only, as a small menu showing the current
+              choice: a native select under a pill, so the phone's own picker
+              opens. As written is first so the recipe opens as it was written
+              unless the person has asked otherwise. */}
+          {recipe.ingredients.length > 0 && (
+            <label className="detail-units">
+              <span aria-hidden="true">{UNIT_OPTIONS.find(([v]) => v === units)?.[1]}</span>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                <path d="m6 9 6 6 6-6" />
+              </svg>
+              <select value={units} onChange={(e) => setLocalUnits(e.target.value)} aria-label="Measurements for this recipe">
+                {UNIT_OPTIONS.map(([v, text]) => (
+                  <option key={v} value={v}>
+                    {text}
+                  </option>
+                ))}
+              </select>
+            </label>
+          )}
+        </div>
+      )}
+
       {empty ? (
         <>
           {recipe.description && <p className="recipes-caption">{recipe.description}</p>}
           <p className="detail-meta">
-            No recipe was readable from this post. Fill it in by hand with Edit recipe in the ⋯ menu, or open the
-            source and paste the text into the + button's Paste recipe text.
+            {recipe.source_url
+              ? 'No recipe was readable from this post. Fill it in by hand with Edit recipe in the ⋯ menu, or open the source and paste the text into the + button’s Paste recipe text.'
+              : 'Nothing here yet. Add the ingredients and steps with Edit recipe in the ⋯ menu.'}
           </p>
         </>
       ) : (
@@ -687,14 +718,34 @@ export default function RecipeDetail({
                     </span>
                     <span>
                       <StepText text={step} recipe={recipe} step={n} units={units} />
-                      {stepMap[n]?.map((m) => (
-                        <span key={m.index} className="detail-step-needs">
-                          {ingLines[m.index]}
-                          {m.shared && m.group ? ` (${m.group})` : ''}
+                      {stepMap[n]?.length > 0 && (
+                        // S1: two columns of short lines. S2: past six, the rest
+                        // fold behind "Show all" (cook mode keeps every line).
+                        // S3: the section in brackets is dropped when it is the
+                        // section this step already sits under.
+                        <span className="detail-step-needs">
+                          {(openNeeds.has(n) ? stepMap[n] : stepMap[n].slice(0, NEEDS_SHOWN)).map((m) => (
+                            <span key={m.index}>
+                              {ingLines[m.index]}
+                              {m.shared && m.group && m.group !== stepGroups?.[n] ? ` (${m.group})` : ''}
+                            </span>
+                          ))}
                         </span>
-                      ))}
+                      )}
                     </span>
                   </label>
+                  {/* Outside the label: a second control inside it would be
+                      taken for what the label names, and a press here must not
+                      tick the step. */}
+                  {stepMap[n]?.length > NEEDS_SHOWN && !openNeeds.has(n) && (
+                    <button
+                      type="button"
+                      className="detail-step-more"
+                      onClick={() => setOpenNeeds((prev) => new Set(prev).add(n))}
+                    >
+                      Show all {stepMap[n].length}
+                    </button>
+                  )}
                 </li>
                 </Fragment>
               ))}

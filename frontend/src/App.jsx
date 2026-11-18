@@ -664,6 +664,10 @@ export default function App() {
     if (!photo && text.length < 20) return
     setImporting(true)
     setError('')
+    // As importFromUrl does: a failed paste must not leave an earlier import's
+    // "Saved" banner up beside the error.
+    setSavedTitle('')
+    setSavedPartial(false)
     try {
       const recipe = photo ? await structureImage(photo.base64) : await structureText(text)
       const saved = await store.save({
@@ -677,6 +681,10 @@ export default function App() {
       setPasteOpen(false)
       setCaptureOpen(false)
       setOpenId(saved.id)
+      // The same banner a link import gets. Without it this path said nothing,
+      // and an earlier import's "Saved" stayed up under the new recipe.
+      setSavedTitle(saved.title)
+      setSavedPartial(saved.ingredients.length > 0 && saved.instructions.length === 0)
       mirrorImages([saved])
     } catch (err) {
       setError(writeError(err))

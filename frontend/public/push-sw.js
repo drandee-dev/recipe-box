@@ -14,12 +14,21 @@ self.addEventListener('push', (event) => {
     // Not our payload; nothing to show.
   }
   if (!note || !note.title) return
+  // A new version badges the icon until the app is next opened (pwa.js clears
+  // it). Where there is no Badging API (Android, a browser tab) it is a no-op.
+  // Async so even a synchronous throw cannot stop the notification below.
+  const badge = (async () => {
+    if (note.tag === 'release' && self.navigator.setAppBadge) await self.navigator.setAppBadge(1)
+  })().catch(() => {})
   event.waitUntil(
-    self.registration.showNotification(note.title, {
-      body: note.body || '',
-      tag: note.tag || 'timer',
-      data: { url: note.navigate || '/' },
-    }),
+    Promise.all([
+      badge,
+      self.registration.showNotification(note.title, {
+        body: note.body || '',
+        tag: note.tag || 'timer',
+        data: { url: note.navigate || '/' },
+      }),
+    ]),
   )
 })
 

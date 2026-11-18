@@ -346,7 +346,21 @@ def infer_tags(
 
     if isinstance(total_min, int) and 0 < total_min <= QUICK_MINUTES and "quick" not in found:
         found.append("quick")
-    return [t for t in found if t in ALLOWED_TAGS]
+    return settle_quick([t for t in found if t in ALLOWED_TAGS], total_min)
+
+
+def settle_quick(tags, total_min=None) -> list:
+    """`quick` is a claim about time, so the time and the method get a say.
+
+    A keyword ("weeknight", "quick-cooking oats") or the model's own pick used
+    to stand whatever the clock said: a six-hour cheesecake bar and a slow-cooker
+    dinner both came back `quick`. A known time over the limit removes it, and so
+    does `slow-cooker`, which is never a thirty-minute dinner.
+    """
+    slow = isinstance(total_min, int) and total_min > QUICK_MINUTES
+    if slow or "slow-cooker" in tags:
+        return [t for t in tags if t != "quick"]
+    return tags
 
 
 # Tags the model may not assert without the text backing it up.

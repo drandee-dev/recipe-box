@@ -216,6 +216,8 @@ export default function ShoppingList({
   // this because it buckets entries by exact date.
   const week = toISODate(weekStart)
   const weekEnd = toISODate(addDays(weekStart, 6))
+  const todayISO = toISODate(new Date())
+  const viewingThisWeek = todayISO >= week && todayISO <= weekEnd
   const thisWeek = useMemo(
     () =>
       plan.filter(
@@ -310,6 +312,17 @@ export default function ShoppingList({
   }, [groups, hideDone, checkedKeys])
 
   const visibleManual = hideDone ? manual.filter((row) => !row.checked) : manual
+
+  // L3. Counted off the whole aisle, not what "Clear picked" leaves visible, so
+  // hiding picked rows never changes the number.
+  function leftLabel(n) {
+    return n === 0 ? 'Done' : `${n} left`
+  }
+  function leftIn(aisle) {
+    const entries = groups.find((g) => g.aisle === aisle)?.entries || []
+    const items = entries.flatMap((e) => (e.type === 'group' ? e.items : [e.item]))
+    return leftLabel(items.filter((item) => !checkedKeys.has(item.key)).length)
+  }
 
   function submitManual(e) {
     e.preventDefault()
@@ -406,21 +419,14 @@ export default function ShoppingList({
           >
             ‹
           </button>
-          <div className="planner-weeklabel">
+          <div className="planner-weeklabel shopping-weeklabel">
             <strong className="week-label">{weekRangeLabel(weekStart)}</strong>
-            {/* Riding beside the thin bar below would drag it up to .btn's
-                44px floor along with it (a real bug caught mid-pass: a fixed
-                --shopping-header-h undershot the actual content and the
-                overflow quietly hid under the next sticky aisle heading).
-                Nested here instead, same spot Planner's "This week" link
-                uses — the row's height already budgets for a second line. */}
-            {doneCount > 0 && (
-              <button
-                type="button"
-                className="btn btn-quiet"
-                onClick={() => setHideDone((v) => !v)}
-              >
-                {hideDone ? `Show ${doneCount} picked up` : 'Clear picked'}
+            {/* L5: the same shortcut the Planner has, only on another week. Beside
+                the range, not under it, so the sticky header is one height and
+                --shopping-header-h stays true on every week. */}
+            {!viewingThisWeek && (
+              <button type="button" className="btn btn-quiet" onClick={() => onWeekChange(0)}>
+                This week
               </button>
             )}
           </div>
@@ -434,19 +440,37 @@ export default function ShoppingList({
           </button>
         </div>
 
+        {/* L1: always there from "0 of 34", so the first tick moves nothing.
+            "Clear picked" keeps its place while hidden for the same reason: it
+            used to appear on the first tick and push the list 20px down under
+            the finger. The row is the button's 44px either way. */}
         {totalCount > 0 && (
-          <div
-            className="shopping-progress-bar"
-            role="progressbar"
-            aria-valuenow={doneCount}
-            aria-valuemin={0}
-            aria-valuemax={totalCount}
-            aria-label={`${doneCount} of ${totalCount} picked up`}
-          >
+          <div className="shopping-progress">
             <div
-              className="shopping-progress-fill"
-              style={{ width: `${(doneCount / totalCount) * 100}%` }}
-            />
+              className="shopping-progress-bar"
+              role="progressbar"
+              aria-valuenow={doneCount}
+              aria-valuemin={0}
+              aria-valuemax={totalCount}
+              aria-label={`${doneCount} of ${totalCount} picked up`}
+            >
+              <div
+                className="shopping-progress-fill"
+                style={{ width: `${(doneCount / totalCount) * 100}%` }}
+              />
+            </div>
+            <span className="shopping-progress-count" aria-hidden="true">
+              {doneCount} of {totalCount}
+            </span>
+            <button
+              type="button"
+              className="btn btn-quiet shopping-progress-clear"
+              style={doneCount > 0 ? undefined : { visibility: 'hidden' }}
+              aria-label={hideDone ? `Show ${doneCount} picked up` : undefined}
+              onClick={() => setHideDone((v) => !v)}
+            >
+              {hideDone ? `Show ${doneCount}` : 'Clear picked'}
+            </button>
           </div>
         )}
       </div>
@@ -486,13 +510,21 @@ export default function ShoppingList({
           was two rows (the tools, then the strip), 120px before the first item. */}
       {(canShare || editable || sourceStrip.length > 0) && (
         <div className="shopping-tools">
+          {/* L2: one row of matching pills, the same chip the recipes filter uses,
+              where it was a bordered button, an underlined link and a chip. */}
           {canShare && (
-            <button type="button" className="btn btn-secondary" onClick={share}>
-              Share list
+            <button type="button" className="recipes-chip" onClick={share}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                <path d="M12 15V4M8 8l4-4 4 4M5 13v6h14v-6" />
+              </svg>
+              Share
             </button>
           )}
           {editable && (
-            <button type="button" className="btn btn-quiet" onClick={() => setOrderOpen(true)}>
+            <button type="button" className="recipes-chip" onClick={() => setOrderOpen(true)}>
+              <svg viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden="true" focusable="false">
+                <path d="M5 7h14M5 12h14M5 17h14" />
+              </svg>
               Aisle order
             </button>
           )}
@@ -549,14 +581,21 @@ export default function ShoppingList({
               named at the top instead of scrolling off, offset by
               --shopping-header-h so it settles in below the week nav and
               progress bar rather than under them. */}
-          <h3>{aisle}</h3>
+          {/* L3: how much is left here, read at the shelf. */}
+          <h3>
+            {aisle}
+            <span className="shopping-aisle-left">{leftIn(aisle)}</span>
+          </h3>
           <ul>{renderEntries(entries)}</ul>
         </section>
       ))}
 
       {visibleManual.length > 0 && (
         <section className="shopping-aisle">
-          <h3>Added by you</h3>
+          <h3>
+            Added by you
+            <span className="shopping-aisle-left">{leftLabel(manual.filter((row) => !row.checked).length)}</span>
+          </h3>
           <ul>
             {visibleManual.map((row) => {
               const from = row.recipe_id ? recipes.find((r) => r.id === row.recipe_id)?.title : null

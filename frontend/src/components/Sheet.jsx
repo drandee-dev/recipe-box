@@ -66,6 +66,10 @@ export default function Sheet({
   // brush that dismisses the screen you are cooking from is a different kind of
   // mistake from one that closes a form you can reopen.
   dismissible = true,
+  // R1: a sheet whose head already holds icon buttons (the open recipe) closes
+  // with one more icon at the end of that group, rather than an underlined word
+  // beside them that reads as a web link. closeLabel stays as its name.
+  closeIcon = false,
 }) {
   const sheetRef = useRef(null)
   const headingId = useRef(`sheet-title-${Math.random().toString(36).slice(2, 9)}`)
@@ -287,10 +291,19 @@ export default function Sheet({
             {title}
           </h2>
           <span className="sheet-head-actions">
-            <button type="button" className="btn btn-quiet" onClick={onClose}>
-              {closeLabel}
-            </button>
+            {!closeIcon && (
+              <button type="button" className="btn btn-quiet" onClick={onClose}>
+                {closeLabel}
+              </button>
+            )}
             {action}
+            {closeIcon && (
+              <button type="button" className="sheet-close-icon" aria-label={closeLabel} onClick={onClose}>
+                <svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden="true" focusable="false">
+                  <path d="m6 9 6 6 6-6" />
+                </svg>
+              </button>
+            )}
           </span>
         </div>
         {children}
