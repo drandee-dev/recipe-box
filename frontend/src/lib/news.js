@@ -36,13 +36,13 @@ export const NEWS = [
     title: 'Version 1.1.2',
     body: 'Updates install on their own, a tidier look across the app, and better TikTok imports. Tap to see what changed.',
     highlights: [
-      'Updates install on their own when the app is idle',
+      'Updates install on their own when you leave the app',
       'Tidier recipe, shopping list and timer screens',
       'TikTok recipes import from the caption',
     ],
     notes: [
       'Updates now install by themselves when you leave the app with nothing open. If you are in the middle of something, the update bar waits for you as before.',
-      'With New versions turned on, the app icon gets a badge when an update is out, and that notice no longer replaces a running timer\'s alert.',
+      'With New versions turned on, the app icon can show a badge when an update is out, and that notice no longer replaces a running timer\'s alert.',
       'The shopping list shows how many items are left in each aisle, and a This week button brings you back from another week.',
       'The timer bar fits on one line, and a step\'s ingredients sit in two columns.',
       'Importing a TikTok recipe reads it from the post\'s caption.',
