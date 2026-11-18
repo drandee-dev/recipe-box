@@ -66,6 +66,11 @@ class Origin(unittest.TestCase):
         self.assertEqual(body["notification"]["navigate"], ORIGIN + "/")
         self.assertEqual(body["notification"]["title"], release.TITLE)
 
+    def test_payload_badges_and_never_replaces_a_timer(self):
+        body = json.loads(release.payload_for(ORIGIN))
+        self.assertEqual(body["notification"]["tag"], "release")
+        self.assertEqual(body["app_badge"], "1")
+
 
 class Query(unittest.TestCase):
     def test_subscribers_are_filtered_to_opted_in_and_this_origin_on_the_wire(self):

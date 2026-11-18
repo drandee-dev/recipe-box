@@ -146,15 +146,22 @@ def _record_sent(version: str, sent: int) -> None:
 
 def payload_for(origin: str, highlights=None) -> str:
     """A Declarative Web Push (the shape push.payload_for sends): the payload is
-    the notification, and `navigate` opens the app."""
+    the notification, and `navigate` opens the app.
+
+    `tag` keeps it from replacing a running timer's notification (push-sw.js
+    falls back to 'timer'). `app_badge` badges the home-screen icon on iOS; it is
+    top level, where WebKit bug 293457 moved it from inside `notification`. Which
+    placement his iPhone reads is unproven until a real announcement lands."""
     return json.dumps(
         {
             "web_push": 8030,
+            "app_badge": "1",
             "notification": {
                 "title": TITLE,
                 "body": summary_for(highlights),
                 "silent": False,
                 "navigate": f"{origin}/",
+                "tag": "release",
             },
         }
     )

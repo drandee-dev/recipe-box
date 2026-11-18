@@ -113,6 +113,11 @@ function updateWhenHidden() {
   if (document.visibilityState === 'hidden' && quietForUpdate()) applyPendingUpdate()
 }
 
+// The new-version badge (push-sw.js) means "open me"; being open clears it.
+function clearBadge() {
+  if (document.visibilityState === 'visible') navigator.clearAppBadge?.().catch(() => {})
+}
+
 export function useUpdateReady() {
   return useSyncExternalStore(
     (l) => {
@@ -124,6 +129,8 @@ export function useUpdateReady() {
 }
 
 export function initPwaUpdates() {
+  clearBadge()
+  document.addEventListener('visibilitychange', clearBadge)
   applyUpdate = registerSW({
     // Register now rather than on `load`, which a resumed app never fires.
     immediate: true,
