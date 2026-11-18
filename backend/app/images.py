@@ -137,9 +137,14 @@ def image_for_vision(data: bytes) -> tuple[str, str]:
     JPEG also normalises whatever the origin served (PNG screenshots, WEBP,
     a rotation living in EXIF) into the one format the API definitely accepts.
     """
+    return _vision_jpeg(_open(data))
+
+
+def _vision_jpeg(img: Image.Image) -> tuple[str, str]:
+    """image_for_vision for a picture already decoded (the mirror's, after repair)."""
     from .ai import VISION_MAX_PIXELS, VISION_MAX_PX, VISION_QUALITY
 
-    img = _open(data)
+    img = img.copy()
     img.thumbnail((VISION_MAX_PX, VISION_MAX_PX), Image.LANCZOS)
     width, height = img.size
     if width * height > VISION_MAX_PIXELS:
@@ -265,8 +270,58 @@ def _resolve_source(url: str) -> str:
     return image
 
 
-def mirror_image(user_id: str, recipe_id: str, source_url: str) -> dict:
-    """Fetch, resize and store one recipe photo. Returns the columns to save."""
+# The smallest food crop worth keeping, as a fraction of the cover. The model is
+# told a quarter of the width; height gets less because covers are 9:16.
+MIN_CROP_WIDTH = 0.25
+MIN_CROP_HEIGHT = 0.15
+
+NO_PHOTO = {"image_url": None, "image_thumb_url": None, "image_blur": None}
+
+
+def food_crop(img: Image.Image, pick: dict) -> Image.Image | None:
+    """The model's rectangle, cut out. None when the answer is not a usable box.
+
+    The box is kept exactly, never widened to the grid's 4:3: everything inside
+    it is clean food, and widening it is how a face or a caption comes back.
+    `object-fit: cover` trims a tall box from its middle, which is still food.
+    """
+    try:
+        left, top, right, bottom = (int(pick[k]) for k in ("left", "top", "right", "bottom"))
+    except (KeyError, TypeError, ValueError):
+        return None
+    left, top = max(0, left), max(0, top)
+    right, bottom = min(100, right), min(100, bottom)
+    if (right - left) / 100 < MIN_CROP_WIDTH or (bottom - top) / 100 < MIN_CROP_HEIGHT:
+        return None
+    w, h = img.size
+    return img.crop((round(w * left / 100), round(h * top / 100), round(w * right / 100), round(h * bottom / 100)))
+
+
+def _pick(img: Image.Image, picker, recipe_id: str) -> Image.Image | None:
+    """H1/H4. Returns the food crop, the picture unchanged, or None for "no clean
+    food in it". Any failure is the picture unchanged: the picker can only make a
+    cover better or remove it, never lose a mirror that would have worked."""
+    try:
+        pick = picker(*_vision_jpeg(img))
+    except Exception as exc:
+        log.info("food pick failed for %s, keeping the cover: %s", recipe_id, exc)
+        return img
+    if pick.get("verdict") == "none":
+        log.info("no clean food in the cover for %s", recipe_id)
+        return None
+    cropped = food_crop(img, pick)
+    if cropped is None:
+        log.info("unusable food crop for %s: %s", recipe_id, pick)
+        return img
+    return cropped
+
+
+def mirror_image(user_id: str, recipe_id: str, source_url: str, picker=None) -> dict:
+    """Fetch, resize and store one recipe photo. Returns the columns to save.
+
+    `picker` (ai.pick_food_crop) is passed only for the first mirror of a social
+    import; with it, the stored photo is the food alone, or NO_PHOTO.
+    """
     # Both go straight into an object path. They are already validated upstream,
     # but a traversal here would write outside the caller's own folder.
     user_id = str(uuid.UUID(user_id))
@@ -287,6 +342,11 @@ def mirror_image(user_id: str, recipe_id: str, source_url: str) -> dict:
     img, stripped = strip_play_glyph(img)
     if stripped:
         log.info("stripped a play glyph from the cover for %s", recipe_id)
+
+    if picker is not None:
+        img = _pick(img, picker, recipe_id)
+        if img is None:
+            return dict(NO_PHOTO)
 
     return _store(user_id, recipe_id, img)
 

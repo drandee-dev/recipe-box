@@ -2,7 +2,7 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { fullPhotoLink, isMirrored, mirrorSource, needsGlyphRepair, needsMirror } from './images.js'
+import { fullPhotoLink, isMirrored, mirrorSource, needsGlyphRepair, needsMirror, pickFrom } from './images.js'
 
 const BUCKET = 'https://ref.supabase.co/storage/v1/object/public/recipe-images'
 const OURS = `${BUCKET}/user-1/recipe-1-lg.jpg?v=4`
@@ -96,6 +96,16 @@ test('the version here matches MIRROR_VERSION in the backend', () => {
   const front = here.match(/^const MIRROR_VERSION\s*=\s*(\d+)/m)
   assert.ok(front, 'MIRROR_VERSION not found in lib/images.js')
   assert.equal(front[1], backend[1])
+})
+
+test('only a first mirror of a social import asks for the food pick', () => {
+  assert.equal(pickFrom({ source_type: 'instagram', image_url: THEIRS, source_url: POST }), POST)
+  assert.equal(pickFrom({ source_type: 'tiktok', image_url: THEIRS, source_url: POST }), POST)
+  // A repair, or anything already ours, keeps its photo.
+  assert.equal(pickFrom({ source_type: 'instagram', image_url: OURS_V2, source_url: POST }), undefined)
+  assert.equal(pickFrom({ source_type: 'web', image_url: THEIRS, source_url: POST }), undefined)
+  assert.equal(pickFrom({ source_type: 'tiktok', image_url: THEIRS }), undefined)
+  assert.equal(pickFrom({ source_type: 'tiktok', source_url: POST }), undefined)
 })
 
 test('a photo we do not hold yet is a mirror, not a repair', () => {

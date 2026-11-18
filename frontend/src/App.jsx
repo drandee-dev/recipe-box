@@ -9,7 +9,7 @@ import { makePrefsStore, migrateLocalPrefs } from './lib/prefs.js'
 import { makeCookStore, migrateLocalCookLog } from './lib/cooklog.js'
 import { cookStats as statsOf } from './lib/cooked.js'
 import { cacheKeys, seedRecipes, updateMirror, withMirror } from './lib/cache.js'
-import { MIRROR_CONCURRENCY, mirrorSource, needsGlyphRepair, needsMirror } from './lib/images.js'
+import { MIRROR_CONCURRENCY, mirrorSource, needsGlyphRepair, needsMirror, pickFrom } from './lib/images.js'
 import { addDays, fromISODate, startOfWeek, toISODate, weekRangeLabel } from './lib/dates.js'
 import { setBusy } from './lib/pwa.js'
 import { useSession } from './lib/useSession.js'
@@ -195,7 +195,7 @@ export default function App() {
   // since a recipe saved last week and one saved ten seconds ago are the same
   // problem.
   const mirrorImages = useCallback(
-    async (list) => {
+    async (list, { pick = false } = {}) => {
       // No account means no bucket to write to, and offline means the attempt
       // burns a slot in `mirrored` on a failure that says nothing about the URL.
       if (!userId || !supabaseEnabled || !navigator.onLine) return
@@ -232,7 +232,8 @@ export default function App() {
           // overwrite their upload with the old link's picture.
           if (uploaded.current.has(recipe.id)) continue
           try {
-            const columns = await mirrorRecipeImage(recipe.id, mirrorSource(recipe), token)
+            const postUrl = pick ? pickFrom(recipe) : undefined
+            const columns = await mirrorRecipeImage(recipe.id, mirrorSource(recipe), token, postUrl)
             const saved = await store.saveImage(recipe.id, columns)
             if (saved) setRecipes((prev) => prev.map((r) => (r.id === saved.id ? saved : r)))
           } catch {
@@ -577,7 +578,8 @@ export default function App() {
       setSavedPartial(saved.ingredients.length > 0 && saved.instructions.length === 0)
       // Now, while the URL the origin just gave us is at its freshest. Not
       // awaited: the recipe is already on screen with its photo showing.
-      mirrorImages([saved])
+      // `pick`: a social cover is cut down to the food, or dropped for the tile.
+      mirrorImages([saved], { pick: true })
     } catch (err) {
       setError(writeError(err))
     } finally {

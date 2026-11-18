@@ -72,6 +72,14 @@ export function mirrorSource(recipe) {
   return recipe.source_url || recipe.image_url
 }
 
+// The post to pick the food from (H1/H4), or undefined. Only a first mirror of a
+// TikTok or Instagram import: a repair or a backfill leaves existing recipes'
+// photos as they are.
+export function pickFrom(recipe) {
+  const social = recipe?.source_type === 'tiktok' || recipe?.source_type === 'instagram'
+  return social && needsMirror(recipe) && recipe.source_url ? recipe.source_url : undefined
+}
+
 // srcset only exists for mirrored recipes, since a borrowed URL comes in exactly
 // one size. `sizes` is the rendered box width: the browser multiplies it by the
 // device pixel ratio and picks, so a 128px box on a 2x phone takes the 320w file
