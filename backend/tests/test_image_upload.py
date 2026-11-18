@@ -176,8 +176,11 @@ class UploadPipeline(unittest.TestCase):
 
     def test_the_real_upload_url_gets_the_timestamp_only_when_asked(self):
         # The mirror route never passes `bust`, so its URLs are exactly as before.
-        self.assertTrue(self._real_upload_url(None).endswith("/u/r-lg.jpg?v=3"))
-        self.assertTrue(self._real_upload_url(1760000000).endswith("/u/r-lg.jpg?v=3&u=1760000000"))
+        from app.images import MIRROR_VERSION
+
+        v = MIRROR_VERSION
+        self.assertTrue(self._real_upload_url(None).endswith(f"/u/r-lg.jpg?v={v}"))
+        self.assertTrue(self._real_upload_url(1760000000).endswith(f"/u/r-lg.jpg?v={v}&u=1760000000"))
 
 
 if __name__ == "__main__":

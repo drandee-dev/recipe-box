@@ -15,7 +15,7 @@ const BUCKET_PATH = '/storage/v1/object/public/recipe-images/'
 // URL. It is the `?v=N` the upload appends — `MIRROR_VERSION` in images.py, and
 // the two have to move together. Same principle as isMirrored below: the URL
 // says what it is, so there is no column that can disagree with it.
-const MIRROR_VERSION = 3
+const MIRROR_VERSION = 4
 
 // Concurrency for the backfill. Each item is a full download, resize and upload
 // on the backend, so this is about not queueing thirty serverless invocations at

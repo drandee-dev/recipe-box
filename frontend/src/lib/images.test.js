@@ -5,7 +5,8 @@ import { fileURLToPath } from 'node:url'
 import { fullPhotoLink, isMirrored, mirrorSource, needsGlyphRepair, needsMirror } from './images.js'
 
 const BUCKET = 'https://ref.supabase.co/storage/v1/object/public/recipe-images'
-const OURS = `${BUCKET}/user-1/recipe-1-lg.jpg?v=3`
+const OURS = `${BUCKET}/user-1/recipe-1-lg.jpg?v=4`
+const OURS_V3 = `${BUCKET}/user-1/recipe-1-lg.jpg?v=3`
 const OURS_V2 = `${BUCKET}/user-1/recipe-1-lg.jpg?v=2`
 const OURS_V1 = `${BUCKET}/user-1/recipe-1-lg.jpg`
 const POST = 'https://www.instagram.com/reel/DQjVXGrkx8K/'
@@ -33,6 +34,10 @@ test('and so is one repaired by the pipeline that did it badly', () => {
   // v2 filled a large blurred circle over the play button. Those bytes are
   // worse than the ones they replaced, and the only way back is the post.
   assert.equal(needsGlyphRepair({ source_type: 'instagram', image_url: OURS_V2 }), true)
+})
+
+test('and one from v3, whose disc came out pale with a bright rim (H3)', () => {
+  assert.equal(needsGlyphRepair({ source_type: 'instagram', image_url: OURS_V3 }), true)
 })
 
 test('a repair goes back to the post, a first mirror does not', () => {

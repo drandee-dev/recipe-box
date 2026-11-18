@@ -70,18 +70,27 @@ PLAY_SURROUND = 0.34  # …and this one is mostly photo, even at a generous size
 PLAY_SURROUND_WHITE = 0.20
 PLAY_MIN_EDGE = 120  # below this the probe is a handful of pixels and proves nothing
 
-SCRIM_RADIUS = 0.1395
-SCRIM_EDGE = 0.006  # the measured edge is ~1px; this is the blur that matches it
-# Sampled as bands, not rings. A single ring lands wherever the photo happens to
-# be bright and read the gain 14% high, which is a visible bright disc — pooling
-# a dozen radii either side of the edge brought it to 1.66 against a theoretical
-# 1.667.
+# The disc is a fixed overlay, so its strength and its edge are constants, not
+# readings. v3 measured the gain per photo from bands either side of the edge,
+# and the bands see the food as well as the disc: on a reel with white cheese
+# round the glyph it read 2.0 (the cap) and lit the disc up pale with a bright
+# rim. Two real covers, measured angle by angle right across the edge, both read
+# 1.67 inside with the same fade from r=0.1355 to 0.1415, so the midpoint is
+# 0.1390 and the gain is the 40% overlay's own 5/3. The photo is only asked
+# whether a disc is there at all.
+SCRIM_RADIUS = 0.1390
+SCRIM_GAIN = 5 / 3
+# Either side of the edge, a band the JPEG smeared (colour more than brightness,
+# since it stores colour at half size): no gain makes it right, so it is filled
+# from the corrected pixels on both sides. Under 2px each way on a 360px cover.
+SCRIM_BAND = 0.0045
+SCRIM_BAND_PASSES = 12
+# Sampled as bands, not rings, for the presence check only.
 SCRIM_INNER = (0.090, 0.132)
 SCRIM_OUTER = (0.152, 0.210)
 # Below this there is no disc to remove and the image is left alone, which is
 # what stops a cover that was never scrimmed being lit up into a bright circle.
 SCRIM_MIN_GAIN = 1.18
-SCRIM_MAX_GAIN = 2.00
 
 GLYPH_GROW = 0.012  # dilation, to swallow the antialiased rim
 GLYPH_SOFT = 0.006
@@ -161,28 +170,42 @@ def _unscrim(img: Image.Image) -> tuple[Image.Image, float]:
     Returns (image, gain). A gain of 1.0 means no disc was found and nothing was
     touched — that check is load-bearing, since brightening a cover that was
     never scrimmed would paint a bright circle where there was nothing wrong.
+    Otherwise the gain is always SCRIM_GAIN: the photo decides whether, never
+    how much.
     """
     inner = _band_luma(img, *SCRIM_INNER)
     outer = _band_luma(img, *SCRIM_OUTER)
-    if not inner or not outer or inner < 6:
+    if not inner or not outer or inner < 6 or outer / inner < SCRIM_MIN_GAIN:
         return img, 1.0
-    gain = outer / inner
-    if gain < SCRIM_MIN_GAIN:
-        return img, 1.0
-    gain = min(gain, SCRIM_MAX_GAIN)
 
-    width, height = img.size
-    radius = SCRIM_RADIUS * min(width, height)
-    mask = Image.new("L", (width, height), 0)
+    # Brightness is a per-channel multiply, which is exactly the inverse of
+    # compositing black at an opacity. Nothing clips: the brightest a pixel can
+    # be under a 40% scrim is 153, and 153 × 5/3 is 255.
+    lit = Image.composite(
+        ImageEnhance.Brightness(img).enhance(SCRIM_GAIN), img, _disc(img.size, SCRIM_RADIUS)
+    )
+    band = ImageChops.subtract(
+        _disc(img.size, SCRIM_RADIUS + SCRIM_BAND), _disc(img.size, SCRIM_RADIUS - SCRIM_BAND)
+    )
+    # Diffusion, as for the triangle below: only colour from the band's two
+    # sides survives from one pass to the next inside it.
+    blur = max(1.0, SCRIM_BAND * min(img.size))
+    fill = lit
+    for _ in range(SCRIM_BAND_PASSES):
+        fill = Image.composite(fill.filter(ImageFilter.GaussianBlur(blur)), lit, band)
+    return Image.composite(fill, lit, band.filter(ImageFilter.GaussianBlur(0.7))), SCRIM_GAIN
+
+
+def _disc(size: tuple[int, int], frac: float) -> Image.Image:
+    """A centred filled circle, radius a fraction of the short edge."""
+    width, height = size
+    radius = frac * min(width, height)
+    mask = Image.new("L", size, 0)
     ImageDraw.Draw(mask).ellipse(
         (width / 2 - radius, height / 2 - radius, width / 2 + radius, height / 2 + radius),
         fill=255,
     )
-    mask = mask.filter(ImageFilter.GaussianBlur(max(0.8, SCRIM_EDGE * min(width, height))))
-    # Brightness is a per-channel multiply, which is exactly the inverse of
-    # compositing black at an opacity. Nothing clips: the brightest a pixel can
-    # be under a 40% scrim is 153, and 153 × 1.66 is 255.
-    return Image.composite(ImageEnhance.Brightness(img).enhance(gain), img, mask), gain
+    return mask
 
 
 def _glyph_mask(img: Image.Image) -> Image.Image | None:

@@ -160,6 +160,30 @@ class Scrim(unittest.TestCase):
         lit, _ = _unscrim(with_scrim(photo()))
         self.assertAlmostEqual(self._luma(lit, 0.11, 0.13), self._luma(lit, 0.15, 0.17), delta=6)
 
+    def test_a_bright_surround_does_not_light_the_disc_up(self):
+        # H3: white cheese round the glyph made the outer band read far brighter
+        # than the food under the disc, the per-photo gain hit the old 2.0 cap,
+        # and the disc came out pale with a bright rim. The overlay is a fixed
+        # 40%, so the food under it has to come back at its own level.
+        from app.glyph import _unscrim
+
+        clean = photo(shade=(90, 70, 50))
+        width, height = clean.size
+        r = int(0.25 * min(width, height))
+        cheese = Image.new("L", clean.size, 0)
+        ImageDraw.Draw(cheese).ellipse(
+            (width // 2 - r, height // 2 - r, width // 2 + r, height // 2 + r), fill=255
+        )
+        ImageDraw.Draw(cheese).ellipse(
+            (width // 2 - 0.145 * min(width, height), height // 2 - 0.145 * min(width, height),
+             width // 2 + 0.145 * min(width, height), height // 2 + 0.145 * min(width, height)),
+            fill=0,
+        )
+        clean = Image.composite(Image.new("RGB", clean.size, (225, 215, 190)), clean, cheese)
+        lit, gain = _unscrim(with_scrim(clean))
+        self.assertAlmostEqual(gain, 1 / (1 - SCRIM_ALPHA), delta=0.01)
+        self.assertAlmostEqual(self._luma(lit, 0.05, 0.12), self._luma(clean, 0.05, 0.12), delta=4)
+
     def test_a_cover_with_no_disc_is_not_brightened(self):
         # Load-bearing. Applying the gain where there is nothing to undo paints
         # a bright circle — a worse artifact than the one being removed, and on

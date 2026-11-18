@@ -41,8 +41,9 @@ TIMEOUT = 15.0
 # lets the client tell a photo mirrored by an older pipeline from a current one
 # without a new column, and it keeps the "read it off the URL, never a flag"
 # rule the rest of phase 7 follows. v2 was the first play-glyph strip; v3 is the
-# one that divides the dark disc out instead of filling over it.
-MIRROR_VERSION = 3
+# one that divides the dark disc out instead of filling over it; v4 divides it
+# out at the overlay's fixed strength and fills the smeared edge (H3).
+MIRROR_VERSION = 4
 
 # 960 is the copy of record: big enough that we are not the reason a photo looks
 # bad later, small enough to be a couple of hundred KB. 320 covers the 128px card
