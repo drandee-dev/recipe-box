@@ -254,7 +254,7 @@
     --info-ink: #b9c6cf;
     --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
     --surface-glass: rgb(29 33 27 / 90%);
-  --photo-ground: #000;
+    --photo-ground: #000;
     --scrim: rgb(0 0 0 / 66%);
     --tile-mix: 8%;
     color-scheme: dark;
@@ -2274,6 +2274,16 @@ textarea.field {
   background: var(--photo-lift);
   mix-blend-mode: screen;
   pointer-events: none;
+}
+
+/* A contrast theme forces this layer's colour to the system background (its
+   computed colour reads white) and keeps the blend, and white screened over a
+   photo is white. Reasoned in review, not reproduced: emulated forced colours
+   in Chromium 148 still drew the photos. The layer is decoration, so it goes. */
+@media (forced-colors: active) {
+  .recipes-thumb-photo::before {
+    display: none;
+  }
 }
 
 /* Row-sized variant for the planner's picker. Same component, so the same three
