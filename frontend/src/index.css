@@ -88,14 +88,17 @@
   /* A translucent card behind a glyph that sits on a photo. */
   --surface-glass: rgb(255 253 247 / 92%);
   /* What a photo's blacks are lifted to (the photo tone, .recipes-thumb-photo).
-     Not overridden in the dark blocks on purpose: it is mixed into the photo,
-     not the page, and a photo should look the same in both themes. */
+     The rule that sets it: a photo's blacks must never be lighter than the page
+     they sit on. On the light ground a warm brown reads as paper. The same
+     brown on the dark ground (#151813) is lighter than the page and reads as
+     haze ("too light and washed out", his phone, 2026-11-19), so the dark
+     blocks use a quarter of it, which lands under the ground's own darkness. */
   --photo-lift: #2c251e;
   /* What a photo's box holds before the photo arrives. The lift layer is drawn
-     over the empty box too, so this is chosen for what it becomes under that
-     layer: on the light theme --surface-2 barely moves (#f6f4ee to #f8f6f0); on
-     the dark one it went from #252a22 to a light olive #4b493c, so the dark
-     blocks use black, which the layer turns into the lift colour itself. */
+     over the empty box too, so this is the colour that BECOMES --surface-2
+     under that layer: 1 - (1 - surface) / (1 - lift) a channel. On the light
+     theme --surface-2 itself is close enough (#f6f4ee shows as #f8f6f0); the
+     dark blocks carry the solved value. Change a lift and this moves with it. */
   --photo-ground: var(--surface-2);
   /* What dims the page behind a sheet. A dark tint on the light ground; on the
      dark ground the same tint barely shows, so the dark theme uses near-black,
@@ -254,7 +257,8 @@
     --info-ink: #b9c6cf;
     --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
     --surface-glass: rgb(29 33 27 / 90%);
-    --photo-ground: #000;
+    --photo-lift: #0b0908;
+    --photo-ground: #1b221b;
     --scrim: rgb(0 0 0 / 66%);
     --tile-mix: 8%;
     color-scheme: dark;
@@ -290,7 +294,8 @@
   --info-ink: #b9c6cf;
   --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
   --surface-glass: rgb(29 33 27 / 90%);
-  --photo-ground: #000;
+  --photo-lift: #0b0908;
+  --photo-ground: #1b221b;
   --scrim: rgb(0 0 0 / 66%);
   --tile-mix: 8%;
   color-scheme: dark;
