@@ -2251,7 +2251,7 @@ textarea.field {
 
    Cost, measured for these colour filters (headless Chromium 148, 390x844 at
    DPR 3, CPU slowed 4x, 68 cells, a 5000px scroll): the same 5 compositor
-   layers with and without, and 16 ms more raster in total. Scrolled on an
+   layers with and without, and about 17 ms more raster in total. Scrolled on an
    iPhone with no visible difference. A blur is a different filter and was not
    measured, so the note on the placeholder above still stands.
    ------------------------------------------------------------------------- */
@@ -2271,15 +2271,22 @@ textarea.field {
   content: '';
   position: absolute;
   inset: 0;
+  /* Load-bearing. The filter above makes the image its own stacking context,
+     which paints with the positioned layers, and the image comes after this
+     pseudo-element in the tree: without a z-index the layer sits UNDER the
+     photo and does nothing (shipped that way to staging once, 2026-11-19; the
+     computed styles all read right, only a pixel measurement showed it). */
+  z-index: 1;
   background: var(--photo-lift);
   mix-blend-mode: screen;
   pointer-events: none;
 }
 
-/* A contrast theme forces this layer's colour to the system background (its
-   computed colour reads white) and keeps the blend, and white screened over a
-   photo is white. Reasoned in review, not reproduced: emulated forced colours
-   in Chromium 148 still drew the photos. The layer is decoration, so it goes. */
+/* A contrast theme forces this layer's colour to the system background and
+   keeps the blend, and white screened over a photo is white: without this rule
+   every cover is a blank white box (reproduced with emulated forced colours in
+   Chromium 148, one colour across the whole photo). The layer is decoration,
+   so there it goes. */
 @media (forced-colors: active) {
   .recipes-thumb-photo::before {
     display: none;
