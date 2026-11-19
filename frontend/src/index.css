@@ -87,6 +87,10 @@
   --on-saffron: #191c18;
   /* A translucent card behind a glyph that sits on a photo. */
   --surface-glass: rgb(255 253 247 / 92%);
+  /* What a photo's blacks are lifted to (the photo tone, .recipes-thumb-photo).
+     Not overridden in the dark blocks on purpose: it is mixed into the photo,
+     not the page, and a photo should look the same in both themes. */
+  --photo-lift: #2c251e;
   /* What dims the page behind a sheet. A dark tint on the light ground; on the
      dark ground the same tint barely shows, so the dark theme uses near-black,
      which is what makes a sheet stand off the page there. */
@@ -2225,6 +2229,41 @@ textarea.field {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* --- The photo tone -------------------------------------------------------
+   One treatment on every photo in the app, so a grid of covers from TikTok,
+   Instagram, recipe sites and the camera reads as one set: a little colour
+   comes out, and one screen-blended layer lifts the blacks to a warm brown.
+   Chosen from six directions on 17 real covers (2026-11-19, "Cookbook page").
+   It makes the set agree; it does not rescue a soft or wrong crop.
+
+   On the photo only (.recipes-thumb-photo), never the fallback tile: the tile's
+   tints and contrast numbers were checked against a clean fill.
+
+   Cost, measured for these colour filters (headless Chromium 148, 390x844 at
+   DPR 3, CPU slowed 4x, 68 cells, a 5000px scroll): the same 5 compositor
+   layers with and without, and 16 ms more raster in total. Scrolled on an
+   iPhone with no visible difference. A blur is a different filter and was not
+   measured, so the note on the placeholder above still stands.
+   ------------------------------------------------------------------------- */
+.recipes-thumb-photo {
+  /* Keeps the blend inside the box: without it the layer screens against
+     whatever is behind the cell as well. */
+  isolation: isolate;
+}
+
+.recipes-thumb-photo img {
+  filter: saturate(0.88) contrast(1.06) brightness(0.98);
+}
+
+.recipes-thumb-photo::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--photo-lift);
+  mix-blend-mode: screen;
+  pointer-events: none;
 }
 
 /* Row-sized variant for the planner's picker. Same component, so the same three
