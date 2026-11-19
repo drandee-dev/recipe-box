@@ -274,6 +274,151 @@ class WhenThePickerRuns(unittest.TestCase):
             self.assertIs(mirror.call_args.kwargs["checker"], want)
 
 
+POST = "https://www.tiktok.com/@a/video/1"
+
+
+class Repair(unittest.TestCase):
+    """The retro pass (his calls, 2026-11-19): a saved photo is redone with the
+    pick, keeps a photo when there is no clean food, keeps our copy when the post
+    is gone, and writes nothing when the model cannot be asked."""
+
+    def _repair(self, picker, video=None, resolve=lambda url: "https://cdn.example.com/c.jpg"):
+        stored, fetched = {}, []
+
+        def fake_store(user_id, recipe_id, img, bust=None):
+            stored["size"] = img.size
+            return {"image_url": "lg", "image_thumb_url": "sm", "image_blur": "b"}
+
+        def fake_fetch(url):
+            fetched.append(url)
+            return cover(), "image/jpeg"
+
+        with patch("app.images._resolve_source", side_effect=resolve), patch(
+            "app.images.fetch_bytes", side_effect=fake_fetch
+        ), patch("app.images._store", side_effect=fake_store) as store, patch(
+            "app.images._storage", return_value=("https://ref.supabase.co", "k")
+        ):
+            result = images.mirror_image(USER, RECIPE, POST, picker=picker, video=video, repair=True)
+        return result, store, stored, fetched
+
+    def test_a_crop_is_stored(self):
+        _, _, stored, _ = self._repair(lambda *_: answer(box(0, 50, 100, 80)))
+        self.assertEqual(stored["size"], (360, 192))
+
+    def test_no_clean_food_keeps_the_whole_cover_not_the_tile(self):
+        for picker in (lambda *_: answer(box(0, 0, 0, 0), verdict="none"), lambda *_: answer(box(10, 40, 90, 70), text=[box(0, 0, 100, 100)])):
+            result, _, stored, _ = self._repair(picker, video=lambda: None)
+            self.assertEqual(stored["size"], (360, 640))
+            self.assertEqual(result["image_url"], "lg")
+
+    def test_a_spent_budget_writes_nothing(self):
+        from app.ai import AIBudgetError
+
+        def spent(*_):
+            raise AIBudgetError("monthly AI budget reached")
+
+        with self.assertRaises(images.PickUnavailable):
+            self._repair(spent)
+
+    def test_the_video_over_its_cap_writes_nothing(self):
+        def over():
+            raise images.PickUnavailable("over the repair cap")
+
+        with self.assertRaises(images.PickUnavailable):
+            self._repair(lambda *_: answer(box(0, 0, 0, 0), verdict="none"), video=over)
+
+    def test_a_model_error_is_not_a_spent_budget_and_keeps_the_cover(self):
+        # Retrying a post the model keeps failing on would spend calls on every load.
+        def broken(*_):
+            raise AIError("down")
+
+        _, _, stored, _ = self._repair(broken)
+        self.assertEqual(stored["size"], (360, 640))
+
+    def test_a_gone_post_keeps_our_copy_and_never_asks_the_model(self):
+        def gone(_url):
+            raise images.ImageError("that post no longer serves a cover image")
+
+        picker = MagicMock()
+        result, _, stored, fetched = self._repair(picker, resolve=gone)
+        picker.assert_not_called()
+        self.assertEqual(fetched, [f"https://ref.supabase.co/storage/v1/object/public/recipe-images/{USER}/{RECIPE}-lg.jpg"])
+        self.assertEqual(result["image_url"], "lg")
+
+    def test_a_gone_post_on_a_first_mirror_is_still_a_failure(self):
+        def gone(_url):
+            raise images.ImageError("gone")
+
+        with patch("app.images._resolve_source", side_effect=gone), self.assertRaises(images.ImageError):
+            images.mirror_image(USER, RECIPE, POST, picker=MagicMock())
+
+    def test_a_first_mirror_on_a_spent_budget_still_keeps_the_cover(self):
+        from app.ai import AIBudgetError
+
+        def spent(*_):
+            raise AIBudgetError("monthly AI budget reached")
+
+        with patch("app.images.fetch_bytes", return_value=(cover(), "image/jpeg")), patch(
+            "app.images._store", return_value={}
+        ) as store:
+            images.mirror_image(USER, RECIPE, "https://cdn.example.com/c.jpg", picker=spent)
+        self.assertEqual(store.call_args.args[2].size, (360, 640))
+
+
+class RepairRoute(unittest.TestCase):
+    def _call(self, post_url=POST, *, ai=True, over=False, mirror=None):
+        from app import main
+
+        body = main.ImageRequest(recipe_id=RECIPE, url=post_url or "https://cdn.example.com/c.jpg", post_url=post_url, repair=True)
+        with patch("app.main._photo_caller", return_value=USER), patch("app.main.ai_available", return_value=ai), patch(
+            "app.usage.over_rate_limit", return_value=over
+        ) as cap, patch("app.main.meter_caller") as import_cap, patch(
+            "app.images.mirror_image", side_effect=mirror, return_value={"image_url": "lg"}
+        ) as m:
+            try:
+                return main.recipe_image(body, object(), None), m, cap, import_cap
+            except HTTPException as exc:
+                return exc, m, cap, import_cap
+
+    def test_a_repair_is_picked_and_counted_in_its_own_bucket(self):
+        from app.usage import REPAIR_LIMIT_CALLS, repair_caller
+
+        result, mirror, cap, import_cap = self._call()
+        self.assertEqual(result, {"image_url": "lg"})
+        self.assertTrue(mirror.call_args.kwargs["repair"])
+        self.assertIsNotNone(mirror.call_args.kwargs["picker"])
+        self.assertIsNotNone(mirror.call_args.kwargs["checker"])
+        self.assertTrue(callable(mirror.call_args.kwargs["video"]))
+        cap.assert_called_once_with(repair_caller(USER), REPAIR_LIMIT_CALLS)
+        import_cap.assert_not_called()
+
+    def test_instagram_has_no_video(self):
+        _, mirror, _, _ = self._call("https://www.instagram.com/reel/abc/")
+        self.assertIsNone(mirror.call_args.kwargs["video"])
+
+    def test_over_its_cap_or_without_a_model_nothing_is_written(self):
+        for kw, status in (({"over": True}, 429), ({"ai": False}, 503)):
+            exc, mirror, _, _ = self._call(**kw)
+            self.assertEqual(exc.status_code, status, kw)
+            mirror.assert_not_called()
+
+    def test_a_spent_budget_is_an_error_not_a_save(self):
+        exc, _, _, _ = self._call(mirror=images.PickUnavailable("budget"))
+        self.assertEqual(exc.status_code, 503)
+
+    def test_no_post_or_a_web_page_is_refused(self):
+        for url in (None, "https://example.com/recipe"):
+            exc, mirror, _, _ = self._call(url)
+            self.assertEqual(exc.status_code, 422, url)
+            mirror.assert_not_called()
+
+    def test_the_repair_bucket_is_never_an_addresses_bucket(self):
+        from app.usage import caller_hash, repair_caller
+
+        self.assertNotEqual(repair_caller(USER), caller_hash(USER))
+        self.assertNotEqual(repair_caller(USER), repair_caller(RECIPE))
+
+
 class CropCheck(unittest.TestCase):
     def test_only_a_plain_no_rejects_the_crop(self):
         from app import ai

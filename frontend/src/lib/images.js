@@ -15,7 +15,7 @@ const BUCKET_PATH = '/storage/v1/object/public/recipe-images/'
 // URL. It is the `?v=N` the upload appends — `MIRROR_VERSION` in images.py, and
 // the two have to move together. Same principle as isMirrored below: the URL
 // says what it is, so there is no column that can disagree with it.
-const MIRROR_VERSION = 4
+const MIRROR_VERSION = 5
 
 // Concurrency for the backfill. Each item is a full download, resize and upload
 // on the backend, so this is about not queueing thirty serverless invocations at
@@ -32,22 +32,20 @@ export function needsMirror(recipe) {
   return Boolean(recipe?.image_url) && !isMirrored(recipe)
 }
 
-// Ours already, but made by a pipeline older than the current play-glyph strip.
+// Ours already, but made by an older pipeline: the retro pass (v5) redoes it
+// from the post with the food pick, the play-glyph strip included.
 //
-// A reel's cover is served with a white play triangle and a dark disc
-// composited into it, so every Instagram recipe saved before that fix has a
-// play button in the middle of its photo — including in our own bucket, since
-// we faithfully mirrored what Instagram sent.
+// Only TikTok and Instagram, the two sources the pick is for: a recipe site's
+// photo is a photo, and redoing it would be a re-upload that changes nothing.
+// It needs the post (`source_url`), since the pick reads the post's cover.
 //
-// Only Instagram, because it is the only source that does this: TikTok's oEmbed
-// thumbnail is a clean cover frame, and a recipe site's photo is a photo. Every
-// other source would be a re-upload that changes nothing.
-//
-// Recipes with no glyph still come back marked, which is what ends the loop:
-// the backend versions the URL whether or not it found anything to strip, so
-// this is one pass over the Instagram recipes in the box and then never again.
-export function needsGlyphRepair(recipe) {
-  if (recipe?.source_type !== 'instagram' || !isMirrored(recipe)) return false
+// Every repair comes back marked, which is what ends the loop: the backend
+// versions the URL whether it picked a crop, kept the whole cover or found the
+// post gone, so this is one pass over the box and then never again. A repair
+// that could not ask the model writes nothing and is retried on a later load.
+export function needsRepair(recipe) {
+  const social = recipe?.source_type === 'tiktok' || recipe?.source_type === 'instagram'
+  if (!social || !recipe.source_url || !isMirrored(recipe)) return false
   // `&u=` marks a photo the person uploaded themselves. A repair goes back to the
   // post and would replace their picture with the post's cover.
   if (recipe.image_url.includes('&u=')) return false
@@ -72,12 +70,12 @@ export function mirrorSource(recipe) {
   return recipe.source_url || recipe.image_url
 }
 
-// The post to pick the food from (H1/H4), or undefined. Only a first mirror of a
-// TikTok or Instagram import: a repair or a backfill leaves existing recipes'
-// photos as they are.
+// The post to pick the food from (H1/H4), or undefined: a TikTok or Instagram
+// recipe on its first mirror or its repair. The caller decides when a first
+// mirror asks (only straight after an import); a repair always does.
 export function pickFrom(recipe) {
   const social = recipe?.source_type === 'tiktok' || recipe?.source_type === 'instagram'
-  return social && needsMirror(recipe) && recipe.source_url ? recipe.source_url : undefined
+  return social && (needsMirror(recipe) || needsRepair(recipe)) && recipe.source_url ? recipe.source_url : undefined
 }
 
 // srcset only exists for mirrored recipes, since a borrowed URL comes in exactly

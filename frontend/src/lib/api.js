@@ -40,8 +40,13 @@ export function structureImage(image) {
 // { image_url, image_thumb_url, image_blur }. `postUrl`, sent only for a social
 // import's first mirror, asks for the food alone; all three can then come back
 // null, meaning the cover had no clean food and the recipe gets its tile.
-export function mirrorRecipeImage(recipeId, url, token, postUrl) {
-  return post('/api/recipes/image', { recipe_id: recipeId, url, ...(postUrl ? { post_url: postUrl } : {}) }, token)
+// `repair` redoes a saved photo from the post; it never comes back null.
+export function mirrorRecipeImage(recipeId, url, token, postUrl, repair = false) {
+  return post(
+    '/api/recipes/image',
+    { recipe_id: recipeId, url, ...(postUrl ? { post_url: postUrl } : {}), ...(repair ? { repair: true } : {}) },
+    token,
+  )
 }
 
 // The same three columns back, for a photo the person picked: `image` is the

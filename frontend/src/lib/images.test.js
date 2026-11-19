@@ -2,10 +2,11 @@ import test from 'node:test'
 import assert from 'node:assert/strict'
 import { readFileSync } from 'node:fs'
 import { fileURLToPath } from 'node:url'
-import { fullPhotoLink, isMirrored, mirrorSource, needsGlyphRepair, needsMirror, pickFrom } from './images.js'
+import { fullPhotoLink, isMirrored, mirrorSource, needsMirror, needsRepair, pickFrom } from './images.js'
 
 const BUCKET = 'https://ref.supabase.co/storage/v1/object/public/recipe-images'
-const OURS = `${BUCKET}/user-1/recipe-1-lg.jpg?v=4`
+const OURS = `${BUCKET}/user-1/recipe-1-lg.jpg?v=5`
+const OURS_V4 = `${BUCKET}/user-1/recipe-1-lg.jpg?v=4`
 const OURS_V3 = `${BUCKET}/user-1/recipe-1-lg.jpg?v=3`
 const OURS_V2 = `${BUCKET}/user-1/recipe-1-lg.jpg?v=2`
 const OURS_V1 = `${BUCKET}/user-1/recipe-1-lg.jpg`
@@ -26,18 +27,22 @@ test('only a borrowed photo needs a first mirror', () => {
   assert.equal(needsMirror({ image_url: null }), false)
 })
 
-test('an Instagram photo mirrored before the play-glyph strip is repaired', () => {
-  assert.equal(needsGlyphRepair({ source_type: 'instagram', image_url: OURS_V1 }), true)
+const IG = (image_url) => ({ source_type: 'instagram', image_url, source_url: POST })
+const TT = (image_url) => ({ source_type: 'tiktok', image_url, source_url: 'https://www.tiktok.com/@a/video/1' })
+
+test('every older Instagram photo is repaired, from the first pipeline to v4', () => {
+  // v2 filled a large blurred circle over the play button and v3's disc came out
+  // pale; the only way back is the post. v4 had no food pick (the retro pass).
+  for (const url of [OURS_V1, OURS_V2, OURS_V3, OURS_V4]) assert.equal(needsRepair(IG(url)), true, url)
 })
 
-test('and so is one repaired by the pipeline that did it badly', () => {
-  // v2 filled a large blurred circle over the play button. Those bytes are
-  // worse than the ones they replaced, and the only way back is the post.
-  assert.equal(needsGlyphRepair({ source_type: 'instagram', image_url: OURS_V2 }), true)
+test('the retro pass reaches TikTok photos too', () => {
+  for (const url of [OURS_V1, OURS_V3, OURS_V4]) assert.equal(needsRepair(TT(url)), true, url)
 })
 
-test('and one from v3, whose disc came out pale with a bright rim (H3)', () => {
-  assert.equal(needsGlyphRepair({ source_type: 'instagram', image_url: OURS_V3 }), true)
+test('a repair needs the post to pick from', () => {
+  assert.equal(needsRepair({ source_type: 'tiktok', image_url: OURS_V3 }), false)
+  assert.equal(needsRepair({ source_type: 'instagram', image_url: OURS_V3 }), false)
 })
 
 test('a repair goes back to the post, a first mirror does not', () => {
@@ -63,20 +68,24 @@ test('a repaired photo is not repaired again', () => {
   // What ends the pass. The backend versions the URL whether or not it found a
   // glyph, so a reel cover and an ordinary Instagram photo both come back
   // marked and neither is picked up on the next load.
-  assert.equal(needsGlyphRepair({ source_type: 'instagram', image_url: OURS }), false)
+  assert.equal(needsRepair(IG(OURS)), false)
+  assert.equal(needsRepair(TT(OURS)), false)
 })
 
 test('a photo the person uploaded is never repaired from the post, whatever its version', () => {
   const uploaded = `${BUCKET}/user-1/recipe-1-lg.jpg?v=2&u=1760000000`
-  assert.equal(needsGlyphRepair({ source_type: 'instagram', image_url: uploaded }), false)
+  assert.equal(needsRepair(IG(uploaded)), false)
+  assert.equal(needsRepair(TT(uploaded)), false)
 })
 
-test('only Instagram is repaired', () => {
-  // TikTok's oEmbed thumbnail is a clean cover frame and a recipe site's photo
-  // is a photo. Repairing those would be a re-upload that changes nothing.
-  assert.equal(needsGlyphRepair({ source_type: 'tiktok', image_url: OURS_V1 }), false)
-  assert.equal(needsGlyphRepair({ source_type: 'web', image_url: OURS_V1 }), false)
-  assert.equal(needsGlyphRepair({ image_url: OURS_V1 }), false)
+test('a recipe site photo is never repaired', () => {
+  // A photo is a photo; redoing it would be a re-upload that changes nothing.
+  assert.equal(needsRepair({ source_type: 'web', image_url: OURS_V1, source_url: POST }), false)
+  assert.equal(needsRepair({ image_url: OURS_V1, source_url: POST }), false)
+})
+
+test('no photo is not repaired: the tile is the design', () => {
+  assert.equal(needsRepair(TT(null)), false)
 })
 
 test('the version here matches MIRROR_VERSION in the backend', () => {
@@ -98,11 +107,12 @@ test('the version here matches MIRROR_VERSION in the backend', () => {
   assert.equal(front[1], backend[1])
 })
 
-test('only a first mirror of a social import asks for the food pick', () => {
+test('a social first mirror and a repair pick the food from the post', () => {
   assert.equal(pickFrom({ source_type: 'instagram', image_url: THEIRS, source_url: POST }), POST)
   assert.equal(pickFrom({ source_type: 'tiktok', image_url: THEIRS, source_url: POST }), POST)
-  // A repair, or anything already ours, keeps its photo.
-  assert.equal(pickFrom({ source_type: 'instagram', image_url: OURS_V2, source_url: POST }), undefined)
+  assert.equal(pickFrom(IG(OURS_V2)), POST)
+  // A current photo is done, and a site photo is never picked.
+  assert.equal(pickFrom(IG(OURS)), undefined)
   assert.equal(pickFrom({ source_type: 'web', image_url: THEIRS, source_url: POST }), undefined)
   assert.equal(pickFrom({ source_type: 'tiktok', image_url: THEIRS }), undefined)
   assert.equal(pickFrom({ source_type: 'tiktok', source_url: POST }), undefined)
@@ -113,7 +123,7 @@ test('a photo we do not hold yet is a mirror, not a repair', () => {
   // strip, so a repair on top of it would be immediate and pointless.
   const fresh = { source_type: 'instagram', image_url: THEIRS }
   assert.equal(needsMirror(fresh), true)
-  assert.equal(needsGlyphRepair(fresh), false)
+  assert.equal(needsRepair({ ...fresh, source_url: POST }), false)
 })
 
 // A photo link saved as a bare path (an old import from a site that writes og:image
