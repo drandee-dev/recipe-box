@@ -49,29 +49,40 @@ class FoodCrop(unittest.TestCase):
         self.assertEqual(out.size, (400, 240))
 
     def test_a_caption_across_the_food_is_cut_round(self):
-        # Food 20-90% tall, caption band at 40-50%: the part below it is bigger.
+        # Food 20-90% tall, caption band at 40-50% (38-52 padded): the part below it is bigger.
         out = images.food_crop(self.img, answer(box(0, 20, 100, 90), text=[box(10, 40, 90, 50)]))
-        self.assertEqual(out.size, (400, 320))
+        self.assertEqual(out.size, (400, 304))
 
     def test_a_face_beside_the_food_is_cut_out(self):
         out = images.food_crop(self.img, answer(box(0, 30, 100, 70), people=[box(70, 0, 100, 60)]))
-        self.assertEqual(out.size, (280, 320))
+        self.assertEqual(out.size, (272, 320))
+
+    def test_obstacle_boxes_are_padded_so_letter_edges_stay_out(self):
+        # Caption drawn exactly on its letters at 0-50%: the crop starts 2% below it (52-100%).
+        out = images.food_crop(self.img, answer(box(0, 0, 100, 100), text=[box(0, 0, 100, 50)]))
+        self.assertEqual(out.size, (400, 384))
+
+    def test_a_strip_wider_than_the_limit_is_no_food(self):
+        # 100x16% of a 400x800 cover is 400x128, 3.1 wide: it would fill a 4:3 cell from 128 rows.
+        self.assertIs(images.food_crop(self.img, answer(box(0, 40, 100, 56))), images.NO_FOOD)
+        # 400x224 is 1.79 wide, like run 4's #2, and passes.
+        self.assertEqual(images.food_crop(self.img, answer(box(0, 0, 100, 28))).size, (400, 224))
 
     def test_text_covering_all_the_food_means_no_food(self):
         out = images.food_crop(self.img, answer(box(10, 40, 90, 70), text=[box(0, 35, 100, 75)]))
         self.assertIs(out, images.NO_FOOD)
 
     def test_overlapping_captions_are_both_cut_out(self):
-        # Two caption boxes overlap at 50-55%; the clean piece below both (60-90%) wins.
+        # Two caption boxes overlap at 50-55%; the clean piece below both (62-90% padded) wins.
         out = images.food_crop(self.img, answer(box(0, 20, 100, 90), text=[box(0, 40, 100, 55), box(0, 50, 100, 60)]))
-        self.assertEqual(out.size, (400, 240))
+        self.assertEqual(out.size, (400, 224))
 
     def test_the_piece_a_4_3_cell_shows_most_of_beats_the_bigger_one(self):
-        # Text over the lower right leaves a full-width top strip (400x240) and a tall
-        # left column (200x800, more area). The cell shows 320x240 of the strip but
-        # only 200x150 of the column, so the strip is kept.
+        # Text over the lower right (padded to 48-100 x 28-100) leaves a full-width top
+        # strip (400x224) and a tall left column (192x800, more area). The cell shows
+        # 299x224 of the strip but only 192x144 of the column, so the strip is kept.
         out = images.food_crop(self.img, answer(box(0, 0, 100, 100), text=[box(50, 30, 100, 100)]))
-        self.assertEqual(out.size, (400, 240))
+        self.assertEqual(out.size, (400, 224))
 
     def test_many_small_boxes_stay_bounded(self):
         dots = [box(x, y, x + 1, y + 1) for x in range(5, 95, 9) for y in range(5, 95, 9)]  # 100 boxes
@@ -81,7 +92,7 @@ class FoodCrop(unittest.TestCase):
     def test_a_reversed_caption_box_is_still_cut_round(self):
         # Same as the caption test with the caption's edges given backwards.
         out = images.food_crop(self.img, answer(box(0, 20, 100, 90), text=[box(90, 50, 10, 40)]))
-        self.assertEqual(out.size, (400, 320))
+        self.assertEqual(out.size, (400, 304))
 
     def test_a_malformed_or_empty_food_box_is_refused(self):
         self.assertIsNone(images.food_crop(self.img, answer(box(90, 90, 10, 10))))
@@ -92,14 +103,14 @@ class FoodCrop(unittest.TestCase):
 
 
 class MirrorWithPicker(unittest.TestCase):
-    def _mirror(self, picker):
+    def _mirror(self, picker, data=None):
         stored = {}
 
         def fake_store(user_id, recipe_id, img, bust=None):
             stored["size"] = img.size
             return {"image_url": "lg", "image_thumb_url": "sm", "image_blur": "b"}
 
-        with patch("app.images.fetch_bytes", return_value=(cover(), "image/jpeg")), patch(
+        with patch("app.images.fetch_bytes", return_value=(data or cover(), "image/jpeg")), patch(
             "app.images._store", side_effect=fake_store
         ) as store:
             result = images.mirror_image(USER, RECIPE, "https://cdn.example.com/c.jpg", picker=picker)
@@ -153,6 +164,18 @@ class MirrorWithPicker(unittest.TestCase):
         band = seen["img"].crop((0, h // 2 - h // 25, w // 10, h // 2)).getdata()
         self.assertTrue(any(min(p) > 200 for p in band), "no line label on the model's copy")
         self.assertEqual(stored["size"], (360, 640))
+
+    def test_the_grid_is_drawn_on_the_shrunk_copy(self):
+        # A cover past the vision limit is shrunk first; the grid drawn after keeps its
+        # 1px lines and label size instead of being resampled away.
+        from app.ai import VISION_MAX_PX
+
+        sizes = []
+        real = images._grid
+        with patch("app.images._grid", side_effect=lambda im: (sizes.append(im.size), real(im))[1]):
+            self._mirror(lambda *_: answer(box(0, 0, 100, 100)), data=cover(1000, 2000))
+        self.assertEqual(len(sizes), 1)
+        self.assertLessEqual(max(sizes[0]), VISION_MAX_PX)
 
     def test_without_a_picker_nothing_changes(self):
         _, _, stored = self._mirror(None)

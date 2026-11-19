@@ -140,8 +140,11 @@ def image_for_vision(data: bytes) -> tuple[str, str]:
     return _vision_jpeg(_open(data))
 
 
-def _vision_jpeg(img: Image.Image) -> tuple[str, str]:
-    """image_for_vision for a picture already decoded (the mirror's, after repair)."""
+def _vision_jpeg(img: Image.Image, overlay=None) -> tuple[str, str]:
+    """image_for_vision for a picture already decoded (the mirror's, after repair).
+
+    `overlay` draws on the shrunk copy, so its lines and labels reach the model
+    at the size they were drawn, not resampled."""
     from .ai import VISION_MAX_PIXELS, VISION_MAX_PX, VISION_QUALITY
 
     img = img.copy()
@@ -150,6 +153,8 @@ def _vision_jpeg(img: Image.Image) -> tuple[str, str]:
     if width * height > VISION_MAX_PIXELS:
         scale = (VISION_MAX_PIXELS / (width * height)) ** 0.5
         img = img.resize((max(1, int(width * scale)), max(1, int(height * scale))), Image.LANCZOS)
+    if overlay:
+        img = overlay(img)
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=VISION_QUALITY, optimize=True)
     return base64.b64encode(buf.getvalue()).decode("ascii"), "image/jpeg"
@@ -283,6 +288,14 @@ NO_PHOTO = {"image_url": None, "image_thumb_url": None, "image_blur": None}
 CELL_ASPECT = 4 / 3
 # Pieces kept between obstacles; each obstacle can split a piece four ways.
 MAX_PIECES = 64
+# Percent added on every side of a text or person box: the model's edges sit on
+# the letters, so their outer pixels stayed in the crop (job 11 run 4).
+OBSTACLE_PAD = 2
+# Widest piece kept (width / height). A wider strip fills a 4:3 cell from too
+# few rows and upscales blurry. Good run-4 crops reach 1.8 once padded (#2), a
+# 100x16% strip is 3.5. Tall pieces need no limit: a cover-fit cell shows them
+# at full width.
+MAX_CROP_ASPECT = 2.0
 
 
 def _pct_box(raw, *, swap=False) -> tuple[int, int, int, int] | None:
@@ -336,7 +349,10 @@ def food_crop(img: Image.Image, pick: dict):
     if food is None:
         return None
     raw = [*(pick.get("text") or []), *(pick.get("people") or [])]
-    obstacles = [b for b in (_pct_box(o, swap=True) for o in raw) if b]
+    obstacles = [
+        (max(0, l - OBSTACLE_PAD), max(0, t - OBSTACLE_PAD), min(100, r + OBSTACLE_PAD), min(100, b + OBSTACLE_PAD))
+        for l, t, r, b in filter(None, (_pct_box(o, swap=True) for o in raw))
+    ]
     w, h = img.size
 
     def shown(p):  # pixels a 4:3 cover-fit cell keeps of this piece
@@ -346,6 +362,7 @@ def food_crop(img: Image.Image, pick: dict):
     usable = [
         p for p in _clean_pieces(food, obstacles)
         if (p[2] - p[0]) / 100 >= MIN_CROP_WIDTH and (p[3] - p[1]) / 100 >= MIN_CROP_HEIGHT
+        and (p[2] - p[0]) * w <= MAX_CROP_ASPECT * (p[3] - p[1]) * h
     ]
     if not usable:
         return NO_FOOD
@@ -383,7 +400,7 @@ def _pick(img: Image.Image, picker, recipe_id: str) -> Image.Image | None:
     food in it". Any failure is the picture unchanged: the picker can only make a
     cover better or remove it, never lose a mirror that would have worked."""
     try:
-        pick = picker(*_vision_jpeg(_grid(img)))
+        pick = picker(*_vision_jpeg(img, overlay=_grid))
         if pick.get("verdict") == "none":
             log.info("no food in the cover for %s", recipe_id)
             return None
