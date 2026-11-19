@@ -395,10 +395,14 @@ def _grid(img: Image.Image) -> Image.Image:
     return out
 
 
-def _pick(img: Image.Image, picker, recipe_id: str) -> Image.Image | None:
+def _pick(img: Image.Image, picker, recipe_id: str, checker=None) -> Image.Image | None:
     """H1/H4. Returns the food crop, the picture unchanged, or None for "no clean
     food in it". Any failure is the picture unchanged: the picker can only make a
-    cover better or remove it, never lose a mirror that would have worked."""
+    cover better or remove it, never lose a mirror that would have worked.
+
+    `checker` (ai.crop_shows_food) looks at the finished crop: a "no" is None too,
+    since the picker calls some covers food that have none (#14, a hand over an
+    empty pan). The check failing keeps the crop, as before it existed."""
     try:
         pick = picker(*_vision_jpeg(img, overlay=_grid))
         if pick.get("verdict") == "none":
@@ -414,10 +418,19 @@ def _pick(img: Image.Image, picker, recipe_id: str) -> Image.Image | None:
     if cropped is None:
         log.info("unusable food boxes for %s: %s", recipe_id, pick)
         return img
+    if checker is not None:
+        try:
+            shows_food = checker(*_vision_jpeg(cropped))
+        except Exception as exc:
+            log.info("crop check failed for %s, keeping the crop: %s", recipe_id, exc)
+            return cropped
+        if not shows_food:
+            log.info("the crop for %s does not show food", recipe_id)
+            return None
     return cropped
 
 
-def _video_pick(video, picker, recipe_id: str) -> Image.Image | None:
+def _video_pick(video, picker, recipe_id: str, checker=None) -> Image.Image | None:
     """H2: the cover had no clean food, so pick the food out of the video still
     that best shows the dish. None (the tile) when there is no video, no still
     with food, or any failure on the way."""
@@ -429,19 +442,20 @@ def _video_pick(video, picker, recipe_id: str) -> Image.Image | None:
     if frame is None:
         log.info("no video still shows food for %s", recipe_id)
         return None
-    cropped = _pick(frame, picker, recipe_id)
+    cropped = _pick(frame, picker, recipe_id, checker)
     # _pick hands back the picture itself when it fails. Right for a cover, but a
     # still has been judged only "shows food", faces and captions included: tile.
     return None if cropped is frame else cropped
 
 
-def mirror_image(user_id: str, recipe_id: str, source_url: str, picker=None, video=None) -> dict:
+def mirror_image(user_id: str, recipe_id: str, source_url: str, picker=None, video=None, checker=None) -> dict:
     """Fetch, resize and store one recipe photo. Returns the columns to save.
 
     `picker` (ai.pick_food_crop) is passed only for the first mirror of a social
     import; with it, the stored photo is the food alone, or NO_PHOTO. `video`, a
     no-argument callable returning a still or None (TikTok only), is tried when
-    the cover has no clean food.
+    the cover has no clean food. `checker` (ai.crop_shows_food) is the second look
+    at each finished crop, the cover's and the still's.
     """
     # Both go straight into an object path. They are already validated upstream,
     # but a traversal here would write outside the caller's own folder.
@@ -465,9 +479,9 @@ def mirror_image(user_id: str, recipe_id: str, source_url: str, picker=None, vid
         log.info("stripped a play glyph from the cover for %s", recipe_id)
 
     if picker is not None:
-        img = _pick(img, picker, recipe_id)
+        img = _pick(img, picker, recipe_id, checker)
         if img is None and video is not None:
-            img = _video_pick(video, picker, recipe_id)
+            img = _video_pick(video, picker, recipe_id, checker)
         if img is None:
             return dict(NO_PHOTO)
 

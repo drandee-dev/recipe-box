@@ -67,7 +67,7 @@ class BestFrame(unittest.TestCase):
 
 
 class MirrorWithVideo(unittest.TestCase):
-    def _mirror(self, picks, video):
+    def _mirror(self, picks, video, checker=None):
         """`picks` answers the cover first, then the still."""
         stored = {}
 
@@ -79,8 +79,23 @@ class MirrorWithVideo(unittest.TestCase):
         with patch("app.images.fetch_bytes", return_value=(cover(), "image/jpeg")), patch(
             "app.images._store", side_effect=fake_store
         ):
-            result = images.mirror_image(USER, RECIPE, "https://cdn.example.com/c.jpg", picker=picker, video=video)
+            result = images.mirror_image(
+                USER, RECIPE, "https://cdn.example.com/c.jpg", picker=picker, video=video, checker=checker
+            )
         return result, stored, picker
+
+    def test_a_cover_crop_the_second_look_rejects_goes_to_the_video(self):
+        # Cover #14: the cover is called food and crops to a hand; the still's crop passes.
+        checker = MagicMock(side_effect=[False, True])
+        result, stored, _ = self._mirror([ALL_FOOD, ALL_FOOD], lambda: still(), checker=checker)
+        self.assertEqual(stored["size"], (720, 1280))
+        self.assertEqual(result["image_url"], "lg")
+        self.assertEqual(checker.call_count, 2)
+
+    def test_a_still_crop_the_second_look_rejects_is_the_tile(self):
+        result, stored, _ = self._mirror([ALL_FOOD, ALL_FOOD], lambda: still(), checker=lambda *_: False)
+        self.assertEqual(result, dict(images.NO_PHOTO))
+        self.assertEqual(stored, {})
 
     def test_no_food_on_the_cover_uses_the_videos_still(self):
         result, stored, picker = self._mirror([NONE, ALL_FOOD], lambda: still())

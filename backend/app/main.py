@@ -357,6 +357,19 @@ def _video_fallback(post_url: str | None, request: Request):
     return still
 
 
+def _crop_checker(picker):
+    """ai.crop_shows_food whenever the picker runs, else None: the second look at
+    the crop the picker produced. It is not gated again, since one gated pick
+    allows at most one check, but its model call is recorded against the caller
+    like any other, so a picked import counts three calls toward the hourly cap
+    (structure, pick, check) where it counted two."""
+    if picker is None:
+        return None
+    from .ai import crop_shows_food
+
+    return crop_shows_food
+
+
 @app.post("/api/recipes/image")
 def recipe_image(body: ImageRequest, request: Request, authorization: str | None = Header(default=None)):
     """Mirror a recipe photo into our own bucket. Signed in only.
@@ -376,7 +389,9 @@ def recipe_image(body: ImageRequest, request: Request, authorization: str | None
     picker = _food_picker(body.post_url, request)
     video = _video_fallback(body.post_url, request) if picker else None
     try:
-        return mirror_image(user_id, body.recipe_id, body.url, picker=picker, video=video)
+        return mirror_image(
+            user_id, body.recipe_id, body.url, picker=picker, video=video, checker=_crop_checker(picker)
+        )
     except ValueError:
         raise HTTPException(status_code=422, detail="Not a valid recipe id")
     except ImageError as exc:

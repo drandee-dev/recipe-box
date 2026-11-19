@@ -9,7 +9,7 @@ import io
 import os
 import sys
 import unittest
-from unittest.mock import patch
+from unittest.mock import MagicMock, patch
 
 from fastapi import HTTPException
 from PIL import Image
@@ -17,7 +17,7 @@ from PIL import Image
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
 
 from app import images  # noqa: E402
-from app.ai import PICK_SCHEMA, AIError  # noqa: E402
+from app.ai import CHECK_SCHEMA, PICK_SCHEMA, AIError  # noqa: E402
 
 USER = "11111111-1111-4111-8111-111111111111"
 RECIPE = "22222222-2222-4222-8222-222222222222"
@@ -105,7 +105,7 @@ class FoodCrop(unittest.TestCase):
 
 
 class MirrorWithPicker(unittest.TestCase):
-    def _mirror(self, picker, data=None):
+    def _mirror(self, picker, data=None, checker=None):
         stored = {}
 
         def fake_store(user_id, recipe_id, img, bust=None):
@@ -115,8 +115,49 @@ class MirrorWithPicker(unittest.TestCase):
         with patch("app.images.fetch_bytes", return_value=(data or cover(), "image/jpeg")), patch(
             "app.images._store", side_effect=fake_store
         ) as store:
-            result = images.mirror_image(USER, RECIPE, "https://cdn.example.com/c.jpg", picker=picker)
+            result = images.mirror_image(USER, RECIPE, "https://cdn.example.com/c.jpg", picker=picker, checker=checker)
         return result, store, stored
+
+    def test_a_crop_the_second_look_rejects_gets_the_tile(self):
+        # Cover #14: called food, cropped to the back of a hand.
+        result, store, _ = self._mirror(lambda *_: answer(box(0, 50, 100, 80)), checker=lambda *_: False)
+        store.assert_not_called()
+        self.assertEqual(result, dict(images.NO_PHOTO))
+
+    def test_the_second_look_sees_the_crop_not_the_cover(self):
+        seen = {}
+
+        def checker(b64, _mt):
+            import base64
+
+            seen["size"] = Image.open(io.BytesIO(base64.b64decode(b64))).size
+            return True
+
+        _, _, stored = self._mirror(lambda *_: answer(box(0, 50, 100, 80)), checker=checker)
+        self.assertEqual(seen["size"], (360, 192))
+        self.assertEqual(stored["size"], (360, 192))
+
+    def test_a_failed_second_look_keeps_the_crop(self):
+        def broken(*_):
+            raise AIError("down")
+
+        _, _, stored = self._mirror(lambda *_: answer(box(0, 50, 100, 80)), checker=broken)
+        self.assertEqual(stored["size"], (360, 192))
+
+    def test_the_second_look_runs_only_on_a_finished_crop(self):
+        def broken(*_):
+            raise AIError("down")
+
+        no_crop = (
+            lambda *_: answer(box(0, 0, 0, 0), verdict="none"),
+            lambda *_: answer(box(10, 40, 90, 70), text=[box(0, 0, 100, 100)]),
+            lambda *_: answer(box(50, 50, 10, 10)),
+            broken,
+        )
+        for picker in no_crop:
+            checker = MagicMock(return_value=True)
+            self._mirror(picker, checker=checker)
+            checker.assert_not_called()
 
     def test_a_crop_stores_only_the_food(self):
         result, _, stored = self._mirror(lambda *_: answer(box(0, 50, 100, 80)))
@@ -213,6 +254,34 @@ class WhenThePickerRuns(unittest.TestCase):
         picker, _ = self._picker("https://www.tiktok.com/@a/video/1", over_cap=True)
         self.assertIsNone(picker)
 
+    def test_the_second_look_goes_wherever_the_picker_goes_and_nowhere_else(self):
+        from app import main
+        from app.ai import crop_shows_food, pick_food_crop
+
+        self.assertIs(main._crop_checker(pick_food_crop), crop_shows_food)
+        self.assertIsNone(main._crop_checker(None))
+
+    def test_the_image_route_hands_the_second_look_to_the_mirror(self):
+        from app import main
+        from app.ai import crop_shows_food, pick_food_crop
+
+        body = main.ImageRequest(recipe_id=RECIPE, url="https://cdn.example.com/c.jpg", post_url="https://www.tiktok.com/@a/video/1")
+        for picker, want in ((pick_food_crop, crop_shows_food), (None, None)):
+            with patch("app.main._photo_caller", return_value=USER), patch(
+                "app.main._food_picker", return_value=picker
+            ), patch("app.images.mirror_image", return_value={}) as mirror:
+                main.recipe_image(body, object(), None)
+            self.assertIs(mirror.call_args.kwargs["checker"], want)
+
+
+class CropCheck(unittest.TestCase):
+    def test_only_a_plain_no_rejects_the_crop(self):
+        from app import ai
+
+        for reply, want in (({"shows_food": False}, False), ({"shows_food": True}, True), ({}, True)):
+            with patch("app.ai._call", return_value=reply):
+                self.assertIs(ai.crop_shows_food("b64", "image/jpeg"), want, reply)
+
 
 class PickSchema(unittest.TestCase):
     def test_it_follows_the_structured_output_rules(self):
@@ -223,7 +292,7 @@ class PickSchema(unittest.TestCase):
                 for v in node.values():
                     yield from objects(v)
 
-        for obj in objects(PICK_SCHEMA):
+        for obj in [*objects(PICK_SCHEMA), *objects(CHECK_SCHEMA)]:
             self.assertIs(obj["additionalProperties"], False)
             self.assertEqual(sorted(obj["required"]), sorted(obj["properties"]))
 
