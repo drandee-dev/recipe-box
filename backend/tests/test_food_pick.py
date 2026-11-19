@@ -461,6 +461,47 @@ class RepairDue(unittest.TestCase):
         self.assertFalse(self._due(status=500, rows={"message": "no"}))
         self.assertFalse(self._due(error=httpx.ConnectError("down")))
 
+    def test_no_storage_or_a_body_that_is_not_json_is_not_due_and_not_a_500(self):
+        with patch("app.images._storage", side_effect=images.ImageError("not configured")):
+            self.assertFalse(images.repair_due(USER, RECIPE))
+
+        def not_json():
+            raise ValueError("Expecting value")
+
+        client = MagicMock()
+        client.__enter__.return_value = client
+        client.get.return_value = MagicMock(status_code=200, json=not_json, text="<html>")
+        with patch("app.images._storage", return_value=("https://ref.supabase.co", "k")), patch(
+            "app.images.httpx.Client", return_value=client
+        ):
+            self.assertFalse(images.repair_due(USER, RECIPE))
+
+
+class SaveRepair(unittest.TestCase):
+    def _save(self, status=204, error=None):
+        client = MagicMock()
+        client.__enter__.return_value = client
+        if error:
+            client.patch.side_effect = error
+        else:
+            client.patch.return_value = MagicMock(status_code=status, text="")
+        with patch("app.images._storage", return_value=("https://ref.supabase.co", "k")), patch(
+            "app.images.httpx.Client", return_value=client
+        ):
+            images.save_repair(USER, RECIPE, {"image_url": "lg", "image_thumb_url": "sm", "image_blur": "b", "extra": 1})
+        return client
+
+    def test_it_writes_the_three_columns_to_this_callers_row_only(self):
+        call = self._save().patch.call_args
+        self.assertEqual(call.kwargs["params"], {"id": f"eq.{RECIPE}", "user_id": f"eq.{USER}"})
+        self.assertEqual(call.kwargs["json"], {"image_url": "lg", "image_thumb_url": "sm", "image_blur": "b"})
+
+    def test_a_failed_write_is_logged_not_raised(self):
+        import httpx
+
+        self._save(status=500)
+        self._save(error=httpx.ConnectError("down"))
+
 
 class RepairRoute(unittest.TestCase):
     def _call(self, post_url=POST, *, ai=True, over=False, mirror=None, due=True):
@@ -471,7 +512,7 @@ class RepairRoute(unittest.TestCase):
             "app.images.repair_due", return_value=due
         ), patch("app.usage.over_rate_limit", return_value=over) as cap, patch("app.main.meter_caller") as import_cap, patch(
             "app.images.mirror_image", side_effect=mirror, return_value={"image_url": "lg"}
-        ) as m:
+        ) as m, patch("app.images.save_repair") as self.save:
             try:
                 return main.recipe_image(body, object(), None), m, cap, import_cap
             except HTTPException as exc:
@@ -488,6 +529,8 @@ class RepairRoute(unittest.TestCase):
         self.assertTrue(callable(mirror.call_args.kwargs["video"]))
         cap.assert_called_once_with(repair_caller(USER), REPAIR_LIMIT_CALLS)
         import_cap.assert_not_called()
+        # The server writes the row itself, so a client that never saves cannot ask again.
+        self.save.assert_called_once_with(USER, RECIPE, {"image_url": "lg"})
         # What fills the bucket: the model calls are recorded under the repair id.
         from app import usage
 
@@ -523,6 +566,7 @@ class RepairRoute(unittest.TestCase):
     def test_a_spent_budget_is_an_error_not_a_save(self):
         exc, _, _, _ = self._call(mirror=images.PickUnavailable("budget"))
         self.assertEqual(exc.status_code, 503)
+        self.save.assert_not_called()
 
     def test_no_post_or_a_web_page_is_refused(self):
         for url in (None, "https://example.com/recipe"):

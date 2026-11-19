@@ -426,7 +426,7 @@ def _repair_image(user_id: str, body: ImageRequest):
     later load retries. Storing the whole cover there would stamp the version and
     end the pass with nothing picked.
     """
-    from .images import ImageError, PickUnavailable, mirror_image, repair_due
+    from .images import ImageError, PickUnavailable, mirror_image, repair_due, save_repair
     from .social import detect_source
 
     kind = detect_source(body.post_url) if body.post_url else "web"
@@ -457,10 +457,12 @@ def _repair_image(user_id: str, body: ImageRequest):
                 raise PickUnavailable(str(exc)) from exc
 
     try:
-        return mirror_image(
+        columns = mirror_image(
             user_id, body.recipe_id, body.post_url,
             picker=pick_food_crop, video=video, checker=crop_shows_food, repair=True,
         )
+        save_repair(user_id, body.recipe_id, columns)
+        return columns
     except PickUnavailable as exc:
         log.info("photo repair skipped for %s: %s", body.recipe_id, exc)
         raise HTTPException(status_code=503, detail="Photo repair is unavailable")

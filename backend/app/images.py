@@ -265,26 +265,49 @@ def repair_due(user_id: str, recipe_id: str) -> bool:
     Fails closed, like `recipe_is_owned`; a later load asks again."""
     user_id = str(uuid.UUID(user_id))
     recipe_id = str(uuid.UUID(recipe_id))
-    url, key = _storage()
     try:
+        url, key = _storage()
         with httpx.Client(timeout=TIMEOUT) as client:
             resp = client.get(
                 f"{url}/rest/v1/recipes",
                 params={"select": "image_url", "id": f"eq.{recipe_id}", "user_id": f"eq.{user_id}", "limit": 1},
                 headers=supabase.headers(key, json=False),
             )
-    except httpx.HTTPError:
+        if resp.status_code >= 400:
+            log.warning("repair lookup rejected: %s %s", resp.status_code, resp.text[:200])
+            return False
+        rows = resp.json()
+    except (ImageError, httpx.HTTPError, ValueError):
         log.exception("repair lookup failed for %s", recipe_id)
         return False
-    if resp.status_code >= 400:
-        log.warning("repair lookup rejected: %s %s", resp.status_code, resp.text[:200])
-        return False
-    rows = resp.json()
     photo = rows[0].get("image_url") if isinstance(rows, list) and rows and isinstance(rows[0], dict) else None
     if not isinstance(photo, str) or f"/storage/v1/object/public/{BUCKET}/" not in photo or "&u=" in photo:
         return False
     found = _URL_VERSION.search(photo)
     return int(found.group(1) if found else 1) < MIRROR_VERSION
+
+
+def save_repair(user_id: str, recipe_id: str, columns: dict) -> None:
+    """Write a repair's three image columns to the row ourselves, so `repair_due`
+    is false at once: the client's own save comes after, and a client that never
+    saves could otherwise ask again forever. Service key, so both ids are in the
+    filter. Best effort: the photo is already stored and the client still saves
+    it, so a failed write is logged, never an error."""
+    user_id = str(uuid.UUID(user_id))
+    recipe_id = str(uuid.UUID(recipe_id))
+    try:
+        url, key = _storage()
+        with httpx.Client(timeout=TIMEOUT) as client:
+            resp = client.patch(
+                f"{url}/rest/v1/recipes",
+                params={"id": f"eq.{recipe_id}", "user_id": f"eq.{user_id}"},
+                json={k: columns.get(k) for k in ("image_url", "image_thumb_url", "image_blur")},
+                headers={**supabase.headers(key), "Prefer": "return=minimal"},
+            )
+        if resp.status_code >= 400:
+            log.warning("repair save rejected for %s: %s %s", recipe_id, resp.status_code, resp.text[:200])
+    except (ImageError, httpx.HTTPError):
+        log.exception("repair save failed for %s", recipe_id)
 
 
 def _resolve_source(url: str) -> str:
