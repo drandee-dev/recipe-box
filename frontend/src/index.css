@@ -91,6 +91,12 @@
      Not overridden in the dark blocks on purpose: it is mixed into the photo,
      not the page, and a photo should look the same in both themes. */
   --photo-lift: #2c251e;
+  /* What a photo's box holds before the photo arrives. The lift layer is drawn
+     over the empty box too, so this is chosen for what it becomes under that
+     layer: on the light theme --surface-2 barely moves (#f6f4ee to #f8f6f0); on
+     the dark one it went from #252a22 to a light olive #4b493c, so the dark
+     blocks use black, which the layer turns into the lift colour itself. */
+  --photo-ground: var(--surface-2);
   /* What dims the page behind a sheet. A dark tint on the light ground; on the
      dark ground the same tint barely shows, so the dark theme uses near-black,
      which is what makes a sheet stand off the page there. */
@@ -248,6 +254,7 @@
     --info-ink: #b9c6cf;
     --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
     --surface-glass: rgb(29 33 27 / 90%);
+  --photo-ground: #000;
     --scrim: rgb(0 0 0 / 66%);
     --tile-mix: 8%;
     color-scheme: dark;
@@ -283,6 +290,7 @@
   --info-ink: #b9c6cf;
   --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
   --surface-glass: rgb(29 33 27 / 90%);
+  --photo-ground: #000;
   --scrim: rgb(0 0 0 / 66%);
   --tile-mix: 8%;
   color-scheme: dark;
@@ -2251,6 +2259,8 @@ textarea.field {
   /* Keeps the blend inside the box: without it the layer screens against
      whatever is behind the cell as well. */
   isolation: isolate;
+  /* See --photo-ground: the box while the photo is still on its way. */
+  background-color: var(--photo-ground);
 }
 
 .recipes-thumb-photo img {
