@@ -67,6 +67,8 @@ class FoodCrop(unittest.TestCase):
         self.assertIs(images.food_crop(self.img, answer(box(0, 40, 100, 56))), images.NO_FOOD)
         # 400x224 is 1.79 wide, like run 4's #2, and passes.
         self.assertEqual(images.food_crop(self.img, answer(box(0, 0, 100, 28))).size, (400, 224))
+        # 400x184 is 2.17 wide, like run 5's #7, and passes (at 2.0 a sliver beat it).
+        self.assertEqual(images.food_crop(self.img, answer(box(0, 0, 100, 23))).size, (400, 184))
 
     def test_text_covering_all_the_food_means_no_food(self):
         out = images.food_crop(self.img, answer(box(10, 40, 90, 70), text=[box(0, 35, 100, 75)]))

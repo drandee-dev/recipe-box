@@ -292,10 +292,10 @@ MAX_PIECES = 64
 # the letters, so their outer pixels stayed in the crop (job 11 run 4).
 OBSTACLE_PAD = 2
 # Widest piece kept (width / height). A wider strip fills a 4:3 cell from too
-# few rows and upscales blurry. Good run-4 crops reach 1.8 once padded (#2), a
-# 100x16% strip is 3.5. Tall pieces need no limit: a cover-fit cell shows them
-# at full width.
-MAX_CROP_ASPECT = 2.0
+# few rows and upscales blurry. Good crops reach 2.16 once padded (run 5 #7; at
+# 2.0 it lost to a 151x576 sliver), a 100x16% strip is 3.5. Tall pieces need no
+# limit: a cover-fit cell shows them at full width.
+MAX_CROP_ASPECT = 2.5
 
 
 def _pct_box(raw, *, swap=False) -> tuple[int, int, int, int] | None:
