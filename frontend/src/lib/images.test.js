@@ -72,6 +72,11 @@ test('a repaired photo is not repaired again', () => {
   assert.equal(needsRepair(TT(OURS)), false)
 })
 
+test('a photo from a newer build is not redone back to this one', () => {
+  // Staging and production share the database; `?v=50` must not read as v5 either.
+  for (const v of [6, 50]) assert.equal(needsRepair(TT(`${BUCKET}/user-1/recipe-1-lg.jpg?v=${v}`)), false, v)
+})
+
 test('a photo the person uploaded is never repaired from the post, whatever its version', () => {
   const uploaded = `${BUCKET}/user-1/recipe-1-lg.jpg?v=2&u=1760000000`
   assert.equal(needsRepair(IG(uploaded)), false)

@@ -49,7 +49,10 @@ export function needsRepair(recipe) {
   // `&u=` marks a photo the person uploaded themselves. A repair goes back to the
   // post and would replace their picture with the post's cover.
   if (recipe.image_url.includes('&u=')) return false
-  return !recipe.image_url.includes(`?v=${MIRROR_VERSION}`)
+  // Older, never different: a newer build's photo is not redone back to this
+  // build's pipeline (staging and production share the database). No `v` is v1.
+  const v = Number(recipe.image_url.match(/[?&]v=(\d+)/)?.[1] ?? 1)
+  return v < MIRROR_VERSION
 }
 
 // What to hand the backend as the source.

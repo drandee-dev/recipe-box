@@ -411,15 +411,17 @@ def _pick(img: Image.Image, picker, recipe_id: str, checker=None, strict=False) 
     since the picker calls some covers food that have none (#14, a hand over an
     empty pan). The check failing keeps the crop, as before it existed.
 
-    `strict` (a repair) raises PickUnavailable on a spent budget instead: storing
-    the whole cover there would stamp the version and end the pass unpicked."""
-    from .ai import AIBudgetError
+    `strict` (a repair) raises PickUnavailable when the model could not be asked
+    (budget spent, key bad, API down) instead: storing the whole cover there would
+    stamp the version and end the pass unpicked. An answer it cannot use still
+    keeps the cover, since that call was paid for and would be paid again."""
+    from .ai import AIBudgetError, AIUnavailable
 
     try:
         pick = picker(*_vision_jpeg(img, overlay=_grid))
-    except AIBudgetError as exc:
+    except (AIBudgetError, AIUnavailable) as exc:
         if strict:
-            raise PickUnavailable("monthly AI budget reached") from exc
+            raise PickUnavailable(str(exc)) from exc
         log.info("food pick failed for %s, keeping the cover: %s", recipe_id, exc)
         return img
     except Exception as exc:
@@ -474,9 +476,11 @@ def _video_pick(video, picker, recipe_id: str, checker=None, strict=False) -> Im
 
 
 def _stored_url(user_id: str, recipe_id: str) -> str:
-    """Our own copy of record for a recipe, as `_store` wrote it."""
+    """Our own copy of record for a recipe, as `_store` wrote it. A fresh query
+    string, since the object is cached a year as immutable and v1 URLs had none,
+    so a cache could still hold older bytes at the bare address."""
     url, _key = _storage()
-    return f"{url}/storage/v1/object/public/{BUCKET}/{user_id}/{recipe_id}-lg.jpg"
+    return f"{url}/storage/v1/object/public/{BUCKET}/{user_id}/{recipe_id}-lg.jpg?r={int(time.time())}"
 
 
 def mirror_image(

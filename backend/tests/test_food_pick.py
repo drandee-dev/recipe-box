@@ -327,12 +327,22 @@ class Repair(unittest.TestCase):
         with self.assertRaises(images.PickUnavailable):
             self._repair(lambda *_: answer(box(0, 0, 0, 0), verdict="none"), video=over)
 
-    def test_a_model_error_is_not_a_spent_budget_and_keeps_the_cover(self):
-        # Retrying a post the model keeps failing on would spend calls on every load.
-        def broken(*_):
-            raise AIError("down")
+    def test_a_model_that_could_not_be_asked_writes_nothing(self):
+        # A bad key, Anthropic's own 429 or a network failure: no answer, nothing spent.
+        from app.ai import AIUnavailable
 
-        _, _, stored, _ = self._repair(broken)
+        def down(*_):
+            raise AIUnavailable("AI request failed")
+
+        with self.assertRaises(images.PickUnavailable):
+            self._repair(down)
+
+    def test_an_answer_it_cannot_use_keeps_the_cover(self):
+        # A refusal or a cut-off answer was paid for; retrying it every load would pay again.
+        def refused(*_):
+            raise AIError("AI declined that content")
+
+        _, _, stored, _ = self._repair(refused)
         self.assertEqual(stored["size"], (360, 640))
 
     def test_a_gone_post_keeps_our_copy_and_never_asks_the_model(self):
@@ -342,7 +352,8 @@ class Repair(unittest.TestCase):
         picker = MagicMock()
         result, _, stored, fetched = self._repair(picker, resolve=gone)
         picker.assert_not_called()
-        self.assertEqual(fetched, [f"https://ref.supabase.co/storage/v1/object/public/recipe-images/{USER}/{RECIPE}-lg.jpg"])
+        self.assertEqual(len(fetched), 1)
+        self.assertTrue(fetched[0].startswith(f"https://ref.supabase.co/storage/v1/object/public/recipe-images/{USER}/{RECIPE}-lg.jpg?r="))
         self.assertEqual(result["image_url"], "lg")
 
     def test_a_gone_post_on_a_first_mirror_is_still_a_failure(self):
@@ -391,6 +402,21 @@ class RepairRoute(unittest.TestCase):
         self.assertTrue(callable(mirror.call_args.kwargs["video"]))
         cap.assert_called_once_with(repair_caller(USER), REPAIR_LIMIT_CALLS)
         import_cap.assert_not_called()
+        # What fills the bucket: the model calls are recorded under the repair id.
+        from app import usage
+
+        self.assertEqual(usage._caller.get(), repair_caller(USER))
+
+    def test_the_video_writes_nothing_when_the_model_could_not_be_asked(self):
+        from app.ai import AIBudgetError, AIUnavailable
+
+        _, mirror, _, _ = self._call()
+        video = mirror.call_args.kwargs["video"]
+        for exc in (AIUnavailable("down"), AIBudgetError("spent")):
+            with patch("app.usage.over_rate_limit", return_value=False), patch(
+                "app.thumbs.best_frame", side_effect=exc
+            ), self.assertRaises(images.PickUnavailable):
+                video()
 
     def test_instagram_has_no_video(self):
         _, mirror, _, _ = self._call("https://www.instagram.com/reel/abc/")

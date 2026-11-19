@@ -130,6 +130,12 @@ class AIBudgetError(AIError):
     """Raised when the monthly AI budget is spent."""
 
 
+class AIUnavailable(AIError):
+    """The model could not be asked at all (no key, the API refused or was
+    unreachable). No answer came back and nothing was spent, unlike a refusal or
+    an answer cut off at max_tokens, which are plain AIError."""
+
+
 INGREDIENT_SCHEMA = {
     "type": "object",
     "properties": {
@@ -208,7 +214,7 @@ def _call(content: list, *, system: str, schema: dict, max_tokens: int, budget_n
 
     key = os.environ.get("ANTHROPIC_API_KEY")
     if not key:
-        raise AIError("AI structuring is not configured")
+        raise AIUnavailable("AI structuring is not configured")
 
     from .usage import month_spend_cents, record_usage
 
@@ -227,9 +233,9 @@ def _call(content: list, *, system: str, schema: dict, max_tokens: int, budget_n
         )
     except anthropic.APIStatusError as exc:
         log.warning("Haiku call failed: %s", exc.status_code)
-        raise AIError("AI request failed") from exc
+        raise AIUnavailable("AI request failed") from exc
     except anthropic.APIConnectionError as exc:
-        raise AIError("AI request failed") from exc
+        raise AIUnavailable("AI request failed") from exc
 
     record_usage(_usage_cents(response.usage), MODEL)
 

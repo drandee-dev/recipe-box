@@ -445,13 +445,13 @@ def _repair_image(user_id: str, body: ImageRequest):
                 _meter_repair(user_id)
             except HTTPException as exc:
                 raise PickUnavailable("over the repair cap") from exc
-            from .ai import pick_frame
+            from .ai import AIUnavailable, pick_frame
             from .thumbs import best_frame
 
             try:
                 return best_frame(body.post_url, pick_frame)
-            except AIBudgetError as exc:
-                raise PickUnavailable("monthly AI budget reached") from exc
+            except (AIBudgetError, AIUnavailable) as exc:
+                raise PickUnavailable(str(exc)) from exc
 
     try:
         return mirror_image(
