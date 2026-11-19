@@ -345,9 +345,18 @@ class Repair(unittest.TestCase):
         _, _, stored, _ = self._repair(refused)
         self.assertEqual(stored["size"], (360, 640))
 
+    def test_a_post_that_failed_to_load_is_not_gone_and_writes_nothing(self):
+        # His rule: only a definite "gone" ends the pass; a timeout or block retries.
+        def failed(_url):
+            raise images.ImageError("that post no longer serves a cover image")
+
+        with self.assertRaises(images.ImageError) as ctx:
+            self._repair(MagicMock(), resolve=failed)
+        self.assertNotIsInstance(ctx.exception, images.PostGone)
+
     def test_a_gone_post_keeps_our_copy_and_never_asks_the_model(self):
         def gone(_url):
-            raise images.ImageError("that post no longer serves a cover image")
+            raise images.PostGone("TikTok says the post does not exist")
 
         picker = MagicMock()
         result, _, stored, fetched = self._repair(picker, resolve=gone)
@@ -358,7 +367,7 @@ class Repair(unittest.TestCase):
 
     def test_a_gone_post_on_a_first_mirror_is_still_a_failure(self):
         def gone(_url):
-            raise images.ImageError("gone")
+            raise images.PostGone("gone")
 
         with patch("app.images._resolve_source", side_effect=gone), self.assertRaises(images.ImageError):
             images.mirror_image(USER, RECIPE, POST, picker=MagicMock())
@@ -376,14 +385,91 @@ class Repair(unittest.TestCase):
         self.assertEqual(store.call_args.args[2].size, (360, 640))
 
 
+class WhenAPostIsGone(unittest.TestCase):
+    """Measured 2026-11-19: a missing TikTok answers 200 with statusCode 10204 in
+    its page data, a live one 0; a missing Instagram reel and a blocked page both
+    just lack og:image, so Instagram is never called gone."""
+
+    @staticmethod
+    def _page(code):
+        import json
+
+        data = {"__DEFAULT_SCOPE__": {"webapp.video-detail": {"statusCode": code, "statusMsg": ""}}}
+        return f'<script id="__UNIVERSAL_DATA_FOR_REHYDRATION__" type="application/json">{json.dumps(data)}</script>'
+
+    def test_only_tiktoks_own_not_found_is_gone(self):
+        from app import social
+        from app.extract import ExtractError
+
+        cases = {self._page(10204): True, self._page(0): False, self._page(10216): False, "<html>blocked</html>": False}
+        for html, want in cases.items():
+            with patch("app.social.fetch_html", return_value=html):
+                self.assertIs(social.tiktok_post_gone(POST), want, html[:60])
+        with patch("app.social.fetch_html", side_effect=ExtractError("timeout")):
+            self.assertFalse(social.tiktok_post_gone(POST))
+
+    def test_resolve_raises_gone_only_for_a_tiktok_that_says_so(self):
+        no_image = {"image_url": ""}
+        for url, gone, want in (
+            (POST, True, images.PostGone),
+            (POST, False, images.ImageError),
+            ("https://www.instagram.com/reel/abc/", True, images.ImageError),
+        ):
+            with patch("app.social.fetch_post", return_value=no_image), patch(
+                "app.social.tiktok_post_gone", return_value=gone
+            ) as asked, self.assertRaises(images.ImageError) as ctx:
+                images._resolve_source(url)
+            self.assertIs(type(ctx.exception), want, url)
+            if "instagram" in url:
+                asked.assert_not_called()
+
+
+class RepairDue(unittest.TestCase):
+    BUCKET = "https://ref.supabase.co/storage/v1/object/public/recipe-images/u/r-lg.jpg"
+
+    def _due(self, rows=None, status=200, error=None):
+        client = MagicMock()
+        client.__enter__.return_value = client
+        if error:
+            client.get.side_effect = error
+        else:
+            client.get.return_value = MagicMock(status_code=status, json=lambda: rows, text="")
+        with patch("app.images._storage", return_value=("https://ref.supabase.co", "k")), patch(
+            "app.images.httpx.Client", return_value=client
+        ):
+            return images.repair_due(USER, RECIPE)
+
+    def test_an_older_photo_of_ours_is_due(self):
+        for url in (self.BUCKET, f"{self.BUCKET}?v=3", f"{self.BUCKET}?v=4"):
+            self.assertTrue(self._due([{"image_url": url}]), url)
+
+    def test_a_current_upload_borrowed_or_missing_photo_is_not(self):
+        cases = (
+            f"{self.BUCKET}?v={images.MIRROR_VERSION}",
+            f"{self.BUCKET}?v=50",
+            f"{self.BUCKET}?v=2&u=1760000000",
+            "https://scontent.cdninstagram.com/v/t51/1.jpg",
+            None,
+        )
+        for url in cases:
+            self.assertFalse(self._due([{"image_url": url}]), url)
+        self.assertFalse(self._due([]))
+
+    def test_a_lookup_that_fails_is_not_due(self):
+        import httpx
+
+        self.assertFalse(self._due(status=500, rows={"message": "no"}))
+        self.assertFalse(self._due(error=httpx.ConnectError("down")))
+
+
 class RepairRoute(unittest.TestCase):
-    def _call(self, post_url=POST, *, ai=True, over=False, mirror=None):
+    def _call(self, post_url=POST, *, ai=True, over=False, mirror=None, due=True):
         from app import main
 
         body = main.ImageRequest(recipe_id=RECIPE, url=post_url or "https://cdn.example.com/c.jpg", post_url=post_url, repair=True)
         with patch("app.main._photo_caller", return_value=USER), patch("app.main.ai_available", return_value=ai), patch(
-            "app.usage.over_rate_limit", return_value=over
-        ) as cap, patch("app.main.meter_caller") as import_cap, patch(
+            "app.images.repair_due", return_value=due
+        ), patch("app.usage.over_rate_limit", return_value=over) as cap, patch("app.main.meter_caller") as import_cap, patch(
             "app.images.mirror_image", side_effect=mirror, return_value={"image_url": "lg"}
         ) as m:
             try:
@@ -427,6 +513,12 @@ class RepairRoute(unittest.TestCase):
             exc, mirror, _, _ = self._call(**kw)
             self.assertEqual(exc.status_code, status, kw)
             mirror.assert_not_called()
+
+    def test_a_photo_that_is_not_due_is_refused_before_the_cap(self):
+        exc, mirror, cap, _ = self._call(due=False)
+        self.assertEqual(exc.status_code, 409)
+        mirror.assert_not_called()
+        cap.assert_not_called()
 
     def test_a_spent_budget_is_an_error_not_a_save(self):
         exc, _, _, _ = self._call(mirror=images.PickUnavailable("budget"))

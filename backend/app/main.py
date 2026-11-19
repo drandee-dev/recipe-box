@@ -426,12 +426,15 @@ def _repair_image(user_id: str, body: ImageRequest):
     later load retries. Storing the whole cover there would stamp the version and
     end the pass with nothing picked.
     """
-    from .images import ImageError, PickUnavailable, mirror_image
+    from .images import ImageError, PickUnavailable, mirror_image, repair_due
     from .social import detect_source
 
     kind = detect_source(body.post_url) if body.post_url else "web"
     if kind not in ("tiktok", "instagram"):
         raise HTTPException(status_code=422, detail="Could not save that image")
+    # Before the cap, so asking again for a current photo costs nothing at all.
+    if not repair_due(user_id, body.recipe_id):
+        raise HTTPException(status_code=409, detail="Nothing to repair")
     if not ai_available():
         raise HTTPException(status_code=503, detail="Photo repair is unavailable")
     _meter_repair(user_id)

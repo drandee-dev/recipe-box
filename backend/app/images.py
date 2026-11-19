@@ -20,6 +20,7 @@ the image box something to hold while the real photo arrives.
 import base64
 import io
 import logging
+import re
 import time
 import uuid
 
@@ -254,6 +255,38 @@ def recipe_is_owned(user_id: str, recipe_id: str) -> bool:
     return isinstance(rows, list) and len(rows) > 0
 
 
+_URL_VERSION = re.compile(r"[?&]v=(\d+)")
+
+
+def repair_due(user_id: str, recipe_id: str) -> bool:
+    """Is this recipe's stored photo ours, not the person's upload, and made by an
+    older pipeline? The server's half of the client's `needsRepair`: without it a
+    signed-in caller could redo one photo on a loop and spend the shared budget.
+    Fails closed, like `recipe_is_owned`; a later load asks again."""
+    user_id = str(uuid.UUID(user_id))
+    recipe_id = str(uuid.UUID(recipe_id))
+    url, key = _storage()
+    try:
+        with httpx.Client(timeout=TIMEOUT) as client:
+            resp = client.get(
+                f"{url}/rest/v1/recipes",
+                params={"select": "image_url", "id": f"eq.{recipe_id}", "user_id": f"eq.{user_id}", "limit": 1},
+                headers=supabase.headers(key, json=False),
+            )
+    except httpx.HTTPError:
+        log.exception("repair lookup failed for %s", recipe_id)
+        return False
+    if resp.status_code >= 400:
+        log.warning("repair lookup rejected: %s %s", resp.status_code, resp.text[:200])
+        return False
+    rows = resp.json()
+    photo = rows[0].get("image_url") if isinstance(rows, list) and rows and isinstance(rows[0], dict) else None
+    if not isinstance(photo, str) or f"/storage/v1/object/public/{BUCKET}/" not in photo or "&u=" in photo:
+        return False
+    found = _URL_VERSION.search(photo)
+    return int(found.group(1) if found else 1) < MIRROR_VERSION
+
+
 def _resolve_source(url: str) -> str:
     """A social *post* URL becomes the cover it currently serves. Anything else
     passes straight through.
@@ -266,15 +299,22 @@ def _resolve_source(url: str) -> str:
     reel covers repaired by pipeline v2, whose stored bytes have that repair
     baked into them and cannot be un-repaired from themselves.
     """
-    from .social import detect_source, fetch_post
+    from .social import detect_source, fetch_post, tiktok_post_gone
 
     kind = detect_source(url)
     if kind == "web":
         return url
     image = (fetch_post(url, kind) or {}).get("image_url")
     if not image:
+        # shortcut: Instagram gives no definite "gone" (a missing reel and a blocked page both lack og:image), so it is never PostGone
+        if kind == "tiktok" and tiktok_post_gone(url):
+            raise PostGone("TikTok says the post does not exist")
         raise ImageError("that post no longer serves a cover image")
     return image
+
+
+class PostGone(ImageError):
+    """The platform said the post does not exist, as opposed to failing to answer."""
 
 
 # The smallest food crop worth keeping, as a fraction of the cover. The model is
@@ -496,8 +536,9 @@ def mirror_image(
 
     `repair` is the retro pass over a photo already saved (his calls, 2026-11-19):
     no clean food keeps a photo, the whole glyph-stripped cover, never the tile; a
-    post that no longer serves a cover keeps the copy we hold, re-stored so its URL
-    carries the current version and the pass ends; a spent budget raises
+    post the platform says is gone (PostGone) keeps the copy we hold, re-stored so
+    its URL carries the current version and the pass ends, while any other fetch
+    failure raises and retries; a model that cannot be asked raises
     PickUnavailable and writes nothing.
     """
     # Both go straight into an object path. They are already validated upstream,
@@ -506,11 +547,12 @@ def mirror_image(
     recipe_id = str(uuid.UUID(recipe_id))
     try:
         source_url = _resolve_source(source_url)
-    except ImageError:
+    except PostGone:
+        # His rule: only a post that is definitely gone ends the pass with the
+        # photo we hold. Any other failure is a plain ImageError and retries.
         if not repair:
             raise
-        # shortcut: a post that failed to load once for a passing reason is treated as gone too
-        log.info("the post for %s serves no cover; keeping the photo we hold", recipe_id)
+        log.info("the post for %s is gone; keeping the photo we hold", recipe_id)
         source_url, picker = _stored_url(user_id, recipe_id), None
 
     try:

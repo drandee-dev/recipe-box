@@ -206,6 +206,23 @@ def _tiktok_item(html: str) -> dict:
     return item if isinstance(item, dict) else {}
 
 
+# TikTok's own "item doesn't exist", in the page's `webapp.video-detail` scope
+# (measured 2026-11-19: 10204 for a missing video, 0 for a live one). The page
+# still answers 200, so the status is the only definite signal.
+TIKTOK_GONE = 10204
+
+
+def tiktok_post_gone(url: str) -> bool:
+    """True only when TikTok's page says the post does not exist. A block, a
+    timeout, or a page without its data is not an answer, so it is False."""
+    try:
+        match = _TIKTOK_STATE.search(fetch_html(url))
+        code = json.loads(match.group(1))["__DEFAULT_SCOPE__"]["webapp.video-detail"]["statusCode"] if match else None
+    except (ExtractError, httpx.HTTPError, ValueError, KeyError, TypeError):
+        return False
+    return code == TIKTOK_GONE
+
+
 def _tiktok_page_post(url: str) -> dict | None:
     """Caption and cover read off the post's page, or None when it gave neither."""
     try:
