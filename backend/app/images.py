@@ -300,7 +300,8 @@ def save_repair(user_id: str, recipe_id: str, columns: dict) -> None:
         with httpx.Client(timeout=TIMEOUT) as client:
             resp = client.patch(
                 f"{url}/rest/v1/recipes",
-                params={"id": f"eq.{recipe_id}", "user_id": f"eq.{user_id}"},
+                # Never over a photo the person uploaded while this repair ran.
+                params={"id": f"eq.{recipe_id}", "user_id": f"eq.{user_id}", "image_url": "not.like.*&u=*"},
                 json={k: columns.get(k) for k in ("image_url", "image_thumb_url", "image_blur")},
                 headers={**supabase.headers(key), "Prefer": "return=minimal"},
             )

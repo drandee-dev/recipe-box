@@ -235,6 +235,8 @@ export default function App() {
             const repair = needsRepair(recipe)
             const postUrl = pick || repair ? pickFrom(recipe) : undefined
             const columns = await mirrorRecipeImage(recipe.id, mirrorSource(recipe), token, postUrl, repair)
+            // Checked again after the fetch: a photo they uploaded meanwhile wins.
+            if (uploaded.current.has(recipe.id)) continue
             const saved = await store.saveImage(recipe.id, columns)
             if (saved) setRecipes((prev) => prev.map((r) => (r.id === saved.id ? saved : r)))
           } catch {

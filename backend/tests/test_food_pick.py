@@ -493,7 +493,9 @@ class SaveRepair(unittest.TestCase):
 
     def test_it_writes_the_three_columns_to_this_callers_row_only(self):
         call = self._save().patch.call_args
-        self.assertEqual(call.kwargs["params"], {"id": f"eq.{RECIPE}", "user_id": f"eq.{USER}"})
+        self.assertEqual(
+            call.kwargs["params"], {"id": f"eq.{RECIPE}", "user_id": f"eq.{USER}", "image_url": "not.like.*&u=*"}
+        )
         self.assertEqual(call.kwargs["json"], {"image_url": "lg", "image_thumb_url": "sm", "image_blur": "b"})
 
     def test_a_failed_write_is_logged_not_raised(self):
