@@ -9,7 +9,7 @@ import { makePrefsStore, migrateLocalPrefs } from './lib/prefs.js'
 import { makeCookStore, migrateLocalCookLog } from './lib/cooklog.js'
 import { cookStats as statsOf } from './lib/cooked.js'
 import { cacheKeys, seedRecipes, updateMirror, withMirror } from './lib/cache.js'
-import { MIRROR_CONCURRENCY, mirrorSource, needsGlyphRepair, needsMirror, pickFrom } from './lib/images.js'
+import { MIRROR_CONCURRENCY, mirrorSource, needsMirror, needsRepair, pickFrom } from './lib/images.js'
 import { addDays, fromISODate, startOfWeek, toISODate, weekRangeLabel } from './lib/dates.js'
 import { setBusy } from './lib/pwa.js'
 import { useSession } from './lib/useSession.js'
@@ -201,11 +201,11 @@ export default function App() {
       if (!userId || !supabaseEnabled || !navigator.onLine) return
       // Two jobs, one loop, because they are the same call: a first mirror hands
       // the backend the origin's URL, a repair hands it our own copy, and either
-      // way what comes back is the three image columns. Instagram recipes
-      // mirrored before the play-glyph strip existed have a play button in the
-      // middle of the photo we are holding — see needsGlyphRepair.
+      // way what comes back is the three image columns. TikTok and Instagram
+      // photos made by an older pipeline are redone with the food pick — see
+      // needsRepair.
       const pending = list.filter(
-        (r) => (needsMirror(r) || needsGlyphRepair(r)) && !mirrored.current.has(r.id),
+        (r) => (needsMirror(r) || needsRepair(r)) && !mirrored.current.has(r.id),
       )
       // Checked before the client is asked for, so a list with nothing to mirror
       // never touches the deferred import.
@@ -232,8 +232,11 @@ export default function App() {
           // overwrite their upload with the old link's picture.
           if (uploaded.current.has(recipe.id)) continue
           try {
-            const postUrl = pick ? pickFrom(recipe) : undefined
-            const columns = await mirrorRecipeImage(recipe.id, mirrorSource(recipe), token, postUrl)
+            const repair = needsRepair(recipe)
+            const postUrl = pick || repair ? pickFrom(recipe) : undefined
+            const columns = await mirrorRecipeImage(recipe.id, mirrorSource(recipe), token, postUrl, repair)
+            // Checked again after the fetch: a photo they uploaded meanwhile wins.
+            if (uploaded.current.has(recipe.id)) continue
             const saved = await store.saveImage(recipe.id, columns)
             if (saved) setRecipes((prev) => prev.map((r) => (r.id === saved.id ? saved : r)))
           } catch {

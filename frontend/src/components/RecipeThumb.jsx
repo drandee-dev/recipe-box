@@ -55,7 +55,9 @@ export default function RecipeThumb({ recipe, priority = false, size = 'md' }) {
   if (showPhoto) {
     return (
       <div
-        className={cls}
+        // `recipes-thumb-photo` carries the photo tone (index.css). On this branch
+        // only: the fallback tile below is hand-checked against a clean fill.
+        className={`${cls} recipes-thumb-photo`}
         // A ~20px JPEG of the photo itself, inlined in the row. The box already
         // held its space; this is so what it holds resembles the picture that is
         // about to arrive rather than a flat grey rectangle. Only mirrored

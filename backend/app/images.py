@@ -20,6 +20,7 @@ the image box something to hold while the real photo arrives.
 import base64
 import io
 import logging
+import re
 import time
 import uuid
 
@@ -42,8 +43,10 @@ TIMEOUT = 15.0
 # without a new column, and it keeps the "read it off the URL, never a flag"
 # rule the rest of phase 7 follows. v2 was the first play-glyph strip; v3 is the
 # one that divides the dark disc out instead of filling over it; v4 divides it
-# out at the overlay's fixed strength and fills the smeared edge (H3).
-MIRROR_VERSION = 4
+# out at the overlay's fixed strength and fills the smeared edge (H3); v5 is the
+# retro pass, which re-picks the food out of every saved TikTok and Instagram
+# photo (`repair` in `mirror_image`).
+MIRROR_VERSION = 5
 
 # 960 is the copy of record: big enough that we are not the reason a photo looks
 # bad later, small enough to be a couple of hundred KB. 320 covers the 128px card
@@ -140,8 +143,11 @@ def image_for_vision(data: bytes) -> tuple[str, str]:
     return _vision_jpeg(_open(data))
 
 
-def _vision_jpeg(img: Image.Image) -> tuple[str, str]:
-    """image_for_vision for a picture already decoded (the mirror's, after repair)."""
+def _vision_jpeg(img: Image.Image, overlay=None) -> tuple[str, str]:
+    """image_for_vision for a picture already decoded (the mirror's, after repair).
+
+    `overlay` draws on the shrunk copy, so its lines and labels reach the model
+    at the size they were drawn, not resampled."""
     from .ai import VISION_MAX_PIXELS, VISION_MAX_PX, VISION_QUALITY
 
     img = img.copy()
@@ -150,6 +156,8 @@ def _vision_jpeg(img: Image.Image) -> tuple[str, str]:
     if width * height > VISION_MAX_PIXELS:
         scale = (VISION_MAX_PIXELS / (width * height)) ** 0.5
         img = img.resize((max(1, int(width * scale)), max(1, int(height * scale))), Image.LANCZOS)
+    if overlay:
+        img = overlay(img)
     buf = io.BytesIO()
     img.save(buf, format="JPEG", quality=VISION_QUALITY, optimize=True)
     return base64.b64encode(buf.getvalue()).decode("ascii"), "image/jpeg"
@@ -247,6 +255,62 @@ def recipe_is_owned(user_id: str, recipe_id: str) -> bool:
     return isinstance(rows, list) and len(rows) > 0
 
 
+_URL_VERSION = re.compile(r"[?&]v=(\d+)")
+
+
+def repair_due(user_id: str, recipe_id: str) -> bool:
+    """Is this recipe's stored photo ours, not the person's upload, and made by an
+    older pipeline? The server's half of the client's `needsRepair`: without it a
+    signed-in caller could redo one photo on a loop and spend the shared budget.
+    Fails closed, like `recipe_is_owned`; a later load asks again."""
+    user_id = str(uuid.UUID(user_id))
+    recipe_id = str(uuid.UUID(recipe_id))
+    try:
+        url, key = _storage()
+        with httpx.Client(timeout=TIMEOUT) as client:
+            resp = client.get(
+                f"{url}/rest/v1/recipes",
+                params={"select": "image_url", "id": f"eq.{recipe_id}", "user_id": f"eq.{user_id}", "limit": 1},
+                headers=supabase.headers(key, json=False),
+            )
+        if resp.status_code >= 400:
+            log.warning("repair lookup rejected: %s %s", resp.status_code, resp.text[:200])
+            return False
+        rows = resp.json()
+    except (ImageError, httpx.HTTPError, ValueError):
+        log.exception("repair lookup failed for %s", recipe_id)
+        return False
+    photo = rows[0].get("image_url") if isinstance(rows, list) and rows and isinstance(rows[0], dict) else None
+    if not isinstance(photo, str) or f"/storage/v1/object/public/{BUCKET}/" not in photo or "&u=" in photo:
+        return False
+    found = _URL_VERSION.search(photo)
+    return int(found.group(1) if found else 1) < MIRROR_VERSION
+
+
+def save_repair(user_id: str, recipe_id: str, columns: dict) -> None:
+    """Write a repair's three image columns to the row ourselves, so `repair_due`
+    is false at once: the client's own save comes after, and a client that never
+    saves could otherwise ask again forever. Service key, so both ids are in the
+    filter. Best effort: the photo is already stored and the client still saves
+    it, so a failed write is logged, never an error."""
+    user_id = str(uuid.UUID(user_id))
+    recipe_id = str(uuid.UUID(recipe_id))
+    try:
+        url, key = _storage()
+        with httpx.Client(timeout=TIMEOUT) as client:
+            resp = client.patch(
+                f"{url}/rest/v1/recipes",
+                # Never over a photo the person uploaded while this repair ran.
+                params={"id": f"eq.{recipe_id}", "user_id": f"eq.{user_id}", "image_url": "not.like.*&u=*"},
+                json={k: columns.get(k) for k in ("image_url", "image_thumb_url", "image_blur")},
+                headers={**supabase.headers(key), "Prefer": "return=minimal"},
+            )
+        if resp.status_code >= 400:
+            log.warning("repair save rejected for %s: %s %s", recipe_id, resp.status_code, resp.text[:200])
+    except (ImageError, httpx.HTTPError):
+        log.exception("repair save failed for %s", recipe_id)
+
+
 def _resolve_source(url: str) -> str:
     """A social *post* URL becomes the cover it currently serves. Anything else
     passes straight through.
@@ -259,15 +323,22 @@ def _resolve_source(url: str) -> str:
     reel covers repaired by pipeline v2, whose stored bytes have that repair
     baked into them and cannot be un-repaired from themselves.
     """
-    from .social import detect_source, fetch_post
+    from .social import detect_source, fetch_post, tiktok_post_gone
 
     kind = detect_source(url)
     if kind == "web":
         return url
     image = (fetch_post(url, kind) or {}).get("image_url")
     if not image:
+        # shortcut: Instagram gives no definite "gone" (a missing reel and a blocked page both lack og:image), so it is never PostGone
+        if kind == "tiktok" and tiktok_post_gone(url):
+            raise PostGone("TikTok says the post does not exist")
         raise ImageError("that post no longer serves a cover image")
     return image
+
+
+class PostGone(ImageError):
+    """The platform said the post does not exist, as opposed to failing to answer."""
 
 
 # The smallest food crop worth keeping, as a fraction of the cover. The model is
@@ -283,6 +354,14 @@ NO_PHOTO = {"image_url": None, "image_thumb_url": None, "image_blur": None}
 CELL_ASPECT = 4 / 3
 # Pieces kept between obstacles; each obstacle can split a piece four ways.
 MAX_PIECES = 64
+# Percent added on every side of a text or person box: the model's edges sit on
+# the letters, so their outer pixels stayed in the crop (job 11 run 4).
+OBSTACLE_PAD = 2
+# Widest piece kept (width / height). A wider strip fills a 4:3 cell from too
+# few rows and upscales blurry. Good crops reach 2.16 once padded (run 5 #7; at
+# 2.0 it lost to a 151x576 sliver), a 100x16% strip is 3.5. Tall pieces need no
+# limit: a cover-fit cell shows them at full width.
+MAX_CROP_ASPECT = 2.5
 
 
 def _pct_box(raw, *, swap=False) -> tuple[int, int, int, int] | None:
@@ -336,7 +415,10 @@ def food_crop(img: Image.Image, pick: dict):
     if food is None:
         return None
     raw = [*(pick.get("text") or []), *(pick.get("people") or [])]
-    obstacles = [b for b in (_pct_box(o, swap=True) for o in raw) if b]
+    obstacles = [
+        (max(0, l - OBSTACLE_PAD), max(0, t - OBSTACLE_PAD), min(100, r + OBSTACLE_PAD), min(100, b + OBSTACLE_PAD))
+        for l, t, r, b in filter(None, (_pct_box(o, swap=True) for o in raw))
+    ]
     w, h = img.size
 
     def shown(p):  # pixels a 4:3 cover-fit cell keeps of this piece
@@ -346,6 +428,7 @@ def food_crop(img: Image.Image, pick: dict):
     usable = [
         p for p in _clean_pieces(food, obstacles)
         if (p[2] - p[0]) / 100 >= MIN_CROP_WIDTH and (p[3] - p[1]) / 100 >= MIN_CROP_HEIGHT
+        and (p[2] - p[0]) * w <= MAX_CROP_ASPECT * (p[3] - p[1]) * h
     ]
     if not usable:
         return NO_FOOD
@@ -378,12 +461,37 @@ def _grid(img: Image.Image) -> Image.Image:
     return out
 
 
-def _pick(img: Image.Image, picker, recipe_id: str) -> Image.Image | None:
+class PickUnavailable(ImageError):
+    """A repair could not ask the model (budget spent, over its cap). Nothing is
+    written, so the URL stays stale and a later load tries again."""
+
+
+def _pick(img: Image.Image, picker, recipe_id: str, checker=None, strict=False) -> Image.Image | None:
     """H1/H4. Returns the food crop, the picture unchanged, or None for "no clean
     food in it". Any failure is the picture unchanged: the picker can only make a
-    cover better or remove it, never lose a mirror that would have worked."""
+    cover better or remove it, never lose a mirror that would have worked.
+
+    `checker` (ai.crop_shows_food) looks at the finished crop: a "no" is None too,
+    since the picker calls some covers food that have none (#14, a hand over an
+    empty pan). The check failing keeps the crop, as before it existed.
+
+    `strict` (a repair) raises PickUnavailable when the model could not be asked
+    (budget spent, key bad, API down) instead: storing the whole cover there would
+    stamp the version and end the pass unpicked. An answer it cannot use still
+    keeps the cover, since that call was paid for and would be paid again."""
+    from .ai import AIBudgetError, AIUnavailable
+
     try:
-        pick = picker(*_vision_jpeg(_grid(img)))
+        pick = picker(*_vision_jpeg(img, overlay=_grid))
+    except (AIBudgetError, AIUnavailable) as exc:
+        if strict:
+            raise PickUnavailable(str(exc)) from exc
+        log.info("food pick failed for %s, keeping the cover: %s", recipe_id, exc)
+        return img
+    except Exception as exc:
+        log.info("food pick failed for %s, keeping the cover: %s", recipe_id, exc)
+        return img
+    try:
         if pick.get("verdict") == "none":
             log.info("no food in the cover for %s", recipe_id)
             return None
@@ -397,40 +505,79 @@ def _pick(img: Image.Image, picker, recipe_id: str) -> Image.Image | None:
     if cropped is None:
         log.info("unusable food boxes for %s: %s", recipe_id, pick)
         return img
+    if checker is not None:
+        try:
+            shows_food = checker(*_vision_jpeg(cropped))
+        except Exception as exc:
+            log.info("crop check failed for %s, keeping the crop: %s", recipe_id, exc)
+            return cropped
+        if not shows_food:
+            log.info("the crop for %s does not show food", recipe_id)
+            return None
     return cropped
 
 
-def _video_pick(video, picker, recipe_id: str) -> Image.Image | None:
+def _video_pick(video, picker, recipe_id: str, checker=None, strict=False) -> Image.Image | None:
     """H2: the cover had no clean food, so pick the food out of the video still
     that best shows the dish. None (the tile) when there is no video, no still
-    with food, or any failure on the way."""
+    with food, or any failure on the way. `strict` lets PickUnavailable through."""
     try:
         frame = video()
+    except PickUnavailable:
+        if strict:
+            raise
+        return None
     except Exception as exc:
         log.info("no video frame for %s: %s", recipe_id, exc)
         return None
     if frame is None:
         log.info("no video still shows food for %s", recipe_id)
         return None
-    cropped = _pick(frame, picker, recipe_id)
+    cropped = _pick(frame, picker, recipe_id, checker, strict)
     # _pick hands back the picture itself when it fails. Right for a cover, but a
     # still has been judged only "shows food", faces and captions included: tile.
     return None if cropped is frame else cropped
 
 
-def mirror_image(user_id: str, recipe_id: str, source_url: str, picker=None, video=None) -> dict:
+def _stored_url(user_id: str, recipe_id: str) -> str:
+    """Our own copy of record for a recipe, as `_store` wrote it. A fresh query
+    string, since the object is cached a year as immutable and v1 URLs had none,
+    so a cache could still hold older bytes at the bare address."""
+    url, _key = _storage()
+    return f"{url}/storage/v1/object/public/{BUCKET}/{user_id}/{recipe_id}-lg.jpg?r={int(time.time())}"
+
+
+def mirror_image(
+    user_id: str, recipe_id: str, source_url: str, picker=None, video=None, checker=None, repair=False
+) -> dict:
     """Fetch, resize and store one recipe photo. Returns the columns to save.
 
-    `picker` (ai.pick_food_crop) is passed only for the first mirror of a social
+    `picker` (ai.pick_food_crop) is passed for the first mirror of a social
     import; with it, the stored photo is the food alone, or NO_PHOTO. `video`, a
     no-argument callable returning a still or None (TikTok only), is tried when
-    the cover has no clean food.
+    the cover has no clean food. `checker` (ai.crop_shows_food) is the second look
+    at each finished crop, the cover's and the still's.
+
+    `repair` is the retro pass over a photo already saved (his calls, 2026-11-19):
+    no clean food keeps a photo, the whole glyph-stripped cover, never the tile; a
+    post the platform says is gone (PostGone) keeps the copy we hold, re-stored so
+    its URL carries the current version and the pass ends, while any other fetch
+    failure raises and retries; a model that cannot be asked raises
+    PickUnavailable and writes nothing.
     """
     # Both go straight into an object path. They are already validated upstream,
     # but a traversal here would write outside the caller's own folder.
     user_id = str(uuid.UUID(user_id))
     recipe_id = str(uuid.UUID(recipe_id))
-    source_url = _resolve_source(source_url)
+    try:
+        source_url = _resolve_source(source_url)
+    except PostGone:
+        # His rule: only a post that is definitely gone ends the pass with the
+        # photo we hold. Any other failure is a plain ImageError and retries.
+        if not repair:
+            raise
+        log.info("the post for %s is gone; keeping the photo we hold", recipe_id)
+        source_url, picker = _stored_url(user_id, recipe_id), None
 
     try:
         data, _content_type = fetch_bytes(source_url)
@@ -448,10 +595,12 @@ def mirror_image(user_id: str, recipe_id: str, source_url: str, picker=None, vid
         log.info("stripped a play glyph from the cover for %s", recipe_id)
 
     if picker is not None:
-        img = _pick(img, picker, recipe_id)
-        if img is None and video is not None:
-            img = _video_pick(video, picker, recipe_id)
-        if img is None:
+        picked = _pick(img, picker, recipe_id, checker, strict=repair)
+        if picked is None and video is not None:
+            picked = _video_pick(video, picker, recipe_id, checker, strict=repair)
+        if picked is not None:
+            img = picked
+        elif not repair:
             return dict(NO_PHOTO)
 
     return _store(user_id, recipe_id, img)

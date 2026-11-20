@@ -32,6 +32,11 @@ TIMEOUT = 5.0
 # what it takes to spend the month's budget in a loop.
 RATE_LIMIT_CALLS = 20
 RATE_WINDOW_MINUTES = 60
+# The retro pass's own bucket, per signed-in account (`repair_caller`), so redoing
+# a box of old photos never locks its owner out of importing. A repair is 3 calls,
+# 6 through a TikTok video: this is about 10 to 20 photos an hour, and the rest
+# wait for a later load. The monthly budget still covers both buckets.
+REPAIR_LIMIT_CALLS = 60
 
 
 # Both live in supabase.py now; these names stay so the call sites below read
@@ -109,7 +114,12 @@ def caller_hash(ip: str) -> str:
     return hashlib.sha256(f"{salt}|{ip}".encode()).hexdigest()[:32]
 
 
-def recent_calls(ip_hash: str) -> int | None:
+def repair_caller(user_id: str) -> str:
+    """The retro pass's caller id: one per account, never equal to an address's."""
+    return caller_hash(f"repair|{user_id}")
+
+
+def recent_calls(ip_hash: str, limit: int = RATE_LIMIT_CALLS) -> int | None:
     """Model calls charged to this caller inside the window. None when untracked.
 
     Counted by reading ids rather than asking PostgREST for a count, for the same
@@ -130,7 +140,7 @@ def recent_calls(ip_hash: str) -> int | None:
                     "select": "id",
                     "ip_hash": f"eq.{ip_hash}",
                     "created_at": f"gte.{since.isoformat()}",
-                    "limit": RATE_LIMIT_CALLS + 1,
+                    "limit": limit + 1,
                 },
                 headers=_headers(key),
             )
@@ -151,10 +161,10 @@ def recent_calls(ip_hash: str) -> int | None:
     return len(rows) if isinstance(rows, list) else None
 
 
-def over_rate_limit(ip_hash: str) -> bool:
+def over_rate_limit(ip_hash: str, limit: int = RATE_LIMIT_CALLS) -> bool:
     """True only when we know the caller is over. Not knowing lets them through."""
-    count = recent_calls(ip_hash)
-    return count is not None and count >= RATE_LIMIT_CALLS
+    count = recent_calls(ip_hash, limit)
+    return count is not None and count >= limit
 
 
 # A hash no real address produces, used to ask the question "would this query

@@ -87,6 +87,19 @@
   --on-saffron: #191c18;
   /* A translucent card behind a glyph that sits on a photo. */
   --surface-glass: rgb(255 253 247 / 92%);
+  /* What a photo's blacks are lifted to (the photo tone, .recipes-thumb-photo).
+     The rule that sets it: a photo's blacks must never be lighter than the page
+     they sit on. On the light ground a warm brown reads as paper. The same
+     brown on the dark ground (#151813) is lighter than the page and reads as
+     haze ("too light and washed out", his phone, 2026-11-19), so the dark
+     blocks use a quarter of it, which lands under the ground's own darkness. */
+  --photo-lift: #2c251e;
+  /* What a photo's box holds before the photo arrives. The lift layer is drawn
+     over the empty box too, so this is the colour that BECOMES --surface-2
+     under that layer: 1 - (1 - surface) / (1 - lift) a channel. On the light
+     theme --surface-2 itself is close enough (#f6f4ee shows as #f8f6f0); the
+     dark blocks carry the solved value. Change a lift and this moves with it. */
+  --photo-ground: var(--surface-2);
   /* What dims the page behind a sheet. A dark tint on the light ground; on the
      dark ground the same tint barely shows, so the dark theme uses near-black,
      which is what makes a sheet stand off the page there. */
@@ -244,6 +257,8 @@
     --info-ink: #b9c6cf;
     --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
     --surface-glass: rgb(29 33 27 / 90%);
+    --photo-lift: #0b0908;
+    --photo-ground: #1b221b;
     --scrim: rgb(0 0 0 / 66%);
     --tile-mix: 8%;
     color-scheme: dark;
@@ -279,6 +294,8 @@
   --info-ink: #b9c6cf;
   --shadow-card: 0 1px 2px rgb(0 0 0 / 40%);
   --surface-glass: rgb(29 33 27 / 90%);
+  --photo-lift: #0b0908;
+  --photo-ground: #1b221b;
   --scrim: rgb(0 0 0 / 66%);
   --tile-mix: 8%;
   color-scheme: dark;
@@ -2225,6 +2242,60 @@ textarea.field {
   height: 100%;
   object-fit: cover;
   display: block;
+}
+
+/* --- The photo tone -------------------------------------------------------
+   One treatment on every photo in the app, so a grid of covers from TikTok,
+   Instagram, recipe sites and the camera reads as one set: a little colour
+   comes out, and one screen-blended layer lifts the blacks to a warm brown.
+   Chosen from six directions on 17 real covers (2026-11-19, "Cookbook page").
+   It makes the set agree; it does not rescue a soft or wrong crop.
+
+   On the photo only (.recipes-thumb-photo), never the fallback tile: the tile's
+   tints and contrast numbers were checked against a clean fill.
+
+   Cost, measured for these colour filters (headless Chromium 148, 390x844 at
+   DPR 3, CPU slowed 4x, 68 cells, a 5000px scroll): the same 5 compositor
+   layers with and without, and about 17 ms more raster in total. Scrolled on an
+   iPhone with no visible difference. A blur is a different filter and was not
+   measured, so the note on the placeholder above still stands.
+   ------------------------------------------------------------------------- */
+.recipes-thumb-photo {
+  /* Keeps the blend inside the box: without it the layer screens against
+     whatever is behind the cell as well. */
+  isolation: isolate;
+  /* See --photo-ground: the box while the photo is still on its way. */
+  background-color: var(--photo-ground);
+}
+
+.recipes-thumb-photo img {
+  filter: saturate(0.88) contrast(1.06) brightness(0.98);
+}
+
+.recipes-thumb-photo::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  /* Load-bearing. The filter above makes the image its own stacking context,
+     which paints with the positioned layers, and the image comes after this
+     pseudo-element in the tree: without a z-index the layer sits UNDER the
+     photo and does nothing (shipped that way to staging once, 2026-11-19; the
+     computed styles all read right, only a pixel measurement showed it). */
+  z-index: 1;
+  background: var(--photo-lift);
+  mix-blend-mode: screen;
+  pointer-events: none;
+}
+
+/* A contrast theme forces this layer's colour to the system background and
+   keeps the blend, and white screened over a photo is white: without this rule
+   every cover is a blank white box (reproduced with emulated forced colours in
+   Chromium 148, one colour across the whole photo). The layer is decoration,
+   so there it goes. */
+@media (forced-colors: active) {
+  .recipes-thumb-photo::before {
+    display: none;
+  }
 }
 
 /* Row-sized variant for the planner's picker. Same component, so the same three

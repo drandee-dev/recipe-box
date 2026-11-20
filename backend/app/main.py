@@ -61,6 +61,8 @@ class ImageRequest(BaseModel):
     # The social post the cover came from, sent only on the first mirror right
     # after an import. Its presence is what asks for the food-only pick (H1/H4).
     post_url: str | None = Field(default=None, min_length=10, max_length=2000)
+    # The retro pass: redo a photo already saved, from `post_url` (_repair_image).
+    repair: bool = False
 
 
 class UploadImageRequest(BaseModel):
@@ -357,6 +359,19 @@ def _video_fallback(post_url: str | None, request: Request):
     return still
 
 
+def _crop_checker(picker):
+    """ai.crop_shows_food whenever the picker runs, else None: the second look at
+    the crop the picker produced. It is not gated again, since one gated pick
+    allows at most one check, but its model call is recorded against the caller
+    like any other, so a picked import counts three calls toward the hourly cap
+    (structure, pick, check) where it counted two."""
+    if picker is None:
+        return None
+    from .ai import crop_shows_food
+
+    return crop_shows_food
+
+
 @app.post("/api/recipes/image")
 def recipe_image(body: ImageRequest, request: Request, authorization: str | None = Header(default=None)):
     """Mirror a recipe photo into our own bucket. Signed in only.
@@ -371,12 +386,16 @@ def recipe_image(body: ImageRequest, request: Request, authorization: str | None
     hotlink block, something that isn't an image — are all a 422 and nothing more.
     """
     user_id = _photo_caller(authorization, body.recipe_id)
+    if body.repair:
+        return _repair_image(user_id, body)
     from .images import ImageError, mirror_image
 
     picker = _food_picker(body.post_url, request)
     video = _video_fallback(body.post_url, request) if picker else None
     try:
-        return mirror_image(user_id, body.recipe_id, body.url, picker=picker, video=video)
+        return mirror_image(
+            user_id, body.recipe_id, body.url, picker=picker, video=video, checker=_crop_checker(picker)
+        )
     except ValueError:
         raise HTTPException(status_code=422, detail="Not a valid recipe id")
     except ImageError as exc:
@@ -384,6 +403,76 @@ def recipe_image(body: ImageRequest, request: Request, authorization: str | None
         raise HTTPException(status_code=422, detail="Could not save that image")
     except Exception:
         log.exception("unexpected image mirror failure for %s", body.url)
+        raise HTTPException(status_code=502, detail="Could not save that image")
+
+
+def _meter_repair(user_id: str) -> None:
+    """The retro pass's cap: its own per-account bucket, never the import cap. Its
+    model calls are recorded under the same id, which is what the count reads."""
+    from .usage import REPAIR_LIMIT_CALLS, over_rate_limit, repair_caller, set_caller
+
+    caller = repair_caller(user_id)
+    set_caller(caller)
+    if over_rate_limit(caller, REPAIR_LIMIT_CALLS):
+        log.info("repair cap reached for %s", caller[:8])
+        raise HTTPException(status_code=429, detail="Photo repair paused. It carries on later.")
+
+
+def _repair_image(user_id: str, body: ImageRequest):
+    """Redo a saved TikTok or Instagram photo with the food pick (the retro pass).
+
+    Unlike a first mirror, a repair that cannot pick writes nothing: no model, over
+    its cap or the budget spent is an error, so the URL keeps its old version and a
+    later load retries. Storing the whole cover there would stamp the version and
+    end the pass with nothing picked.
+    """
+    from .images import ImageError, PickUnavailable, mirror_image, repair_due, save_repair
+    from .social import detect_source
+
+    kind = detect_source(body.post_url) if body.post_url else "web"
+    if kind not in ("tiktok", "instagram"):
+        raise HTTPException(status_code=422, detail="Could not save that image")
+    # Before the cap, so asking again for a current photo costs nothing at all.
+    if not repair_due(user_id, body.recipe_id):
+        raise HTTPException(status_code=409, detail="Nothing to repair")
+    if not ai_available():
+        raise HTTPException(status_code=503, detail="Photo repair is unavailable")
+    _meter_repair(user_id)
+    from .ai import crop_shows_food, pick_food_crop
+
+    video = None
+    if kind == "tiktok":
+
+        def video():
+            try:
+                _meter_repair(user_id)
+            except HTTPException as exc:
+                raise PickUnavailable("over the repair cap") from exc
+            from .ai import AIUnavailable, pick_frame
+            from .thumbs import best_frame
+
+            try:
+                return best_frame(body.post_url, pick_frame)
+            except (AIBudgetError, AIUnavailable) as exc:
+                raise PickUnavailable(str(exc)) from exc
+
+    try:
+        columns = mirror_image(
+            user_id, body.recipe_id, body.post_url,
+            picker=pick_food_crop, video=video, checker=crop_shows_food, repair=True,
+        )
+        save_repair(user_id, body.recipe_id, columns)
+        return columns
+    except PickUnavailable as exc:
+        log.info("photo repair skipped for %s: %s", body.recipe_id, exc)
+        raise HTTPException(status_code=503, detail="Photo repair is unavailable")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="Not a valid recipe id")
+    except ImageError as exc:
+        log.info("photo repair failed for %s: %s", body.post_url, exc)
+        raise HTTPException(status_code=422, detail="Could not save that image")
+    except Exception:
+        log.exception("unexpected photo repair failure for %s", body.post_url)
         raise HTTPException(status_code=502, detail="Could not save that image")
 
 
