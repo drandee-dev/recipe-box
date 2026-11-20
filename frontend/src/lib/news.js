@@ -14,7 +14,7 @@
 // `upcoming` announces work before it ships and carries the feedback button.
 // Closing the banner remembers the entry's id, so a new id brings it back.
 
-export const APP_VERSION = '1.1.3'
+export const APP_VERSION = '1.1.4'
 
 // What the update bar shows from version.json: up to three plain short lines.
 // Defensive about the shape since it arrives over the network from a build this
@@ -28,6 +28,25 @@ export function cleanHighlights(value) {
 }
 
 export const NEWS = [
+  {
+    id: '1.1.4',
+    kind: 'release',
+    version: '1.1.4',
+    date: '2026-11-19',
+    title: 'Version 1.1.4',
+    body: 'Recipes you already saved from TikTok and Instagram get food photos too. Tap to see what changed.',
+    highlights: [
+      'Saved TikTok and Instagram recipes get food-only photos',
+      'Every recipe photo has the same warm tone',
+      'Fewer photos of empty pans or hands',
+    ],
+    notes: [
+      'Recipes you already saved from TikTok and Instagram get their photos redone, trimmed to the food the same way new imports are. It happens on its own over the next few times you open the app. If no clean picture of the food is found, the recipe keeps the photo it has.',
+      'A photo you took or chose yourself is never changed.',
+      'All recipe photos get one gentle, warm tone, so the list looks even. In the dark theme the tone is softer, so dark photos keep their depth.',
+      'The food trim is stricter: a pan of loose ingredients or a hand in the shot no longer counts as the dish, and captions stay out of the crop more often.',
+    ],
+  },
   {
     id: '1.1.3',
     kind: 'release',
